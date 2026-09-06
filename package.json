@@ -1,0 +1,32 @@
+{
+  "name": "metadiff",
+  "version": "0.1.0",
+  "description": "Interactive terminal git diff with intra-line highlighting",
+  "license": "MIT",
+  "author": "Timur Shemsedinov <timur.shemsedinov@gmail.com>",
+  "main": "lib/api.js",
+  "bin": {
+    "metadiff": "bin/metadiff.js"
+  },
+  "files": [
+    "bin/",
+    "lib/",
+    "specs/"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "enable": "node scripts/enable.js",
+    "disable": "node scripts/disable.js",
+    "lint": "eslint . && prettier -c \"**/*.js\" \"**/*.json\" \"**/*.md\"",
+    "fix": "eslint . --fix && prettier --write \"**/*.js\" \"**/*.json\" \"**/*.md\"",
+    "test": "npm run -s lint && node --test test/*.test.js"
+  },
+  "devDependencies": {
+    "eslint": "^9.39.4",
+    "eslint-config-metarhia": "^9.1.9",
+    "metaskills": "^1.0.5",
+    "prettier": "^3.8.4"
+  }
+}
