@@ -5,7 +5,7 @@ const assert = require('node:assert/strict');
 
 const { displayLines } = require('../lib/diff.js');
 const render = require('../lib/render.js');
-const { THEME, CODE_FG, fg, bg } = require('../lib/ansi.js');
+const { THEME, CODE_FG, fg, bg, stripAnsi, BOLD } = require('../lib/ansi.js');
 
 test('AC2 muted line color differs from strong char color', () => {
   assert.notDeepEqual(THEME.delLineBg, THEME.delCharBg);
@@ -422,6 +422,104 @@ test('footer keeps last block on the counts line', () => {
   assert.equal(firstRow.endsWith(' '), true);
 });
 
+test('status line includes feedback and todo counts', () => {
+  const hunk = {
+    oldStart: 1,
+    oldCount: 1,
+    newStart: 1,
+    newCount: 1,
+    header: '@@ -1,1 +1,1 @@',
+    lines: [{ type: 'add', text: 'x', noNl: false, blockId: 0 }],
+  };
+  const view = {
+    item: {
+      origin: 'unstaged',
+      file: { newPath: 'f.js', oldPath: 'f.js', isBinary: false },
+      hunk,
+      blockId: 0,
+    },
+    index: 0,
+    total: 1,
+    scroll: 0,
+    status: '',
+    help: false,
+    counts: {
+      staged: 6,
+      unstaged: 11,
+      untracked: 0,
+      feedback: 3,
+      todo: 2,
+    },
+    repoName: 'demo',
+  };
+  const frame = render.renderFrame(view, {
+    width: 80,
+    height: 16,
+    color: false,
+  });
+  const statusRow = frame.rows[frame.rows.length - 2];
+  assert.match(
+    statusRow,
+    /staged 6 {2}unstaged 11 {2}untracked 0 {2}feedback 3 {2}todo 2/,
+  );
+});
+
+test('quit prompt paints f and c yellow on grey copy', () => {
+  const hunk = {
+    oldStart: 1,
+    oldCount: 1,
+    newStart: 1,
+    newCount: 1,
+    header: '@@ -1,1 +1,1 @@',
+    lines: [{ type: 'add', text: 'x', noNl: false, blockId: 0 }],
+  };
+  const view = {
+    item: {
+      origin: 'unstaged',
+      file: { newPath: 'f.js', oldPath: 'f.js', isBinary: false },
+      hunk,
+      blockId: 0,
+    },
+    index: 0,
+    total: 1,
+    scroll: 0,
+    status: '',
+    help: false,
+    mode: 'confirmQuit',
+    counts: { staged: 0, unstaged: 1, untracked: 0 },
+    repoName: 'demo',
+  };
+  const colored = render.renderFrame(view, {
+    width: 80,
+    height: 16,
+    color: true,
+  });
+  const statusRow = colored.rows[colored.rows.length - 2];
+  const plain = stripAnsi(statusRow);
+  assert.equal(plain.startsWith(render.QUIT_PROMPT), true);
+  assert.ok(plain.includes('finish review'));
+  assert.ok(plain.includes('continue next time'));
+  assert.ok(!plain.includes('Finish'));
+  assert.ok(!plain.includes('Continue'));
+  assert.ok(!plain.includes('Close as pending'));
+  assert.ok(statusRow.includes(fg(THEME.warnFg)));
+  assert.ok(statusRow.includes(fg(THEME.mutedFg)));
+  assert.ok(statusRow.includes(bg(THEME.chromeBg)));
+  assert.ok(!statusRow.includes(bg(THEME.buttonBg)));
+  assert.ok(statusRow.includes(BOLD));
+  const fAt = statusRow.indexOf(render.QUIT_FINISH);
+  const cAt = statusRow.lastIndexOf(render.QUIT_CONTINUE);
+  const warn = fg(THEME.warnFg);
+  const muted = fg(THEME.mutedFg);
+  assert.ok(fAt >= 0 && cAt > fAt);
+  const warnF = statusRow.lastIndexOf(warn, fAt);
+  const mutedF = statusRow.lastIndexOf(muted, fAt);
+  const warnC = statusRow.lastIndexOf(warn, cAt);
+  const mutedC = statusRow.lastIndexOf(muted, cAt);
+  assert.ok(warnF > mutedF);
+  assert.ok(warnC > mutedC);
+});
+
 test('header and file list keep a right-side gap', () => {
   const { stripAnsi } = require('../lib/ansi.js');
   const view = {
@@ -524,7 +622,8 @@ test('AC10 footer words highlight the bound letter', () => {
   const row = frame.rows[frame.rows.length - 1];
   const plain = stripAnsi(row);
   assert.match(plain, /add {2}unstage {2}revert {2}skip/);
-  assert.match(plain, /←prev {2}→next {2}mode {2}files {2}quit/);
+  assert.match(plain, /←prev {2}→next {2}mode {2}files/);
+  assert.match(plain, /feedback {2}todo {2}quit/);
   assert.ok(!plain.includes('['));
   assert.ok(row.includes(fg(THEME.buttonHotFg)));
   assert.ok(row.includes(fg(THEME.buttonFg)));
@@ -647,11 +746,16 @@ test('AC25 header path roles use distinct greys', () => {
 test('presentRows overwrites in place without a leading wipe', () => {
   const { ESC } = require('../lib/ansi.js');
   const out = render.presentRows(['aa', 'bb'], { clear: false });
-  assert.ok(out.startsWith(`${ESC}[?2026h`));
+  assert.ok(out.startsWith(`${ESC}[?25l`));
+  assert.ok(out.includes(`${ESC}[?2026h`));
   assert.ok(!out.includes(`${ESC}[2J`));
   assert.ok(out.includes(`${ESC}[1;1H`));
   assert.ok(out.includes(`${ESC}[2;1H`));
-  assert.ok(out.endsWith(`${ESC}[?2026l`));
+  const hide = out.indexOf(`${ESC}[?25l`);
+  const firstRow = out.indexOf(`${ESC}[1;1H`);
+  const syncEnd = out.indexOf(`${ESC}[?2026l`);
+  assert.ok(syncEnd >= 0);
+  assert.ok(hide < firstRow);
 });
 
 test('presentRows clear stays inside the synchronized region', () => {
@@ -663,6 +767,41 @@ test('presentRows clear stays inside the synchronized region', () => {
   assert.ok(sync >= 0);
   assert.ok(wipe > sync);
   assert.ok(wipe < end);
+});
+
+test('presentRows hides the cursor before painting rows', () => {
+  const { ESC } = require('../lib/ansi.js');
+  const out = render.presentRows(['aa'], { cursor: { x: 3, y: 2 } });
+  const hide = out.indexOf(`${ESC}[?25l`);
+  const sync = out.indexOf(`${ESC}[?2026h`);
+  const firstRow = out.indexOf(`${ESC}[1;1H`);
+  assert.ok(hide >= 0);
+  assert.ok(hide < sync);
+  assert.ok(sync < firstRow);
+});
+
+test('presentRows shows a blinking cursor after the sync region', () => {
+  const { ESC } = require('../lib/ansi.js');
+  const out = render.presentRows(['aa'], { cursor: { x: 3, y: 2 } });
+  const syncEnd = out.indexOf(`${ESC}[?2026l`);
+  const pos = out.indexOf(`${ESC}[2;3H`);
+  const style = out.indexOf(`${ESC}[1 q`);
+  const blink = out.indexOf(`${ESC}[?12h`);
+  const show = out.indexOf(`${ESC}[?25h`);
+  assert.ok(syncEnd >= 0);
+  assert.ok(pos > syncEnd);
+  assert.ok(style > pos);
+  assert.ok(blink > style);
+  assert.ok(show > blink);
+});
+
+test('presentCursor hides or shows at the edit cell', () => {
+  const { ESC } = require('../lib/ansi.js');
+  assert.equal(render.presentCursor(null), `${ESC}[?25l`);
+  const shown = render.presentCursor({ x: 4, y: 7 });
+  assert.ok(shown.startsWith(`${ESC}[7;4H`));
+  assert.ok(shown.includes(`${ESC}[?25h`));
+  assert.ok(!shown.includes(`${ESC}[?2026h`));
 });
 
 test('commit review header and counts use short sha', () => {
@@ -696,5 +835,621 @@ test('commit review header and counts use short sha', () => {
     height: 16,
     color: false,
   });
-  assert.match(frame.text, /commit 7ac260c {2}1/);
+  assert.match(frame.text, /commit 7ac260c {2}1 {2}feedback 0 {2}todo 0/);
+});
+
+test('compose panel sits above status and buttons', () => {
+  const hunk = {
+    oldStart: 1,
+    oldCount: 1,
+    newStart: 1,
+    newCount: 1,
+    header: '@@ -1,1 +1,1 @@',
+    lines: [{ type: 'add', text: 'x', noNl: false, blockId: 0 }],
+  };
+  const view = {
+    pane: 'diff',
+    item: {
+      origin: 'unstaged',
+      file: { newPath: 'f.js', oldPath: 'f.js', isBinary: false },
+      hunk,
+      blockId: 0,
+    },
+    index: 0,
+    total: 1,
+    scroll: 0,
+    status: '',
+    help: false,
+    counts: { staged: 0, unstaged: 1, untracked: 0 },
+    repoName: 'demo',
+    compose: { kind: 'feedback', text: 'extract helper', cursor: 14 },
+  };
+  const frame = render.renderFrame(view, {
+    width: 80,
+    height: 16,
+    color: false,
+  });
+  assert.equal(frame.rows.length, 16);
+  const statusRow = frame.rows[frame.rows.length - 2];
+  const buttonRow = frame.rows[frame.rows.length - 1];
+  assert.match(statusRow, /unstaged 1/);
+  assert.match(buttonRow, /feedback/);
+  const joined = frame.rows.join('\n');
+  const noteAt = joined.indexOf('extract helper');
+  const statusAt = joined.indexOf(statusRow);
+  assert.ok(noteAt >= 0 && noteAt < statusAt);
+  assert.ok(!joined.includes('1 add tests'));
+  assert.ok(frame.cursor);
+});
+
+test('feedback compose paints templates above the input', () => {
+  const { stripAnsi } = require('../lib/ansi.js');
+  const hunk = {
+    oldStart: 1,
+    oldCount: 1,
+    newStart: 1,
+    newCount: 1,
+    header: '@@ -1,1 +1,1 @@',
+    lines: [{ type: 'add', text: 'x', noNl: false, blockId: 0 }],
+  };
+  const view = {
+    pane: 'diff',
+    item: {
+      origin: 'unstaged',
+      file: { newPath: 'f.js', oldPath: 'f.js', isBinary: false },
+      hunk,
+      blockId: 0,
+    },
+    index: 0,
+    total: 1,
+    scroll: 0,
+    status: '',
+    help: false,
+    counts: { staged: 0, unstaged: 1, untracked: 0 },
+    repoName: 'demo',
+    compose: { kind: 'feedback', text: 'new note', cursor: 0 },
+    templates: [
+      { text: 'extract helper', count: 2 },
+      { text: 'add tests', count: 1 },
+    ],
+    templateIndex: 0,
+  };
+  const frame = render.renderFrame(view, {
+    width: 80,
+    height: 16,
+    color: true,
+  });
+  const joined = stripAnsi(frame.rows.join('\n'));
+  const pickAt = joined.indexOf('extract helper');
+  const otherAt = joined.indexOf('add tests');
+  const inputAt = joined.indexOf('new note');
+  assert.ok(pickAt >= 0 && pickAt < inputAt);
+  assert.ok(otherAt >= 0 && otherAt < inputAt);
+  const picked = frame.rows.find((row) => row.includes('extract helper'));
+  const idle = frame.rows.find((row) => row.includes('add tests'));
+  assert.ok(picked.includes(bg(THEME.buttonBg)));
+  assert.ok(idle.includes(bg(THEME.noteBg)));
+  assert.equal(frame.templateHits.length, 2);
+  assert.equal(frame.templateHits[0].cursor, 0);
+  assert.equal(frame.templateHits[1].cursor, 1);
+  assert.equal(frame.templateHits[1].y, frame.templateHits[0].y + 1);
+  assert.ok(frame.cursor.y > frame.templateHits[1].y);
+});
+
+test('todo compose does not paint feedback templates', () => {
+  const { stripAnsi } = require('../lib/ansi.js');
+  const view = {
+    pane: 'diff',
+    item: {
+      origin: 'todo',
+      todoId: 1,
+      file: { newPath: 'f.js', oldPath: 'f.js', isBinary: false },
+      hunk: null,
+      blockId: 'todo-1',
+    },
+    index: 0,
+    total: 1,
+    scroll: 0,
+    status: '',
+    help: false,
+    counts: { staged: 0, unstaged: 0, untracked: 0, todo: 1 },
+    repoName: 'demo',
+    todos: ['[ ] rewrite this'],
+    todoFocus: 0,
+    compose: { kind: 'todo', text: 'rewrite this', cursor: 0 },
+    templates: [{ text: 'extract helper', count: 1 }],
+    templateIndex: 0,
+  };
+  const frame = render.renderFrame(view, {
+    width: 80,
+    height: 16,
+    color: false,
+  });
+  const body = stripAnsi(frame.rows.join('\n'));
+  assert.match(body, /rewrite this/);
+  assert.ok(!body.includes('extract helper'));
+  assert.equal(frame.templateHits.length, 0);
+});
+
+test('compose and idle notes keep one-char side margins', () => {
+  const { stripAnsi } = require('../lib/ansi.js');
+  const hunk = {
+    oldStart: 1,
+    oldCount: 1,
+    newStart: 1,
+    newCount: 1,
+    header: '@@ -1,1 +1,1 @@',
+    lines: [{ type: 'add', text: 'x', noNl: false, blockId: 0 }],
+  };
+  const base = {
+    pane: 'diff',
+    item: {
+      origin: 'unstaged',
+      file: { newPath: 'f.js', oldPath: 'f.js', isBinary: false },
+      hunk,
+      blockId: 0,
+    },
+    index: 0,
+    total: 1,
+    scroll: 0,
+    status: '',
+    help: false,
+    counts: { staged: 0, unstaged: 1, untracked: 0 },
+    repoName: 'demo',
+  };
+  const opt = { width: 80, height: 16, color: false };
+  const compose = render.renderFrame(
+    { ...base, compose: { kind: 'feedback', text: 'hi', cursor: 0 } },
+    opt,
+  );
+  const composeRow = compose.rows.find((row) => row.includes('hi'));
+  assert.match(stripAnsi(composeRow), /^ hi /);
+  assert.equal(compose.cursor.x, 2);
+  const idle = render.renderFrame(
+    { ...base, noteText: 'hi', noteKind: 'todo' },
+    opt,
+  );
+  const idleRow = idle.rows.find((row) => row.includes('todo: hi'));
+  assert.match(stripAnsi(idleRow), /^ todo: hi /);
+});
+
+test('idle feedback note sits above the footer', () => {
+  const hunk = {
+    oldStart: 1,
+    oldCount: 1,
+    newStart: 1,
+    newCount: 1,
+    header: '@@ -1,1 +1,1 @@',
+    lines: [{ type: 'add', text: 'x', noNl: false, blockId: 0 }],
+  };
+  const view = {
+    pane: 'diff',
+    item: {
+      origin: 'unstaged',
+      file: { newPath: 'f.js', oldPath: 'f.js', isBinary: false },
+      hunk,
+      blockId: 0,
+    },
+    index: 0,
+    total: 1,
+    scroll: 0,
+    status: 'last block',
+    help: false,
+    counts: { staged: 0, unstaged: 1, untracked: 0 },
+    repoName: 'demo',
+    noteText: '[ ] extract helper',
+    noteKind: 'feedback',
+  };
+  const frame = render.renderFrame(view, {
+    width: 80,
+    height: 16,
+    color: false,
+  });
+  const statusRow = frame.rows[frame.rows.length - 2];
+  assert.match(statusRow, /last block /);
+  const joined = frame.rows.join('\n');
+  assert.match(joined, /feedback: \[ \] extract helper/);
+  const noteAt = joined.indexOf('feedback: [ ] extract helper');
+  assert.ok(noteAt >= 0 && noteAt < joined.indexOf(statusRow));
+});
+
+test('note panel is lighter than the status line', () => {
+  const hunk = {
+    oldStart: 1,
+    oldCount: 1,
+    newStart: 1,
+    newCount: 1,
+    header: '@@ -1,1 +1,1 @@',
+    lines: [{ type: 'add', text: 'x', noNl: false, blockId: 0 }],
+  };
+  const base = {
+    pane: 'diff',
+    item: {
+      origin: 'unstaged',
+      file: { newPath: 'f.js', oldPath: 'f.js', isBinary: false },
+      hunk,
+      blockId: 0,
+    },
+    index: 0,
+    total: 1,
+    scroll: 0,
+    status: '',
+    help: false,
+    counts: { staged: 0, unstaged: 1, untracked: 0 },
+    repoName: 'demo',
+  };
+  const opt = { width: 80, height: 16, color: true };
+  const idle = render.renderFrame(
+    { ...base, noteText: 'extract helper', noteKind: 'feedback' },
+    opt,
+  );
+  const compose = render.renderFrame(
+    { ...base, compose: { kind: 'todo', text: 'rewrite loop', cursor: 0 } },
+    opt,
+  );
+  const idleNote = idle.rows.find((row) => row.includes('extract helper'));
+  const composeNote = compose.rows.find((row) => row.includes('rewrite loop'));
+  const statusRow = idle.rows[idle.rows.length - 2];
+  const noteBg = bg(THEME.noteBg);
+  const chromeBg = bg(THEME.chromeBg);
+  assert.notDeepEqual(THEME.noteBg, THEME.chromeBg);
+  assert.ok(idleNote.includes(noteBg));
+  assert.ok(composeNote.includes(noteBg));
+  assert.ok(!idleNote.includes(chromeBg));
+  assert.ok(statusRow.includes(chromeBg));
+  assert.ok(!statusRow.includes(noteBg));
+});
+
+test('todo view paints file todo text not a diff hunk', () => {
+  const { stripAnsi } = require('../lib/ansi.js');
+  const view = {
+    pane: 'diff',
+    item: {
+      origin: 'todo',
+      todoId: 1,
+      file: { newPath: 'f.js', oldPath: 'f.js', isBinary: false },
+      hunk: null,
+      blockId: 'todo-1',
+    },
+    index: 0,
+    total: 1,
+    scroll: 0,
+    status: '',
+    help: false,
+    counts: { staged: 0, unstaged: 0, untracked: 0, todo: 1 },
+    repoName: 'demo',
+    todos: ['[ ] rewrite this', '[x] already done'],
+    todoFocus: 0,
+  };
+  const frame = render.renderFrame(view, {
+    width: 80,
+    height: 16,
+    color: false,
+  });
+  const body = stripAnsi(frame.rows.join('\n'));
+  assert.match(body, /\[ \] rewrite this/);
+  assert.match(body, /\[x\] already done/);
+  assert.ok(!stripAnsi(frame.rows[2]).startsWith('+'));
+  assert.ok(!stripAnsi(frame.rows[2]).startsWith('-'));
+  assert.match(body, /f\.js\s+todo 1\/1/);
+});
+
+test('todo list stays visible while composing', () => {
+  const { stripAnsi } = require('../lib/ansi.js');
+  const view = {
+    pane: 'diff',
+    item: {
+      origin: 'todo',
+      todoId: 1,
+      file: { newPath: 'f.js', oldPath: 'f.js', isBinary: false },
+      hunk: null,
+      blockId: 'todo-1',
+    },
+    index: 0,
+    total: 1,
+    scroll: 0,
+    status: '',
+    help: false,
+    counts: { staged: 0, unstaged: 0, untracked: 0, todo: 2 },
+    repoName: 'demo',
+    todos: ['[ ] rewrite this', '[x] already done'],
+    todoFocus: 0,
+    compose: { kind: 'todo', text: 'rewrite this', cursor: 12 },
+  };
+  const frame = render.renderFrame(view, {
+    width: 80,
+    height: 16,
+    color: false,
+  });
+  const body = stripAnsi(frame.rows.join('\n'));
+  assert.match(body, /\[ \] rewrite this/);
+  assert.match(body, /\[x\] already done/);
+  const composeRow = frame.rows.find((row) => {
+    const plain = stripAnsi(row);
+    return plain.includes('rewrite this') && !plain.includes('[ ]');
+  });
+  assert.ok(composeRow);
+});
+
+test('todo list paints the focused row on the selection bar', () => {
+  const view = {
+    pane: 'diff',
+    item: {
+      origin: 'todo',
+      todoId: 1,
+      file: { newPath: 'f.js', oldPath: 'f.js', isBinary: false },
+      hunk: null,
+      blockId: 'todo-1',
+    },
+    index: 0,
+    total: 1,
+    scroll: 0,
+    status: '',
+    help: false,
+    counts: { staged: 0, unstaged: 0, untracked: 0, todo: 2 },
+    repoName: 'demo',
+    todos: ['[ ] rewrite this', '[x] already done'],
+    todoFocus: 1,
+  };
+  const frame = render.renderFrame(view, {
+    width: 80,
+    height: 16,
+    color: true,
+  });
+  const focused = frame.rows.find((row) => row.includes('already done'));
+  const idle = frame.rows.find((row) => row.includes('rewrite this'));
+  const selectBg = bg(THEME.buttonBg);
+  const idleBg = bg(THEME.ctxBg);
+  assert.ok(focused);
+  assert.ok(idle);
+  assert.ok(focused.includes(selectBg));
+  assert.ok(!focused.includes(idleBg));
+  assert.ok(idle.includes(idleBg));
+  assert.ok(!idle.includes(selectBg));
+});
+
+test('checkbox marks use a contrast chip on todo and note rows', () => {
+  const hunk = {
+    oldStart: 1,
+    oldCount: 1,
+    newStart: 1,
+    newCount: 1,
+    header: '@@ -1,1 +1,1 @@',
+    lines: [{ type: 'add', text: 'x', noNl: false, blockId: 0 }],
+  };
+  const todoView = {
+    pane: 'diff',
+    item: {
+      origin: 'todo',
+      todoId: 1,
+      file: { newPath: 'f.js', oldPath: 'f.js', isBinary: false },
+      hunk: null,
+      blockId: 'todo-1',
+    },
+    index: 0,
+    total: 1,
+    scroll: 0,
+    status: '',
+    help: false,
+    counts: { staged: 0, unstaged: 0, untracked: 0, todo: 2 },
+    repoName: 'demo',
+    todos: ['[ ] rewrite this', '[x] already done'],
+    todoFocus: 0,
+  };
+  const noteView = {
+    pane: 'diff',
+    item: {
+      origin: 'unstaged',
+      file: { newPath: 'f.js', oldPath: 'f.js', isBinary: false },
+      hunk,
+      blockId: 0,
+    },
+    index: 0,
+    total: 1,
+    scroll: 0,
+    status: '',
+    help: false,
+    counts: { staged: 0, unstaged: 1, untracked: 0 },
+    repoName: 'demo',
+    noteText: '[x] extract helper',
+    noteKind: 'feedback',
+  };
+  const opt = { width: 80, height: 16, color: true };
+  const todos = render.renderFrame(todoView, opt);
+  const note = render.renderFrame(noteView, opt);
+  const openRow = todos.rows.find((row) => row.includes('rewrite this'));
+  const doneRow = todos.rows.find((row) => row.includes('already done'));
+  const noteRow = note.rows.find((row) => row.includes('extract helper'));
+  const openBg = bg(THEME.checkBg);
+  const doneBg = bg(THEME.checkDoneBg);
+  assert.notDeepEqual(THEME.checkBg, THEME.ctxBg);
+  assert.notDeepEqual(THEME.checkBg, THEME.buttonBg);
+  assert.notDeepEqual(THEME.checkBg, THEME.noteBg);
+  assert.notDeepEqual(THEME.checkDoneBg, THEME.checkBg);
+  assert.ok(openRow.includes(openBg));
+  assert.ok(!openRow.includes(doneBg));
+  assert.ok(doneRow.includes(doneBg));
+  assert.ok(!doneRow.includes(openBg));
+  assert.ok(noteRow.includes(doneBg));
+  assert.ok(noteRow.includes(bg(THEME.noteBg)));
+});
+
+test('todo list exposes a click hit for each todo row', () => {
+  const view = {
+    pane: 'diff',
+    item: {
+      origin: 'todo',
+      todoId: 1,
+      file: { newPath: 'f.js', oldPath: 'f.js', isBinary: false },
+      hunk: null,
+      blockId: 'todo-1',
+    },
+    index: 0,
+    total: 1,
+    scroll: 0,
+    status: '',
+    help: false,
+    counts: { staged: 0, unstaged: 0, untracked: 0, todo: 2 },
+    repoName: 'demo',
+    todos: ['[ ] rewrite this', '[x] already done'],
+    todoFocus: 0,
+  };
+  const frame = render.renderFrame(view, {
+    width: 80,
+    height: 16,
+    color: false,
+  });
+  assert.equal(frame.todoHits.length, 2);
+  assert.equal(frame.todoHits[0].cursor, 0);
+  assert.equal(frame.todoHits[1].cursor, 1);
+  assert.equal(frame.todoHits[1].y, frame.todoHits[0].y + 1);
+  assert.ok(frame.todoHits[0].y > 1);
+});
+
+test('wrapPlain moves whole words to the next line', () => {
+  assert.deepEqual(render.wrapPlain('hello world', 8), ['hello ', 'world']);
+  assert.deepEqual(render.wrapPlain('extract helper', 10), [
+    'extract ',
+    'helper',
+  ]);
+  assert.deepEqual(render.wrapPlain('feedback: extract helper', 14), [
+    'feedback: ',
+    'extract helper',
+  ]);
+  const long = render.wrapPlain('supercalifragilistic', 8);
+  assert.deepEqual(long, ['supercal', 'ifragili', 'stic']);
+  assert.equal(long.join(''), 'supercalifragilistic');
+});
+
+test('cursorInWrap follows word wrap', () => {
+  const text = 'hello world';
+  assert.deepEqual(render.cursorInWrap(text, 0, 8), { row: 0, col: 0 });
+  assert.deepEqual(render.cursorInWrap(text, 6, 8), { row: 1, col: 0 });
+  assert.deepEqual(render.cursorInWrap(text, 11, 8), { row: 1, col: 5 });
+  assert.deepEqual(render.cursorInWrap('ab\ncd', 2, 8), { row: 0, col: 2 });
+  assert.deepEqual(render.cursorInWrap('ab\ncd', 3, 8), { row: 1, col: 0 });
+});
+
+test('wrapMove walks visual rows of one wrapped line', () => {
+  const text = 'hello world';
+  const down = render.wrapMove(text, 0, 8, 1, null);
+  assert.equal(down.cursor, 6);
+  assert.equal(down.col, 0);
+  const up = render.wrapMove(text, 6, 8, -1, null);
+  assert.equal(up.cursor, 0);
+  const fromEnd = render.wrapMove(text, 11, 8, -1, null);
+  assert.equal(fromEnd.cursor, 5);
+  const back = render.wrapMove(text, fromEnd.cursor, 8, 1, fromEnd.col);
+  assert.equal(back.cursor, 11);
+  const edge = render.wrapMove(text, 0, 8, -1, null);
+  assert.equal(edge.cursor, 0);
+});
+
+test('wrapMove keeps a column across a short visual row', () => {
+  const text = 'abc de fghij';
+  const up = render.wrapMove(text, 12, 5, -1, null);
+  assert.equal(up.cursor, 6);
+  const upAgain = render.wrapMove(text, up.cursor, 5, -1, up.col);
+  assert.equal(upAgain.cursor, 3);
+  const down = render.wrapMove(text, upAgain.cursor, 5, 1, upAgain.col);
+  assert.equal(down.cursor, 6);
+  const downAgain = render.wrapMove(text, down.cursor, 5, 1, down.col);
+  assert.equal(downAgain.cursor, 12);
+});
+
+test('compose and idle notes wrap on word boundaries', () => {
+  const hunk = {
+    oldStart: 1,
+    oldCount: 1,
+    newStart: 1,
+    newCount: 1,
+    header: '@@ -1,1 +1,1 @@',
+    lines: [{ type: 'add', text: 'x', noNl: false, blockId: 0 }],
+  };
+  const base = {
+    pane: 'diff',
+    item: {
+      origin: 'unstaged',
+      file: { newPath: 'f.js', oldPath: 'f.js', isBinary: false },
+      hunk,
+      blockId: 0,
+    },
+    index: 0,
+    total: 1,
+    scroll: 0,
+    status: '',
+    help: false,
+    counts: { staged: 0, unstaged: 1, untracked: 0 },
+    repoName: 'demo',
+  };
+  const opt = { width: 20, height: 16, color: false };
+  const compose = render.renderFrame(
+    {
+      ...base,
+      compose: {
+        kind: 'feedback',
+        text: 'outstanding example',
+        cursor: 12,
+      },
+    },
+    opt,
+  );
+  const composeNote = compose.rows
+    .map(stripAnsi)
+    .filter((row) => row.includes('outstanding') || row.includes('example'));
+  assert.ok(
+    composeNote.some(
+      (row) => row.includes('outstanding') && !row.includes('example'),
+    ),
+  );
+  assert.ok(
+    composeNote.some(
+      (row) => row.includes('example') && !row.includes('outstanding'),
+    ),
+  );
+  const idle = render.renderFrame(
+    { ...base, noteText: 'outstanding', noteKind: 'feedback' },
+    opt,
+  );
+  const idleNote = idle.rows
+    .map(stripAnsi)
+    .filter((row) => row.includes('feedback') || row.includes('outstanding'));
+  assert.ok(
+    idleNote.some(
+      (row) => row.includes('feedback') && !row.includes('outstanding'),
+    ),
+  );
+  assert.ok(
+    idleNote.some(
+      (row) => row.includes('outstanding') && !row.includes('feedback:'),
+    ),
+  );
+  const todo = render.renderFrame(
+    {
+      ...base,
+      item: {
+        origin: 'todo',
+        todoId: 1,
+        file: { newPath: 'f.js', oldPath: 'f.js', isBinary: false },
+        hunk: null,
+        blockId: 'todo-1',
+      },
+      noteText: 'outstanding example',
+      noteKind: 'todo',
+    },
+    opt,
+  );
+  const todoNote = todo.rows
+    .map(stripAnsi)
+    .filter((row) => row.includes('outstanding') || row.includes('example'));
+  assert.ok(
+    todoNote.some(
+      (row) => row.includes('outstanding') && !row.includes('example'),
+    ),
+  );
+  assert.ok(
+    todoNote.some(
+      (row) => row.includes('example') && !row.includes('outstanding'),
+    ),
+  );
 });

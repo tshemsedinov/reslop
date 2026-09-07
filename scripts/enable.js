@@ -67,8 +67,8 @@ const installBin = () => {
   try {
     fs.lstatSync(dest);
     fs.unlinkSync(dest);
-  } catch {
-    // dest may not exist
+  } catch (error) {
+    if (error.code !== 'ENOENT') throw error;
   }
 
   try {
@@ -77,8 +77,8 @@ const installBin = () => {
   } catch (error) {
     try {
       fs.unlinkSync(dest);
-    } catch {
-      // ignore
+    } catch (unlinkError) {
+      void unlinkError;
     }
     const wrapper = `#!/usr/bin/env bash
 exec node ${JSON.stringify(binSrc)} "$@"
@@ -137,10 +137,13 @@ if (check.status !== 0) {
   process.exit(1);
 }
 
-console.log(`
-Ready. Apply in this terminal:
-
-  source ~/.bashrc.d/metadiff.sh
-
-Then run metadiff from any git repository.
-`);
+const ready = [
+  '',
+  'Ready. Apply in this terminal:',
+  '',
+  '  source ~/.bashrc.d/metadiff.sh',
+  '',
+  'Then run metadiff from any git repository.',
+  '',
+];
+console.log(ready.join('\n'));

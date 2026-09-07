@@ -26,6 +26,7 @@ Uninstall with `npm run disable`.
 
 ```bash
 metadiff
+metadiff -n
 metadiff path/to/folder
 metadiff path/to/file
 metadiff 7ac260c
@@ -37,21 +38,41 @@ No arguments, or a folder, opens a file list. A file argument opens
 that file's diff. A git revision that is not also an existing path
 opens that commit's patch.
 
+Notes go in `.review/YYYY-MM-DD-NN.md` with frontmatter `status`:
+
+| Status  | Meaning                                     |
+| ------- | ------------------------------------------- |
+| editing | Still writing the review in metadiff        |
+| pending | Ready for AI to work through the checkboxes |
+| partial | AI started; some items remain               |
+| done    | All items marked `[x]`                      |
+
+`metadiff` resumes the latest file when its status is `editing`. Any other
+status starts a new file. `-n` / `--new` always starts a new file. Quit asks
+`f` (finish as `pending`, ready to implement) or `c` (keep `editing` and
+continue next time). Files in `.review/` are omitted from the diff list.
+
+A `##` heading names the file. Todos are checkboxes under it. Feedback is a
+checkbox with ` - path:old:new:block` on the same line.
+
 ## Keys and buttons
 
-| Key | Action                                  |
-| --- | --------------------------------------- |
-| `a` | Stage this block (`git add`)            |
-| `u` | Unstage this block (keep worktree)      |
-| `r` | Restore this block to the last commit   |
-| `s` | Skip (leave unstaged, drop from review) |
-| `←` | Previous remaining block                |
-| `→` | Next remaining block                    |
-| `l` | File list (git status of this scope)    |
-| `m` | Cycle unified / mixed / side-by-side    |
-| `⏎` | Open the selected file                  |
-| `q` | Quit                                    |
-| `?` | Help                                    |
+| Key         | Action                                  |
+| ----------- | --------------------------------------- |
+| `a`         | Stage this block (`git add`)            |
+| `u`         | Unstage this block (keep worktree)      |
+| `r`         | Restore this block to the last commit   |
+| `s`         | Skip (leave unstaged, drop from review) |
+| `←`         | Previous remaining block                |
+| `→`         | Next remaining block                    |
+| `l`         | File list (git status of this scope)    |
+| `m`         | Cycle unified / mixed / side-by-side    |
+| `f`         | Feedback on this diff block             |
+| `t`         | New todo for this file                  |
+| `⌫` / `Del` | Remove the selected todo                |
+| `⏎`         | Open the selected file                  |
+| `q`         | Quit                                    |
+| `?`         | Help                                    |
 
 The footer draws the same actions as clickable words (the bound
 letter is bold white; no `[a Add]` brackets). Drag to select text;

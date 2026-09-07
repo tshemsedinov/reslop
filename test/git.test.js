@@ -210,3 +210,34 @@ test('load root commit via diff-tree', () => {
     repo.cleanup();
   }
 });
+
+test('load omits files under .review', () => {
+  const repo = makeRepo();
+  try {
+    repo.write('keep.txt', 'k\n');
+    repo.git(['add', 'keep.txt']);
+    repo.git(['commit', '-m', 'init']);
+    repo.write('keep.txt', 'K\n');
+    repo.write('.review/2026-09-07-00.md', '---\nstatus: editing\n---\n');
+    repo.write('.review/templates.json', '[]\n');
+    const dirty = load(repo.dir);
+    const dirtyPaths = dirty.items.map((item) => item.file.newPath);
+    assert.deepEqual(dirtyPaths, ['keep.txt']);
+    repo.git(['add', '.review/2026-09-07-00.md']);
+    const mixed = load(repo.dir);
+    for (const item of mixed.items) {
+      const rel = item.file.newPath || item.file.oldPath;
+      assert.equal(rel.startsWith('.review'), false);
+    }
+    repo.git(['add', '.']);
+    repo.git(['commit', '-m', 'notes']);
+    const sha = repo.git(['rev-parse', 'HEAD']).trim();
+    const committed = load(repo.dir, [], { commit: sha });
+    for (const item of committed.items) {
+      const rel = item.file.newPath || item.file.oldPath;
+      assert.equal(rel.startsWith('.review'), false);
+    }
+  } finally {
+    repo.cleanup();
+  }
+});

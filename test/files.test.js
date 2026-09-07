@@ -36,4 +36,6 @@ test('fileStatus joins mixed origins', () => {
   assert.equal(fileStatus(['staged', 'unstaged']), 'partial');
   assert.equal(fileStatus(['untracked']), 'untracked');
   assert.equal(fileStatus(['commit']), 'commit');
+  assert.equal(fileStatus(['todo']), 'todo');
+  assert.equal(fileStatus(['todo', 'unstaged']), 'unstaged');
 });

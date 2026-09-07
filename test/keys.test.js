@@ -20,6 +20,16 @@ test('decodeChunk maps letters and arrows', () => {
   assert.equal(completed.events[0].key, 'up');
   const enter = decodeChunk('\r').events[0];
   assert.equal(enter.key, 'enter');
+  const back = decodeChunk('\x7f').events[0];
+  assert.equal(back.key, 'backspace');
+  const tab = decodeChunk('\t').events[0];
+  assert.equal(tab.key, 'tab');
+  const save = decodeChunk('\x13').events[0];
+  assert.equal(save.key, 'ctrl-s');
+  const undo = decodeChunk('\x1a').events[0];
+  assert.equal(undo.key, 'ctrl-z');
+  const del = decodeChunk('\x1b[3~').events[0];
+  assert.equal(del.key, 'delete');
 });
 
 test('decodeChunk parses SGR mouse press', () => {
@@ -51,14 +61,18 @@ test('actionFromKey matches ACTIONS', () => {
   assert.equal(actionFromKey('p'), 'prev');
   assert.equal(actionFromKey('l'), 'files');
   assert.equal(actionFromKey('m'), 'layout');
+  assert.equal(actionFromKey('f'), 'feedback');
+  assert.equal(actionFromKey('t'), 'todo');
   assert.equal(actionFromKey('v'), null);
   assert.equal(actionFromKey('g'), null);
   assert.equal(actionFromKey('enter'), 'open');
+  assert.equal(actionFromKey('backspace'), 'removeTodo');
+  assert.equal(actionFromKey('delete'), 'removeTodo');
   assert.equal(actionFromKey('q'), 'quit');
 });
 
 test('layoutButtons hitboxes cover labels', () => {
-  const layout = layoutButtons(80, false);
+  const layout = layoutButtons(160, false);
   assert.equal(layout.hits[0].id, 'add');
   assert.equal(layout.parts[0].label, 'add');
   assert.equal(layout.parts[0].letter, 'a');
