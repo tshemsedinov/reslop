@@ -6,6 +6,7 @@ const assert = require('node:assert/strict');
 const { Session } = require('../lib/session.js');
 const { hitAction } = require('../lib/keys.js');
 const { sink } = require('./helpers.js');
+const { createStore, addTodo, serializeReview } = require('../lib/review.js');
 
 const sampleItem = (name, origin = 'unstaged') => ({
   origin,
@@ -59,7 +60,27 @@ const mockRepo = (initial) => {
   };
 };
 
-const openSession = (items) => {
+const missingFile = () => {
+  const error = new Error('ENOENT');
+  error.code = 'ENOENT';
+  throw error;
+};
+
+const reviewReader = (md) => (file) => {
+  const name = `${file ?? ''}`;
+  if (name.endsWith('.md')) return md;
+  return missingFile();
+};
+
+const reviewFs = {
+  readdirSync: () => [],
+  readFileSync: () => missingFile(),
+  writeFileSync: () => {},
+  mkdirSync: () => {},
+  now: () => new Date(2026, 8, 7),
+};
+
+const openSession = (items, extra = {}) => {
   const repo = mockRepo(items);
   const stdout = sink();
   const session = new Session({
@@ -68,6 +89,8 @@ const openSession = (items) => {
     stdout,
     color: false,
     getSize: () => ({ width: 80, height: 16 }),
+    ...reviewFs,
+    ...extra,
   });
   session.load();
   return { session, repo, stdout };
@@ -224,6 +247,7 @@ test('AC13 drag copies selected text', () => {
       copied.push(text);
       return true;
     },
+    ...reviewFs,
   });
   session.load();
   session.draw();
@@ -289,6 +313,7 @@ test('AC14 files pane lists paths and enter opens', () => {
     color: false,
     startPane: 'files',
     getSize: () => ({ width: 80, height: 16 }),
+    ...reviewFs,
   });
   session.load();
   assert.equal(session.pane, 'files');
@@ -308,4 +333,559 @@ test('AC14 files pane lists paths and enter opens', () => {
   session.dispatch('files');
   assert.equal(session.pane, 'files');
   assert.equal(session.fileCursor, 1);
+});
+
+test('f maps feedback to the hunk location', () => {
+  const item = sampleItem('a.js');
+  const { session } = openSession([item]);
+  session.dispatch('feedback');
+  assert.equal(session.mode, 'compose');
+  assert.equal(session.composeKind, 'feedback');
+  session.pushInput('extract helper');
+  session.handleEvent({ type: 'key', key: 'ctrl-s' });
+  assert.equal(session.mode, 'review');
+  const note = session.notes.feedback.get('a.js:1:1:0');
+  assert.equal(note.text, 'extract helper');
+  assert.equal(note.file, 'a.js');
+  assert.equal(note.newStart, 1);
+  assert.equal(session.counts().feedback, 1);
+  assert.equal(session.counts().todo, 0);
+  assert.equal(session.idleNoteText(), '[ ] extract helper');
+  assert.equal(session.idleNoteKind(), 'feedback');
+});
+
+test('compose arrows move by visual wrap rows', () => {
+  const item = sampleItem('a.js');
+  const { session } = openSession([item], {
+    getSize: () => ({ width: 10, height: 16 }),
+  });
+  session.dispatch('feedback');
+  session.pushInput('hello world');
+  session.handleEvent({ type: 'key', key: 'up' });
+  assert.equal(session.editor.cursor, 5);
+  session.handleEvent({ type: 'key', key: 'down' });
+  assert.equal(session.editor.cursor, 11);
+});
+
+test('compose cursor blinks by hiding and showing', () => {
+  const item = sampleItem('a.js');
+  const { session, stdout } = openSession([item]);
+  session.dispatch('feedback');
+  session.draw();
+  const on = stdout.dump();
+  assert.ok(on.includes('[1 q'));
+  assert.ok(on.includes('[?12h'));
+  assert.ok(on.includes('[?25h'));
+  session.tickBlink();
+  const hidden = stdout.dump().slice(on.length);
+  assert.ok(hidden.includes('[?25l'));
+  assert.ok(!hidden.includes('[?2026h'));
+  session.tickBlink();
+  const shown = stdout.dump().slice(on.length + hidden.length);
+  assert.ok(shown.includes('[?25h'));
+  assert.ok(!shown.includes('[?2026h'));
+});
+
+test('enter and escape save feedback and return to browse', () => {
+  const item = sampleItem('a.js');
+  const { session } = openSession([item]);
+  session.dispatch('feedback');
+  session.pushInput('note');
+  session.handleEvent({ type: 'key', key: 'enter' });
+  assert.equal(session.mode, 'review');
+  assert.equal(session.done, false);
+  const key = 'a.js:1:1:0';
+  assert.equal(session.notes.feedback.get(key).text, 'note');
+  session.dispatch('feedback');
+  session.pushInput(' two');
+  session.handleEvent({ type: 'key', key: 'escape' });
+  assert.equal(session.mode, 'review');
+  assert.equal(session.done, false);
+  assert.equal(session.notes.feedback.get(key).text, 'note two');
+  assert.equal(session.status, 'saved');
+});
+
+test('editing feedback keeps one latest version', () => {
+  const item = sampleItem('a.js');
+  const { session } = openSession([item]);
+  session.dispatch('feedback');
+  session.pushInput('first');
+  session.handleEvent({ type: 'key', key: 'ctrl-s' });
+  session.dispatch('feedback');
+  session.pushInput(' more');
+  session.autosave();
+  session.handleEvent({ type: 'key', key: 'ctrl-s' });
+  const key = 'a.js:1:1:0';
+  assert.equal(session.notes.feedback.size, 1);
+  assert.equal(session.notes.feedback.get(key).text, 'first more');
+  session.dispatch('feedback');
+  assert.equal(session.editor.text, 'first more');
+  const view = session.view();
+  assert.equal(view.compose.text, 'first more');
+  assert.ok(!view.compose.text.includes('\n1 '));
+});
+
+test('feedback templates count reuse on another hunk not a re-save', () => {
+  const a = sampleItem('a.js');
+  const b = sampleItem('b.js');
+  const { session } = openSession([a, b]);
+  session.dispatch('feedback');
+  session.pushInput('extract helper');
+  session.handleEvent({ type: 'key', key: 'ctrl-s' });
+  session.dispatch('feedback');
+  session.handleEvent({ type: 'key', key: 'ctrl-s' });
+  assert.equal(session.notes.templates.length, 1);
+  assert.equal(session.notes.templates[0].count, 1);
+  session.dispatch('next');
+  session.dispatch('feedback');
+  session.pushInput('extract helper');
+  session.handleEvent({ type: 'key', key: 'ctrl-s' });
+  assert.equal(session.notes.templates.length, 1);
+  assert.equal(session.notes.templates[0].text, 'extract helper');
+  assert.equal(session.notes.templates[0].count, 2);
+});
+
+test('feedback templates are picked with tab arrows enter and click', () => {
+  const { session } = openSession([sampleItem('a.js'), sampleItem('b.js')]);
+  session.notes.templates = [
+    { text: 'extract helper', count: 2 },
+    { text: 'add tests', count: 1 },
+  ];
+  const feedKey = 'a.js:1:1:0';
+  session.dispatch('feedback');
+  assert.equal(session.mode, 'compose');
+  session.draw();
+  const { stripAnsi } = require('../lib/ansi.js');
+  const body = stripAnsi(session.lastFrame.rows.join('\n'));
+  assert.match(body, /extract helper/);
+  assert.match(body, /add tests/);
+  session.handleEvent({ type: 'key', key: 'tab' });
+  assert.equal(session.mode, 'review');
+  assert.equal(session.notes.feedback.get(feedKey).text, 'extract helper');
+  session.dispatch('feedback');
+  session.handleEvent({ type: 'key', key: 'down' });
+  assert.equal(session.mode, 'compose');
+  assert.equal(session.templateFocus, true);
+  assert.equal(session.templateIndex, 0);
+  session.handleEvent({ type: 'key', key: 'enter' });
+  assert.equal(session.mode, 'review');
+  assert.equal(session.notes.feedback.get(feedKey).text, 'extract helper');
+  session.dispatch('feedback');
+  session.editor.replace('');
+  session.draw();
+  const hit = session.lastFrame.templateHits.find((row) => row.cursor === 1);
+  assert.ok(hit);
+  session.handleEvent({
+    type: 'mouse',
+    kind: 'press',
+    btn: 0,
+    button: 0,
+    x: 2,
+    y: hit.y,
+    press: true,
+  });
+  session.handleEvent({
+    type: 'mouse',
+    kind: 'release',
+    btn: 0,
+    button: 0,
+    x: 2,
+    y: hit.y,
+    press: false,
+  });
+  assert.equal(session.mode, 'review');
+  assert.equal(session.notes.feedback.get(feedKey).text, 'add tests');
+});
+
+test('feedback templates filter by prefix and hide if none match', () => {
+  const { session } = openSession([sampleItem('a.js')]);
+  session.notes.templates = [
+    { text: 'extract helper', count: 2 },
+    { text: 'add tests', count: 1 },
+  ];
+  session.dispatch('feedback');
+  session.draw();
+  const { stripAnsi } = require('../lib/ansi.js');
+  let body = stripAnsi(session.lastFrame.rows.join('\n'));
+  assert.match(body, /extract helper/);
+  assert.match(body, /add tests/);
+  session.pushInput('ex');
+  session.draw();
+  body = stripAnsi(session.lastFrame.rows.join('\n'));
+  assert.match(body, /extract helper/);
+  assert.ok(!body.includes('add tests'));
+  assert.equal(session.lastFrame.templateHits.length, 1);
+  session.handleEvent({ type: 'key', key: 'tab' });
+  assert.equal(session.mode, 'review');
+  assert.equal(session.notes.feedback.get('a.js:1:1:0').text, 'extract helper');
+  session.dispatch('feedback');
+  session.draw();
+  body = stripAnsi(session.lastFrame.rows.join('\n'));
+  assert.match(body, /extract helper/);
+  assert.ok(!body.includes('add tests'));
+  assert.equal(session.lastFrame.templateHits.length, 1);
+  session.editor.replace('');
+  session.pushInput('z');
+  session.draw();
+  body = stripAnsi(session.lastFrame.rows.join('\n'));
+  assert.ok(!body.includes('extract helper'));
+  assert.ok(!body.includes('add tests'));
+  assert.equal(session.lastFrame.templateHits.length, 0);
+  session.handleEvent({ type: 'key', key: 'tab' });
+  assert.equal(session.editor.text, 'z');
+  session.handleEvent({ type: 'key', key: 'backspace' });
+  session.draw();
+  body = stripAnsi(session.lastFrame.rows.join('\n'));
+  assert.match(body, /extract helper/);
+  assert.match(body, /add tests/);
+});
+
+test('existing unique feedback hides the template list', () => {
+  const { session } = openSession([sampleItem('a.js')]);
+  session.notes.templates = [
+    { text: 'extract helper', count: 2 },
+    { text: 'add tests', count: 1 },
+  ];
+  session.notes.feedback.set('a.js:1:1:0', {
+    file: 'a.js',
+    oldStart: 1,
+    newStart: 1,
+    blockId: 0,
+    text: 'unique note',
+  });
+  session.dispatch('feedback');
+  session.draw();
+  const { stripAnsi } = require('../lib/ansi.js');
+  const body = stripAnsi(session.lastFrame.rows.join('\n'));
+  assert.match(body, /unique note/);
+  assert.ok(!body.includes('extract helper'));
+  assert.ok(!body.includes('add tests'));
+  assert.equal(session.lastFrame.templateHits.length, 0);
+});
+
+test('t from any file adds a todo and starts editing', () => {
+  const { session } = openSession([sampleItem('a.js'), sampleItem('b.js')], {
+    startPane: 'files',
+  });
+  session.dispatch('scrollDown');
+  assert.equal(session.fileCursor, 1);
+  session.dispatch('todo');
+  assert.equal(session.pane, 'diff');
+  assert.equal(session.current().origin, 'todo');
+  assert.equal(session.current().file.newPath, 'b.js');
+  assert.equal(session.mode, 'compose');
+  assert.equal(session.composeKind, 'todo');
+  assert.equal(session.todoFocus, 0);
+  assert.deepEqual(session.view().todos, ['[ ] ']);
+  session.handleEvent({ type: 'key', key: 'escape' });
+  session.dispatch('files');
+  session.fileCursor = 0;
+  session.dispatch('todo');
+  assert.equal(session.current().file.newPath, 'a.js');
+  assert.equal(session.mode, 'compose');
+  assert.equal(session.editor.text, '');
+});
+
+test('t puts a file todo page first and lets you edit it', () => {
+  const a = sampleItem('a.js');
+  const b = sampleItem('b.js');
+  const { session } = openSession([a, b]);
+  session.dispatch('todo');
+  assert.equal(session.current().origin, 'todo');
+  assert.equal(session.current().file.newPath, 'a.js');
+  assert.equal(session.mode, 'compose');
+  assert.equal(session.items[0].origin, 'todo');
+  session.pushInput('rewrite loop');
+  session.handleEvent({ type: 'key', key: 'ctrl-s' });
+  assert.equal(session.items[0].origin, 'todo');
+  assert.equal(session.items[0].file.newPath, 'a.js');
+  assert.equal(session.items[1].origin, 'unstaged');
+  assert.equal(session.items[1].file.newPath, 'a.js');
+  assert.equal(session.items[2].file.newPath, 'b.js');
+  assert.equal(session.current().origin, 'todo');
+  assert.deepEqual(session.view().todos, ['[ ] rewrite loop']);
+  assert.equal(session.view().total, 3);
+  assert.equal(session.counts().todo, 1);
+  assert.equal(session.counts().feedback, 0);
+  session.handleEvent({ type: 'key', key: 'enter' });
+  assert.equal(session.mode, 'compose');
+  assert.equal(session.editor.text, 'rewrite loop');
+  session.handleEvent({ type: 'key', key: 'escape' });
+  session.dispatch('next');
+  assert.equal(session.current().origin, 'unstaged');
+  assert.equal(session.current().file.newPath, 'a.js');
+  assert.equal(session.idleNoteText(), '');
+  session.dispatch('todo');
+  assert.equal(session.current().origin, 'todo');
+  assert.equal(session.mode, 'compose');
+  assert.equal(session.editor.text, '');
+  assert.deepEqual(session.view().todos, ['[ ] rewrite loop', '[ ] ']);
+  assert.equal(session.todoFocus, 1);
+  session.pushInput('add tests');
+  session.handleEvent({ type: 'key', key: 'ctrl-s' });
+  const pages = session.items.filter((item) => item.origin === 'todo');
+  assert.equal(pages.length, 1);
+  assert.deepEqual(session.view().todos, ['[ ] rewrite loop', '[ ] add tests']);
+  assert.equal(session.todoFocus, 1);
+  session.dispatch('next');
+  assert.equal(session.current().origin, 'unstaged');
+  assert.equal(session.current().file.newPath, 'a.js');
+  session.dispatch('next');
+  assert.equal(session.current().file.newPath, 'b.js');
+  assert.equal(session.idleNoteText(), '');
+  session.dispatch('prev');
+  session.dispatch('prev');
+  assert.equal(session.current().origin, 'todo');
+});
+
+test('enter and click edit the focused todo', () => {
+  const { session } = openSession([sampleItem('a.js')]);
+  session.dispatch('todo');
+  session.pushInput('first note');
+  session.handleEvent({ type: 'key', key: 'ctrl-s' });
+  session.dispatch('todo');
+  session.pushInput('second note');
+  session.handleEvent({ type: 'key', key: 'ctrl-s' });
+  assert.equal(session.mode, 'review');
+  assert.equal(session.todoFocus, 1);
+  session.handleEvent({ type: 'key', key: 'enter' });
+  assert.equal(session.mode, 'compose');
+  assert.equal(session.editor.text, 'second note');
+  session.handleEvent({ type: 'key', key: 'escape' });
+  session.dispatch('scrollUp');
+  assert.equal(session.todoFocus, 0);
+  session.draw();
+  const hit = session.lastFrame.todoHits.find((row) => row.cursor === 0);
+  assert.ok(hit);
+  session.handleEvent({
+    type: 'mouse',
+    kind: 'press',
+    btn: 0,
+    button: 0,
+    x: 2,
+    y: hit.y,
+    press: true,
+  });
+  session.handleEvent({
+    type: 'mouse',
+    kind: 'release',
+    btn: 0,
+    button: 0,
+    x: 2,
+    y: hit.y,
+    press: false,
+  });
+  assert.equal(session.todoFocus, 0);
+  assert.equal(session.mode, 'compose');
+  assert.equal(session.editor.text, 'first note');
+  session.handleEvent({ type: 'key', key: 'escape' });
+  session.draw();
+  const other = session.lastFrame.todoHits.find((row) => row.cursor === 1);
+  assert.ok(other);
+  session.handleEvent({
+    type: 'mouse',
+    kind: 'press',
+    btn: 0,
+    button: 0,
+    x: 2,
+    y: other.y,
+    press: true,
+  });
+  session.handleEvent({
+    type: 'mouse',
+    kind: 'release',
+    btn: 0,
+    button: 0,
+    x: 2,
+    y: other.y,
+    press: false,
+  });
+  assert.equal(session.todoFocus, 1);
+  assert.equal(session.mode, 'compose');
+  assert.equal(session.editor.text, 'second note');
+});
+
+test('todo list stays on screen while composing', () => {
+  const { session } = openSession([sampleItem('a.js')]);
+  session.dispatch('todo');
+  session.pushInput('first note');
+  session.handleEvent({ type: 'key', key: 'ctrl-s' });
+  session.dispatch('todo');
+  session.pushInput('draft two');
+  assert.equal(session.mode, 'compose');
+  session.draw();
+  const { stripAnsi } = require('../lib/ansi.js');
+  const body = stripAnsi(session.lastFrame.rows.join('\n'));
+  assert.match(body, /\[ \] first note/);
+  const hit = session.lastFrame.todoHits.find((row) => row.cursor === 0);
+  assert.ok(hit);
+  session.handleEvent({
+    type: 'mouse',
+    kind: 'press',
+    btn: 0,
+    button: 0,
+    x: 2,
+    y: hit.y,
+    press: true,
+  });
+  session.handleEvent({
+    type: 'mouse',
+    kind: 'release',
+    btn: 0,
+    button: 0,
+    x: 2,
+    y: hit.y,
+    press: false,
+  });
+  assert.equal(session.mode, 'compose');
+  assert.equal(session.editor.text, 'first note');
+  assert.equal(session.notes.todos.length, 2);
+  assert.equal(session.notes.todos[1].text, 'draft two');
+});
+
+test('delete and backspace remove the selected todo', () => {
+  const { session } = openSession([sampleItem('a.js')]);
+  session.dispatch('todo');
+  session.pushInput('first note');
+  session.handleEvent({ type: 'key', key: 'ctrl-s' });
+  session.dispatch('todo');
+  session.pushInput('second note');
+  session.handleEvent({ type: 'key', key: 'ctrl-s' });
+  assert.equal(session.mode, 'review');
+  assert.equal(session.todoFocus, 1);
+  session.handleEvent({ type: 'key', key: 'delete' });
+  assert.deepEqual(session.view().todos, ['[ ] first note']);
+  assert.equal(session.todoFocus, 0);
+  assert.equal(session.current().origin, 'todo');
+  session.handleEvent({ type: 'key', key: 'backspace' });
+  assert.deepEqual(session.view().todos, []);
+  assert.equal(session.current().origin, 'unstaged');
+});
+
+test('empty autosave does not drop a new todo', () => {
+  const { session } = openSession([sampleItem('a.js')]);
+  session.dispatch('todo');
+  const id = session.composeTodoId;
+  session.autosave();
+  assert.equal(session.notes.todos.length, 1);
+  assert.equal(session.notes.todos[0].id, id);
+  session.pushInput('keep this');
+  session.handleEvent({ type: 'key', key: 'enter' });
+  assert.equal(session.mode, 'review');
+  assert.equal(session.notes.todos[0].text, 'keep this');
+  assert.equal(session.current().origin, 'todo');
+});
+
+test('todo save recovers if the stub was dropped', () => {
+  const { session } = openSession([sampleItem('a.js')]);
+  session.dispatch('todo');
+  session.notes.todos = [];
+  session.pushInput('still here');
+  session.handleEvent({ type: 'key', key: 'escape' });
+  assert.equal(session.notes.todos.length, 1);
+  assert.equal(session.notes.todos[0].text, 'still here');
+  assert.equal(session.current().origin, 'todo');
+});
+
+test('quit with notes asks f to finish or c to continue', () => {
+  const writes = [];
+  const item = sampleItem('a.js');
+  const { session } = openSession([item], {
+    writeFileSync: (file, body) => writes.push({ file, body }),
+    mkdirSync: () => {},
+  });
+  session.dispatch('feedback');
+  session.pushInput('nits');
+  session.handleEvent({ type: 'key', key: 'ctrl-s' });
+  session.dispatch('quit');
+  assert.equal(session.done, false);
+  assert.equal(session.mode, 'confirmQuit');
+  session.handleEvent({ type: 'key', key: 'escape' });
+  assert.equal(session.done, false);
+  assert.equal(session.mode, 'review');
+  session.dispatch('quit');
+  session.pushInput('f');
+  assert.equal(session.done, true);
+  assert.ok(writes.some((entry) => entry.file.endsWith('2026-09-07-00.md')));
+  const mdWrites = writes.filter((entry) => entry.file.endsWith('.md'));
+  assert.match(mdWrites[0].body, /status: editing/);
+  const last = mdWrites[mdWrites.length - 1];
+  assert.match(last.body, /nits/);
+  assert.match(last.body, /status: pending/);
+});
+
+test('quit continue keeps editing so the next run can resume', () => {
+  const writes = [];
+  const item = sampleItem('a.js');
+  const { session } = openSession([item], {
+    writeFileSync: (file, body) => writes.push({ file, body }),
+    mkdirSync: () => {},
+  });
+  session.dispatch('feedback');
+  session.pushInput('nits');
+  session.handleEvent({ type: 'key', key: 'ctrl-s' });
+  session.dispatch('quit');
+  session.pushInput('c');
+  assert.equal(session.done, true);
+  assert.equal(session.notes.status, 'editing');
+  const mdWrites = writes.filter((entry) => entry.file.endsWith('.md'));
+  const last = mdWrites[mdWrites.length - 1];
+  assert.match(last.body, /status: editing/);
+  assert.match(last.body, /nits/);
+});
+
+test('initReview resumes latest editing file', () => {
+  const draft = createStore('/tmp/.review/2026-09-07-00.md');
+  addTodo(draft, 'a.js', 'rewrite loop');
+  const md = serializeReview(draft);
+  const a = sampleItem('a.js');
+  const { session } = openSession([a], {
+    readdirSync: () => ['2026-09-07-00.md'],
+    readFileSync: reviewReader(md),
+  });
+  assert.equal(session.notes.reviewPath, '/tmp/.review/2026-09-07-00.md');
+  assert.equal(session.notes.status, 'editing');
+  assert.equal(session.notes.todos[0].text, 'rewrite loop');
+  assert.equal(
+    session.items.some((item) => item.origin === 'todo'),
+    true,
+  );
+});
+
+test('initReview starts a new file when latest is pending', () => {
+  const draft = createStore('/tmp/.review/2026-09-07-00.md');
+  draft.status = 'pending';
+  addTodo(draft, 'a.js', 'rewrite loop');
+  const md = serializeReview(draft);
+  const { session } = openSession([sampleItem('a.js')], {
+    readdirSync: () => ['2026-09-07-00.md'],
+    readFileSync: reviewReader(md),
+  });
+  assert.equal(session.notes.reviewPath, '/tmp/.review/2026-09-07-01.md');
+  assert.equal(session.notes.todos.length, 0);
+});
+
+test('newReview starts a new file even if latest is editing', () => {
+  const draft = createStore('/tmp/.review/2026-09-07-00.md');
+  addTodo(draft, 'a.js', 'rewrite loop');
+  const md = serializeReview(draft);
+  const { session } = openSession([sampleItem('a.js')], {
+    newReview: true,
+    readdirSync: () => ['2026-09-07-00.md'],
+    readFileSync: reviewReader(md),
+  });
+  assert.equal(session.notes.reviewPath, '/tmp/.review/2026-09-07-01.md');
+  assert.equal(session.notes.todos.length, 0);
+});
+
+test('quit without notes does not write a review file', () => {
+  const writes = [];
+  const item = sampleItem('a.js');
+  const { session } = openSession([item], {
+    writeFileSync: (file, body) => writes.push({ file, body }),
+    mkdirSync: () => {},
+  });
+  session.dispatch('quit');
+  assert.equal(session.done, true);
+  assert.equal(writes.length, 0);
 });

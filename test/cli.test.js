@@ -6,7 +6,10 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 
-const { run, startPaneFromPaths, resolveScope } = require('../lib/cli.js');
+const cli = require('../lib/cli.js');
+const { run, startPaneFromPaths, resolveScope } = cli;
+const { parseArgv, helpText } = cli;
+
 const { makeRepo, sink } = require('./helpers.js');
 
 const fakeProc = (cwd, extra = {}) => {
@@ -49,6 +52,14 @@ test('AC12 clean repo prints nothing to review', async () => {
   } finally {
     repo.cleanup();
   }
+});
+
+test('parseArgv accepts -n and --new', () => {
+  assert.equal(parseArgv([]).newReview, false);
+  assert.equal(parseArgv(['-n']).newReview, true);
+  assert.equal(parseArgv(['--new', 'lib']).newReview, true);
+  assert.deepEqual(parseArgv(['--new', 'lib']).paths, ['lib']);
+  assert.match(helpText(), /-n \/ --new/);
 });
 
 test('unknown option exits 1', async () => {
