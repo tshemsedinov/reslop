@@ -5,6 +5,7 @@ const assert = require('node:assert/strict');
 
 const diff = require('../lib/diff.js');
 const { parseDiff, splitHunk, formatPatch, flattenBlock } = diff;
+const { itemsFromFiles } = diff;
 
 const SAMPLE = `diff --git a/n.js b/n.js
 index 1111111..2222222 100644
@@ -55,4 +56,25 @@ test('flattenBlock new-side context keeps added other blocks', () => {
   const types = lines.map((line) => `${line.type}:${line.text}`);
   assert.ok(types.includes('ctx:bbb'));
   assert.ok(!types.includes('del:BBB'));
+});
+
+test('formatPatch mixed sides uses staged new context', () => {
+  const file = parseDiff(SAMPLE)[0];
+  const split = splitHunk(file.hunks[0]);
+  const sides = Object.assign(Object.create(null), { 0: 'new', 1: 'old' });
+  const patch = formatPatch(file, split.hunk, 1, sides);
+  assert.match(patch, /^-BBB/m);
+  assert.match(patch, /^\+bbb/m);
+  assert.match(patch, /^ aaa/m);
+  assert.doesNotMatch(patch, /^-AAA/m);
+});
+
+test('itemsFromFiles staged index patch uses new-side context', () => {
+  const files = parseDiff(SAMPLE);
+  const staged = itemsFromFiles(files, 'staged');
+  const unstaged = itemsFromFiles(files, 'unstaged');
+  assert.match(staged[0].patchAdd, /^ bbb/m);
+  assert.doesNotMatch(staged[0].patchAdd, /^-BBB/m);
+  assert.match(unstaged[0].patchAdd, /^ BBB/m);
+  assert.doesNotMatch(unstaged[0].patchAdd, /^\+bbb/m);
 });

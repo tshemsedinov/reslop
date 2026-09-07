@@ -101,6 +101,99 @@ test('AC8 revert staged restores HEAD', () => {
   }
 });
 
+test('add then unstage a block in a split hunk', () => {
+  const repo = makeRepo();
+  try {
+    repo.write('f.txt', 'keep\nAAA\nkeep\nBBB\nkeep\n');
+    repo.git(['add', 'f.txt']);
+    repo.git(['commit', '-m', 'init']);
+    repo.write('f.txt', 'keep\naaa\nkeep\nbbb\nkeep\n');
+    const session = sessionFor(repo.dir);
+    assert.equal(session.items.length, 2);
+    session.dispatch('add');
+    assert.equal(session.status, 'staged');
+    session.dispatch('unstage');
+    assert.equal(session.status, 'unstaged');
+    const cached = repo.git(['diff', '--cached', '--', 'f.txt']);
+    assert.equal(cached, '');
+    assert.equal(repo.read('f.txt'), 'keep\naaa\nkeep\nbbb\nkeep\n');
+  } finally {
+    repo.cleanup();
+  }
+});
+
+test('add both blocks of a split hunk without reload', () => {
+  const repo = makeRepo();
+  try {
+    repo.write('f.txt', 'keep\nAAA\nkeep\nBBB\nkeep\n');
+    repo.git(['add', 'f.txt']);
+    repo.git(['commit', '-m', 'init']);
+    repo.write('f.txt', 'keep\naaa\nkeep\nbbb\nkeep\n');
+    const session = sessionFor(repo.dir);
+    session.dispatch('add');
+    assert.equal(session.status, 'staged');
+    session.index = 1;
+    session.dispatch('add');
+    assert.equal(session.status, 'staged');
+    assert.equal(session.items[0].origin, 'staged');
+    assert.equal(session.items[1].origin, 'staged');
+    const work = repo.git(['diff', '--', 'f.txt']);
+    assert.equal(work, '');
+  } finally {
+    repo.cleanup();
+  }
+});
+
+test('unstage both blocks of a staged split hunk', () => {
+  const repo = makeRepo();
+  try {
+    repo.write('f.txt', 'keep\nAAA\nkeep\nBBB\nkeep\n');
+    repo.git(['add', 'f.txt']);
+    repo.git(['commit', '-m', 'init']);
+    repo.write('f.txt', 'keep\naaa\nkeep\nbbb\nkeep\n');
+    repo.git(['add', 'f.txt']);
+    const session = sessionFor(repo.dir);
+    assert.equal(session.items.length, 2);
+    session.dispatch('unstage');
+    assert.equal(session.status, 'unstaged');
+    session.index = 1;
+    session.dispatch('unstage');
+    assert.equal(session.status, 'unstaged');
+    const cached = repo.git(['diff', '--cached', '--', 'f.txt']);
+    assert.equal(cached, '');
+    assert.equal(repo.read('f.txt'), 'keep\naaa\nkeep\nbbb\nkeep\n');
+  } finally {
+    repo.cleanup();
+  }
+});
+
+test('add and unstage keep file order', () => {
+  const repo = makeRepo();
+  try {
+    repo.write('a.txt', 'a\n');
+    repo.write('b.txt', 'b\n');
+    repo.write('c.txt', 'c\n');
+    repo.git(['add', '.']);
+    repo.git(['commit', '-m', 'init']);
+    repo.write('a.txt', 'A\n');
+    repo.write('b.txt', 'B\n');
+    repo.write('c.txt', 'C\n');
+    const session = sessionFor(repo.dir);
+    const paths = () => session.items.map((item) => item.file.newPath);
+    assert.deepEqual(paths(), ['a.txt', 'b.txt', 'c.txt']);
+    session.index = 1;
+    session.dispatch('add');
+    assert.equal(session.items[1].origin, 'staged');
+    assert.deepEqual(paths(), ['a.txt', 'b.txt', 'c.txt']);
+    assert.equal(session.current().file.newPath, 'b.txt');
+    session.dispatch('unstage');
+    assert.equal(session.items[1].origin, 'unstaged');
+    assert.deepEqual(paths(), ['a.txt', 'b.txt', 'c.txt']);
+  } finally {
+    repo.cleanup();
+  }
+});
+
 test('AC28 unstage staged keeps worktree', () => {
   const repo = makeRepo();
   try {

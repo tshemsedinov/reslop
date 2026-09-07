@@ -54,14 +54,15 @@ test('resolveReviewPath resumes editing and starts new otherwise', () => {
     editing.reviewPath,
     path.join(dir, '.review', '2026-09-07-00.md'),
   );
+  const ready = resolveReviewPath(dir, date, names, {
+    readFileSync: () => '---\nstatus: ready\n---\n',
+  });
+  assert.equal(ready.resume, false);
+  assert.equal(ready.reviewPath, path.join(dir, '.review', '2026-09-07-01.md'));
   const pending = resolveReviewPath(dir, date, names, {
     readFileSync: () => '---\nstatus: pending\n---\n',
   });
   assert.equal(pending.resume, false);
-  assert.equal(
-    pending.reviewPath,
-    path.join(dir, '.review', '2026-09-07-01.md'),
-  );
   const partial = resolveReviewPath(dir, date, names, {
     readFileSync: () => '---\nstatus: partial\n---\n',
   });
@@ -164,13 +165,21 @@ test('serializeReview groups todos then feedback with position', () => {
   assert.equal(hasNotes(store), true);
 });
 
-test('serializeReview writes pending when status is pending', () => {
+test('serializeReview writes ready when status is ready', () => {
   const store = createStore('/repo/.review/2026-09-07-00.md');
-  store.status = 'pending';
+  store.status = 'ready';
   addTodo(store, 'a.js', 'follow up');
   const md = serializeReview(store);
-  assert.match(md, /status: pending/);
-  assert.deepEqual(REVIEW_STATUSES, ['editing', 'pending', 'partial', 'done']);
+  assert.match(md, /status: ready/);
+  assert.match(md, /Execute reviews with `status: ready` or `status: partial`/);
+  assert.deepEqual(REVIEW_STATUSES, ['editing', 'ready', 'partial', 'done']);
+});
+
+test('parseFrontmatterStatus maps pending to ready', () => {
+  const pending = '---\nstatus: pending\n---\n';
+  const ready = '---\nstatus: ready\n---\n';
+  assert.equal(parseFrontmatterStatus(pending), 'ready');
+  assert.equal(parseFrontmatterStatus(ready), 'ready');
 });
 
 test('parseReview restores todos and feedback keys', () => {
@@ -410,4 +419,8 @@ test('mergeTodos puts one assigned todo page first per file', () => {
   const empty = mergeTodos([hunk], [{ id: 1, file: 'a.js', text: '' }]);
   assert.equal(empty[0].origin, 'todo');
   assert.equal(empty[1], hunk);
+  const draft = mergeTodos([hunk], [], ['a.js']);
+  assert.equal(draft[0].origin, 'todo');
+  assert.equal(draft[0].file.newPath, 'a.js');
+  assert.equal(draft[1], hunk);
 });
