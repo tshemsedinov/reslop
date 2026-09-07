@@ -43,14 +43,15 @@ Notes go in `.review/YYYY-MM-DD-NN.md` with frontmatter `status`:
 | Status  | Meaning                                     |
 | ------- | ------------------------------------------- |
 | editing | Still writing the review in metadiff        |
-| pending | Ready for AI to work through the checkboxes |
+| ready   | Ready for AI to work through the checkboxes |
 | partial | AI started; some items remain               |
 | done    | All items marked `[x]`                      |
 
 `metadiff` resumes the latest file when its status is `editing`. Any other
 status starts a new file. `-n` / `--new` always starts a new file. Quit asks
-`f` (finish as `pending`, ready to implement) or `c` (keep `editing` and
-continue next time). Files in `.review/` are omitted from the diff list.
+`f` (finish as `ready`, for the agent to execute) or `c` (keep `editing` and
+continue next time). The agent should execute `ready` and `partial` reviews.
+Files in `.review/` are omitted from the diff list.
 
 A `##` heading names the file. Todos are checkboxes under it. Feedback is a
 checkbox with ` - path:old:new:block` on the same line.

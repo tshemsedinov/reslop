@@ -497,11 +497,11 @@ test('quit prompt paints f and c yellow on grey copy', () => {
   const statusRow = colored.rows[colored.rows.length - 2];
   const plain = stripAnsi(statusRow);
   assert.equal(plain.startsWith(render.QUIT_PROMPT), true);
-  assert.ok(plain.includes('finish review'));
+  assert.ok(plain.includes('finish as ready'));
   assert.ok(plain.includes('continue next time'));
   assert.ok(!plain.includes('Finish'));
   assert.ok(!plain.includes('Continue'));
-  assert.ok(!plain.includes('Close as pending'));
+  assert.ok(!plain.includes('pending'));
   assert.ok(statusRow.includes(fg(THEME.warnFg)));
   assert.ok(statusRow.includes(fg(THEME.mutedFg)));
   assert.ok(statusRow.includes(bg(THEME.chromeBg)));
@@ -956,7 +956,7 @@ test('todo compose does not paint feedback templates', () => {
     repoName: 'demo',
     todos: ['[ ] rewrite this'],
     todoFocus: 0,
-    compose: { kind: 'todo', text: 'rewrite this', cursor: 0 },
+    todoEdit: { cursor: 0 },
     templates: [{ text: 'extract helper', count: 1 }],
     templateIndex: 0,
   };
@@ -1084,7 +1084,10 @@ test('note panel is lighter than the status line', () => {
     opt,
   );
   const compose = render.renderFrame(
-    { ...base, compose: { kind: 'todo', text: 'rewrite loop', cursor: 0 } },
+    {
+      ...base,
+      compose: { kind: 'feedback', text: 'rewrite loop', cursor: 0 },
+    },
     opt,
   );
   const idleNote = idle.rows.find((row) => row.includes('extract helper'));
@@ -1127,6 +1130,9 @@ test('todo view paints file todo text not a diff hunk', () => {
     color: false,
   });
   const body = stripAnsi(frame.rows.join('\n'));
+  const captionAt = body.indexOf('TODO:');
+  const firstAt = body.indexOf('[ ] rewrite this');
+  assert.ok(captionAt >= 0 && captionAt < firstAt);
   assert.match(body, /\[ \] rewrite this/);
   assert.match(body, /\[x\] already done/);
   assert.ok(!stripAnsi(frame.rows[2]).startsWith('+'));
@@ -1154,7 +1160,7 @@ test('todo list stays visible while composing', () => {
     repoName: 'demo',
     todos: ['[ ] rewrite this', '[x] already done'],
     todoFocus: 0,
-    compose: { kind: 'todo', text: 'rewrite this', cursor: 12 },
+    todoEdit: { cursor: 12 },
   };
   const frame = render.renderFrame(view, {
     width: 80,
@@ -1164,11 +1170,14 @@ test('todo list stays visible while composing', () => {
   const body = stripAnsi(frame.rows.join('\n'));
   assert.match(body, /\[ \] rewrite this/);
   assert.match(body, /\[x\] already done/);
-  const composeRow = frame.rows.find((row) => {
+  const footer = frame.rows.find((row) => {
     const plain = stripAnsi(row);
     return plain.includes('rewrite this') && !plain.includes('[ ]');
   });
-  assert.ok(composeRow);
+  assert.equal(footer, undefined);
+  const hit = frame.todoHits.find((row) => row.cursor === 0);
+  assert.ok(hit);
+  assert.equal(frame.cursor.y, hit.y);
 });
 
 test('todo list paints the focused row on the selection bar', () => {

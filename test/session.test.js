@@ -135,6 +135,36 @@ test('AC8 add on staged is a no-op with status', () => {
   assert.equal(session.items.length, 1);
 });
 
+test('add and unstage keep block order', () => {
+  const a = sampleItem('a.js');
+  const b = sampleItem('b.js');
+  const c = sampleItem('c.js');
+  const { session, repo } = openSession([a, b, c]);
+  let loads = 0;
+  const inner = repo.load;
+  repo.load = () => {
+    loads += 1;
+    return inner();
+  };
+  session.index = 1;
+  session.dispatch('add');
+  assert.equal(loads, 0);
+  assert.equal(repo.added.length, 1);
+  assert.deepEqual(
+    session.items.map((item) => item.file.newPath),
+    ['a.js', 'b.js', 'c.js'],
+  );
+  assert.equal(session.items[1].origin, 'staged');
+  assert.equal(session.current().file.newPath, 'b.js');
+  session.dispatch('unstage');
+  assert.equal(loads, 0);
+  assert.equal(session.items[1].origin, 'unstaged');
+  assert.deepEqual(
+    session.items.map((item) => item.file.newPath),
+    ['a.js', 'b.js', 'c.js'],
+  );
+});
+
 test('AC28 unstage drops index keeps worktree', () => {
   const staged = sampleItem('s.js', 'staged');
   const other = sampleItem('a.js');
@@ -463,6 +493,7 @@ test('feedback templates are picked with tab arrows enter and click', () => {
   assert.equal(session.mode, 'review');
   assert.equal(session.notes.feedback.get(feedKey).text, 'extract helper');
   session.dispatch('feedback');
+  session.editor.replace('');
   session.handleEvent({ type: 'key', key: 'down' });
   assert.equal(session.mode, 'compose');
   assert.equal(session.templateFocus, true);
@@ -523,7 +554,7 @@ test('feedback templates filter by prefix and hide if none match', () => {
   body = stripAnsi(session.lastFrame.rows.join('\n'));
   assert.match(body, /extract helper/);
   assert.ok(!body.includes('add tests'));
-  assert.equal(session.lastFrame.templateHits.length, 1);
+  assert.equal(session.lastFrame.templateHits.length, 0);
   session.editor.replace('');
   session.pushInput('z');
   session.draw();
@@ -538,6 +569,23 @@ test('feedback templates filter by prefix and hide if none match', () => {
   body = stripAnsi(session.lastFrame.rows.join('\n'));
   assert.match(body, /extract helper/);
   assert.match(body, /add tests/);
+});
+
+test('exact template text hides the template list', () => {
+  const { session } = openSession([sampleItem('a.js')]);
+  session.notes.templates = [
+    { text: 'extract helper', count: 2 },
+    { text: 'add tests', count: 1 },
+  ];
+  session.dispatch('feedback');
+  session.pushInput('extract helper');
+  session.draw();
+  const { stripAnsi } = require('../lib/ansi.js');
+  const body = stripAnsi(session.lastFrame.rows.join('\n'));
+  assert.match(body, /extract helper/);
+  assert.ok(!body.includes('add tests'));
+  assert.equal(session.lastFrame.templateHits.length, 0);
+  assert.deepEqual(session.shownTemplates(), []);
 });
 
 test('existing unique feedback hides the template list', () => {
@@ -561,6 +609,22 @@ test('existing unique feedback hides the template list', () => {
   assert.ok(!body.includes('extract helper'));
   assert.ok(!body.includes('add tests'));
   assert.equal(session.lastFrame.templateHits.length, 0);
+});
+
+test('todo edits in the list not the note line', () => {
+  const { session } = openSession([sampleItem('a.js')]);
+  session.dispatch('todo');
+  session.pushInput('in the list');
+  session.draw();
+  const { stripAnsi } = require('../lib/ansi.js');
+  const body = stripAnsi(session.lastFrame.rows.join('\n'));
+  assert.match(body, /\[ \] in the list/);
+  assert.equal(body.split('in the list').length - 1, 1);
+  assert.equal(session.view().compose, null);
+  assert.ok(session.view().todoEdit);
+  const hit = session.lastFrame.todoHits.find((row) => row.cursor === 0);
+  assert.ok(hit);
+  assert.equal(session.lastFrame.cursor.y, hit.y);
 });
 
 test('t from any file adds a todo and starts editing', () => {
@@ -603,7 +667,7 @@ test('t puts a file todo page first and lets you edit it', () => {
   assert.equal(session.items[1].file.newPath, 'a.js');
   assert.equal(session.items[2].file.newPath, 'b.js');
   assert.equal(session.current().origin, 'todo');
-  assert.deepEqual(session.view().todos, ['[ ] rewrite loop']);
+  assert.deepEqual(session.view().todos, ['[ ] rewrite loop', '[ ] ']);
   assert.equal(session.view().total, 3);
   assert.equal(session.counts().todo, 1);
   assert.equal(session.counts().feedback, 0);
@@ -625,7 +689,11 @@ test('t puts a file todo page first and lets you edit it', () => {
   session.handleEvent({ type: 'key', key: 'ctrl-s' });
   const pages = session.items.filter((item) => item.origin === 'todo');
   assert.equal(pages.length, 1);
-  assert.deepEqual(session.view().todos, ['[ ] rewrite loop', '[ ] add tests']);
+  assert.deepEqual(session.view().todos, [
+    '[ ] rewrite loop',
+    '[ ] add tests',
+    '[ ] ',
+  ]);
   assert.equal(session.todoFocus, 1);
   session.dispatch('next');
   assert.equal(session.current().origin, 'unstaged');
@@ -636,6 +704,53 @@ test('t puts a file todo page first and lets you edit it', () => {
   session.dispatch('prev');
   session.dispatch('prev');
   assert.equal(session.current().origin, 'todo');
+});
+
+test('todo list keeps a blank row to start a new item', () => {
+  const { session } = openSession([sampleItem('a.js')]);
+  session.dispatch('todo');
+  session.pushInput('first note');
+  session.handleEvent({ type: 'key', key: 'ctrl-s' });
+  assert.equal(session.mode, 'review');
+  assert.deepEqual(session.view().todos, ['[ ] first note', '[ ] ']);
+  session.dispatch('scrollDown');
+  assert.equal(session.todoFocus, 1);
+  session.handleEvent({ type: 'key', key: 'enter' });
+  assert.equal(session.mode, 'compose');
+  assert.equal(session.composeTodoId, null);
+  assert.equal(session.editor.text, '');
+  session.handleEvent({ type: 'key', key: 'escape' });
+  session.draw();
+  const draft = session.lastFrame.todoHits.find((row) => row.cursor === 1);
+  assert.ok(draft);
+  session.handleEvent({
+    type: 'mouse',
+    kind: 'press',
+    btn: 0,
+    button: 0,
+    x: 2,
+    y: draft.y,
+    press: true,
+  });
+  session.handleEvent({
+    type: 'mouse',
+    kind: 'release',
+    btn: 0,
+    button: 0,
+    x: 2,
+    y: draft.y,
+    press: false,
+  });
+  assert.equal(session.todoFocus, 1);
+  assert.equal(session.mode, 'compose');
+  assert.equal(session.composeTodoId, null);
+  session.pushInput('second note');
+  session.handleEvent({ type: 'key', key: 'enter' });
+  assert.deepEqual(session.view().todos, [
+    '[ ] first note',
+    '[ ] second note',
+    '[ ] ',
+  ]);
 });
 
 test('enter and click edit the focused todo', () => {
@@ -754,7 +869,7 @@ test('delete and backspace remove the selected todo', () => {
   assert.equal(session.mode, 'review');
   assert.equal(session.todoFocus, 1);
   session.handleEvent({ type: 'key', key: 'delete' });
-  assert.deepEqual(session.view().todos, ['[ ] first note']);
+  assert.deepEqual(session.view().todos, ['[ ] first note', '[ ] ']);
   assert.equal(session.todoFocus, 0);
   assert.equal(session.current().origin, 'todo');
   session.handleEvent({ type: 'key', key: 'backspace' });
@@ -762,13 +877,12 @@ test('delete and backspace remove the selected todo', () => {
   assert.equal(session.current().origin, 'unstaged');
 });
 
-test('empty autosave does not drop a new todo', () => {
+test('empty autosave does not persist a draft todo', () => {
   const { session } = openSession([sampleItem('a.js')]);
   session.dispatch('todo');
-  const id = session.composeTodoId;
+  assert.equal(session.composeTodoId, null);
   session.autosave();
-  assert.equal(session.notes.todos.length, 1);
-  assert.equal(session.notes.todos[0].id, id);
+  assert.equal(session.notes.todos.length, 0);
   session.pushInput('keep this');
   session.handleEvent({ type: 'key', key: 'enter' });
   assert.equal(session.mode, 'review');
@@ -811,7 +925,7 @@ test('quit with notes asks f to finish or c to continue', () => {
   assert.match(mdWrites[0].body, /status: editing/);
   const last = mdWrites[mdWrites.length - 1];
   assert.match(last.body, /nits/);
-  assert.match(last.body, /status: pending/);
+  assert.match(last.body, /status: ready/);
 });
 
 test('quit continue keeps editing so the next run can resume', () => {
@@ -852,9 +966,9 @@ test('initReview resumes latest editing file', () => {
   );
 });
 
-test('initReview starts a new file when latest is pending', () => {
+test('initReview starts a new file when latest is ready', () => {
   const draft = createStore('/tmp/.review/2026-09-07-00.md');
-  draft.status = 'pending';
+  draft.status = 'ready';
   addTodo(draft, 'a.js', 'rewrite loop');
   const md = serializeReview(draft);
   const { session } = openSession([sampleItem('a.js')], {
