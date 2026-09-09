@@ -15,6 +15,7 @@ const sessionFor = (dir) => {
     cwd: dir,
     stdout,
     color: false,
+    startPane: 'diff',
     getSize: () => ({ width: 80, height: 16 }),
   });
   session.load();
@@ -139,6 +140,67 @@ test('add both blocks of a split hunk without reload', () => {
     assert.equal(session.items[1].origin, 'staged');
     const work = repo.git(['diff', '--', 'f.txt']);
     assert.equal(work, '');
+  } finally {
+    repo.cleanup();
+  }
+});
+
+test('files pane add stages every remaining hunk', () => {
+  const repo = makeRepo();
+  try {
+    repo.write('f.txt', 'keep\nAAA\nkeep\nBBB\nkeep\n');
+    repo.git(['add', 'f.txt']);
+    repo.git(['commit', '-m', 'init']);
+    repo.write('f.txt', 'keep\naaa\nkeep\nbbb\nkeep\n');
+    const session = sessionFor(repo.dir);
+    assert.equal(session.items.length, 2);
+    session.showFiles();
+    session.dispatch('add');
+    assert.equal(session.status, 'staged');
+    assert.equal(session.items[0].origin, 'staged');
+    assert.equal(session.items[1].origin, 'staged');
+    const work = repo.git(['diff', '--', 'f.txt']);
+    assert.equal(work, '');
+  } finally {
+    repo.cleanup();
+  }
+});
+
+test('files pane unstage restores every staged hunk', () => {
+  const repo = makeRepo();
+  try {
+    repo.write('f.txt', 'keep\nAAA\nkeep\nBBB\nkeep\n');
+    repo.git(['add', 'f.txt']);
+    repo.git(['commit', '-m', 'init']);
+    repo.write('f.txt', 'keep\naaa\nkeep\nbbb\nkeep\n');
+    repo.git(['add', 'f.txt']);
+    const session = sessionFor(repo.dir);
+    session.showFiles();
+    session.dispatch('unstage');
+    assert.equal(session.status, 'unstaged');
+    assert.equal(session.items[0].origin, 'unstaged');
+    assert.equal(session.items[1].origin, 'unstaged');
+    const cached = repo.git(['diff', '--cached', '--', 'f.txt']);
+    assert.equal(cached, '');
+    assert.equal(repo.read('f.txt'), 'keep\naaa\nkeep\nbbb\nkeep\n');
+  } finally {
+    repo.cleanup();
+  }
+});
+
+test('files pane revert restores the whole file', () => {
+  const repo = makeRepo();
+  try {
+    repo.write('f.txt', 'keep\nAAA\nkeep\nBBB\nkeep\n');
+    repo.git(['add', 'f.txt']);
+    repo.git(['commit', '-m', 'init']);
+    repo.write('f.txt', 'keep\naaa\nkeep\nbbb\nkeep\n');
+    const session = sessionFor(repo.dir);
+    session.showFiles();
+    session.dispatch('revert');
+    assert.equal(repo.read('f.txt'), 'keep\nAAA\nkeep\nBBB\nkeep\n');
+    const vsHead = repo.git(['diff', 'HEAD', '--', 'f.txt']);
+    assert.equal(vsHead, '');
   } finally {
     repo.cleanup();
   }

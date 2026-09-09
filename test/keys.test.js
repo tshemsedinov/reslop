@@ -4,7 +4,7 @@ const { test } = require('node:test');
 const assert = require('node:assert/strict');
 
 const keys = require('../lib/keys.js');
-const { ACTIONS, decodeChunk, actionFromKey, hitAction } = keys;
+const { ACTIONS, FILES_DISABLED, decodeChunk, actionFromKey, hitAction } = keys;
 const { actionLetter, buttonWord } = keys;
 const { layoutButtons } = require('../lib/render.js');
 
@@ -93,6 +93,14 @@ test('layoutButtons hitboxes cover labels', () => {
   assert.ok(!letters.parts[0].piece.includes('['));
   const prev = letters.parts.find((part) => part.action.id === 'prev');
   assert.equal(prev.label, '←');
+  const off = layoutButtons(160, false, FILES_DISABLED);
+  const hitIds = off.hits.map((hit) => hit.id);
+  assert.equal(hitIds.includes('skip'), false);
+  assert.equal(hitIds.includes('layout'), false);
+  assert.equal(hitIds.includes('feedback'), false);
+  assert.equal(hitIds.includes('add'), true);
+  const skip = off.parts.find((part) => part.action.id === 'skip');
+  assert.equal(skip.disabled, true);
 });
 
 test('actionLetter is the bound letter inside the word', () => {
