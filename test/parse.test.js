@@ -5,7 +5,7 @@ const assert = require('node:assert/strict');
 
 const diff = require('../lib/diff.js');
 const { parseDiff, splitHunk, formatPatch, flattenBlock } = diff;
-const { itemsFromFiles } = diff;
+const { displayLines, itemsFromFiles, DISPLAY_CONTEXT } = diff;
 
 const SAMPLE = `diff --git a/n.js b/n.js
 index 1111111..2222222 100644
@@ -56,6 +56,54 @@ test('flattenBlock new-side context keeps added other blocks', () => {
   const types = lines.map((line) => `${line.type}:${line.text}`);
   assert.ok(types.includes('ctx:bbb'));
   assert.ok(!types.includes('del:BBB'));
+});
+
+test('displayLines keeps a short window of surrounding lines', () => {
+  const before = ['b1', 'b2', 'b3', 'b4', 'b5'];
+  const after = ['a1', 'a2', 'a3', 'a4', 'a5'];
+  const ctx = (text) => ({ type: 'ctx', text, noNl: false, blockId: null });
+  const hunk = {
+    oldStart: 1,
+    oldCount: 11,
+    newStart: 1,
+    newCount: 11,
+    header: '@@ -1,11 +1,11 @@',
+    lines: [
+      ...before.map(ctx),
+      { type: 'del', text: 'OLD', noNl: false, blockId: 0 },
+      { type: 'add', text: 'NEW', noNl: false, blockId: 0 },
+      ...after.map(ctx),
+    ],
+  };
+  const lines = displayLines(hunk, 0);
+  const types = lines.map((line) => `${line.type}:${line.text}`);
+  const head = before.slice(-DISPLAY_CONTEXT).map((text) => `ctx:${text}`);
+  const tail = after.slice(0, DISPLAY_CONTEXT).map((text) => `ctx:${text}`);
+  assert.deepEqual(types, [...head, 'del:OLD', 'add:NEW', ...tail]);
+});
+
+test('displayLines shows latest sibling lines as context', () => {
+  const file = parseDiff(SAMPLE)[0];
+  const split = splitHunk(file.hunks[0]);
+  const lines = displayLines(split.hunk, 1);
+  const types = lines.map((line) => `${line.type}:${line.text}`);
+  assert.deepEqual(types, [
+    'ctx:keep',
+    'ctx:aaa',
+    'ctx:keep',
+    'del:BBB',
+    'add:bbb',
+    'ctx:keep',
+  ]);
+  const side = displayLines(split.hunk, 1, 'side');
+  const firstChange = side[3];
+  assert.equal(side[1].left.type, 'ctx');
+  assert.equal(side[1].left.text, 'aaa');
+  assert.equal(side[1].right.text, 'aaa');
+  assert.equal(firstChange.left.type, 'del');
+  assert.equal(firstChange.left.text, 'BBB');
+  assert.equal(firstChange.right.type, 'add');
+  assert.equal(firstChange.right.text, 'bbb');
 });
 
 test('formatPatch mixed sides uses staged new context', () => {
