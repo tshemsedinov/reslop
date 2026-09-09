@@ -7,8 +7,7 @@ const os = require('node:os');
 const path = require('node:path');
 
 const cli = require('../lib/cli.js');
-const { run, resolveScope } = cli;
-const { parseArgv, helpText } = cli;
+const { run, parseArgv, resolveScope } = cli;
 
 const { makeRepo, sink } = require('./helpers.js');
 
@@ -59,11 +58,11 @@ test('parseArgv accepts -n', () => {
   assert.equal(parseArgv(['-n']).newReview, true);
   assert.deepEqual(parseArgv(['-n', 'lib']).paths, ['lib']);
   assert.equal(parseArgv(['-n', 'lib']).newReview, true);
-  assert.match(helpText(), /Use -n to start/);
-  assert.match(helpText(), /\[path \| commit \| pr-url\]/);
-  assert.doesNotMatch(helpText(), /--new/);
-  assert.doesNotMatch(helpText(), /path\.\.\./);
-  assert.throws(() => parseArgv(['--new']), /unknown option --new/);
+  const unknown = ['--new', '--help', '-h', '--version', '-v'];
+  for (const flag of unknown) {
+    const message = `unknown option ${flag}`;
+    assert.throws(() => parseArgv([flag]), new RegExp(message));
+  }
 });
 
 test('unknown option exits 1', async () => {
@@ -72,7 +71,10 @@ test('unknown option exits 1', async () => {
   });
   const code = await run(proc);
   assert.equal(code, 1);
-  assert.match(proc.stderrText(), /unknown option/);
+  const err = proc.stderrText();
+  assert.match(err, /unknown option/);
+  assert.match(err, /Usage: reslop \[-n\] \[path \| commit \| pr-url\]/);
+  assert.doesNotMatch(err, /--help/);
 });
 
 test('AC22 resolveScope peels a commit from argv', () => {

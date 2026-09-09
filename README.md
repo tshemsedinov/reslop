@@ -16,22 +16,8 @@ those characters.
 
 ## Install
 
-Global:
-
 ```bash
 npm i -g reslop
-```
-
-Local:
-
-```bash
-npx reslop
-```
-
-Unregister:
-
-```bash
-npm run disable
 ```
 
 ## Usage
@@ -42,7 +28,6 @@ reslop -n
 reslop path/file
 reslop 7ac260c
 reslop https://github.com/metarhia/metacom/pull/555
-reslop --help
 ```
 
 Starts on the diff. No arguments, or a folder, reviews that scope.
