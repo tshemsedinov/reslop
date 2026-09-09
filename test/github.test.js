@@ -4,8 +4,11 @@ const { test } = require('node:test');
 const assert = require('node:assert/strict');
 
 const github = require('../lib/github.js');
+const diff = require('../lib/diff.js');
 const { parseGithubPrUrl, githubToken, loadPullRequest } = github;
-const { filterChangeFiles, prApiUrl } = github;
+const { filterChangeFiles, prApiUrl, discussionToNotes } = github;
+const { formatImportedText } = github;
+const { parseDiff, itemsFromFiles } = diff;
 
 const PR = { owner: 'acme', repo: 'app', number: 123 };
 
@@ -40,22 +43,52 @@ const PR_JSON = JSON.parse(`{
   "head": { "ref": "fix-parser", "sha": "bbb" }
 }`);
 
-const jsonResponse = (status, body) => ({
+const EMPTY_THREADS = {
+  data: {
+    repository: {
+      pullRequest: {
+        reviewThreads: {
+          pageInfo: { hasNextPage: false, endCursor: null },
+          nodes: [],
+        },
+      },
+    },
+  },
+};
+
+const jsonResponse = (status, body, extraHeaders = {}) => ({
   ok: status >= 200 && status < 300,
   status,
+  headers: extraHeaders,
   text: async () => (typeof body === 'string' ? body : JSON.stringify(body)),
 });
 
-const mockFetch = (json, diff, status = 200) => {
+const mockFetch = (json, diff, status = 200, routes = {}) => {
   const calls = [];
   const fetchImpl = async (url, init) => {
+    const headers = init.headers || {};
     calls.push({
       url,
-      accept: init.headers.Accept,
-      auth: init.headers.Authorization || '',
+      accept: headers.Accept,
+      auth: headers.Authorization || '',
+      method: init.method || 'GET',
     });
-    if (init.headers.Accept === 'application/vnd.github.diff') {
+    if (headers.Accept === 'application/vnd.github.diff') {
       return jsonResponse(status, diff);
+    }
+    if (`${url}`.includes('/graphql')) {
+      return jsonResponse(200, routes.graphql ?? EMPTY_THREADS);
+    }
+    if (`${url}`.includes('/pulls/') && `${url}`.includes('/comments')) {
+      const page = routes.reviewComments ?? [];
+      const extra = routes.reviewCommentHeaders ?? {};
+      return jsonResponse(200, page, extra);
+    }
+    if (`${url}`.includes('/reviews')) {
+      return jsonResponse(200, routes.reviews ?? []);
+    }
+    if (`${url}`.includes('/issues/') && `${url}`.includes('/comments')) {
+      return jsonResponse(200, routes.issueComments ?? []);
     }
     return jsonResponse(status, json);
   };
@@ -111,7 +144,7 @@ test('loadPullRequest converts a GitHub patch into pr items', async () => {
     token: '',
     cwd: '/tmp',
   });
-  assert.equal(fetchImpl.calls.length, 2);
+  assert.equal(fetchImpl.calls.length, 6);
   const url = prApiUrl(PR);
   assert.equal(fetchImpl.calls[0].url, url);
   assert.equal(loaded.sourceLabel, '#123');
@@ -128,13 +161,16 @@ test('loadPullRequest converts a GitHub patch into pr items', async () => {
   assert.equal(loaded.items[0].file.newPath, 'lib/parser.js');
   assert.ok(loaded.items[0].hunk);
   assert.equal(loaded.items[1].file.newPath, 'README.md');
+  assert.deepEqual(loaded.imported, { feedback: [], todos: [] });
 });
 
 test('loadPullRequest sends a bearer token', async () => {
   const fetchImpl = mockFetch(PR_JSON, PR_DIFF);
   await loadPullRequest(PR, { fetch: fetchImpl, token: 'secret' });
-  assert.equal(fetchImpl.calls[0].auth, 'Bearer secret');
-  assert.equal(fetchImpl.calls[1].auth, 'Bearer secret');
+  assert.ok(fetchImpl.calls.length >= 2);
+  for (const call of fetchImpl.calls) {
+    assert.equal(call.auth, 'Bearer secret');
+  }
 });
 
 test('loadPullRequest filters files by path scope', async () => {
@@ -210,7 +246,7 @@ test('loadPullRequest retries a transient network error', async () => {
     retry: { delayMs: 0 },
   });
   assert.equal(loaded.change.number, 123);
-  assert.equal(calls, 3);
+  assert.ok(calls >= 3);
 });
 
 test('loadPullRequest rejects invalid pull request JSON', async () => {
@@ -232,4 +268,296 @@ test('loadPullRequest maps 401 to an auth error', async () => {
     () => loadPullRequest(PR, { fetch: fetchImpl, token: 'tok' }),
     /GitHub authentication failed/,
   );
+});
+
+test('formatImportedText prefixes the GitHub reviewer', () => {
+  const text = formatImportedText({
+    reviewer: 'alice',
+    body: 'use const',
+  });
+  assert.equal(text, '@alice review at github: use const');
+  assert.doesNotMatch(text, /source:/);
+  assert.doesNotMatch(text, /\[alice\]/);
+});
+
+test('discussionToNotes maps an inline comment onto hunk feedback', () => {
+  const items = itemsFromFiles(parseDiff(PR_DIFF), 'pr');
+  const notes = discussionToNotes(
+    {
+      reviewComments: [
+        {
+          id: 10,
+          user: { login: 'alice' },
+          body: 'use const',
+          path: 'lib/parser.js',
+          line: 2,
+          side: 'RIGHT',
+        },
+      ],
+    },
+    items,
+  );
+  assert.equal(notes.feedback.length, 1);
+  assert.equal(notes.todos.length, 0);
+  const note = notes.feedback[0];
+  assert.equal(note.file, 'lib/parser.js');
+  assert.equal(note.oldStart, 1);
+  assert.equal(note.newStart, 1);
+  assert.equal(note.blockId, 0);
+  assert.equal(note.origin, 'pr');
+  assert.equal(note.text, '@alice review at github: use const');
+  assert.doesNotMatch(note.text, /source:/);
+  assert.equal(note.done, false);
+});
+
+test('discussionToNotes maps file-level and general comments to todos', () => {
+  const items = itemsFromFiles(parseDiff(PR_DIFF), 'pr');
+  const fileComment = {
+    id: 11,
+    user: { login: 'bob' },
+    body: 'add types',
+    path: 'lib/parser.js',
+  };
+  fileComment['subject_type'] = 'file';
+  const notes = discussionToNotes(
+    {
+      reviewComments: [fileComment],
+      reviews: [
+        { user: { login: 'carol' }, body: 'Looks good overall' },
+        { user: { login: 'carol' }, body: '  ' },
+      ],
+      issueComments: [{ user: { login: 'dave' }, body: 'Please add tests' }],
+    },
+    items,
+  );
+  assert.equal(notes.feedback.length, 0);
+  assert.equal(notes.todos.length, 3);
+  assert.equal(notes.todos[0].file, 'lib/parser.js');
+  assert.match(notes.todos[0].text, /add types/);
+  assert.equal(notes.todos[1].file, 'pull request');
+  assert.match(notes.todos[1].text, /Looks good overall/);
+  assert.match(notes.todos[2].text, /Please add tests/);
+});
+
+test('discussionToNotes marks resolved inline comments done', () => {
+  const items = itemsFromFiles(parseDiff(PR_DIFF), 'pr');
+  const resolvedById = new Map([[10, true]]);
+  const notes = discussionToNotes(
+    {
+      reviewComments: [
+        {
+          id: 10,
+          user: { login: 'alice' },
+          body: 'use const',
+          path: 'lib/parser.js',
+          line: 2,
+          side: 'RIGHT',
+        },
+      ],
+      resolvedById,
+    },
+    items,
+  );
+  assert.equal(notes.feedback[0].done, true);
+  assert.equal(notes.feedback[0].text, '@alice review at github: use const');
+});
+
+test('discussionToNotes maps a later hunk block by new line', () => {
+  const item0 = {
+    origin: 'pr',
+    file: { newPath: 'a.js', oldPath: 'a.js' },
+    hunk: {
+      oldStart: 1,
+      oldCount: 5,
+      newStart: 1,
+      newCount: 5,
+      header: '@@ -1,5 +1,5 @@',
+      lines: [
+        { type: 'ctx', text: 'keep', noNl: false, blockId: null },
+        { type: 'del', text: 'a', noNl: false, blockId: 0 },
+        { type: 'add', text: 'b', noNl: false, blockId: 0 },
+        { type: 'ctx', text: 'mid', noNl: false, blockId: null },
+        { type: 'del', text: 'c', noNl: false, blockId: 1 },
+        { type: 'add', text: 'd', noNl: false, blockId: 1 },
+      ],
+    },
+    blockId: 0,
+  };
+  const item1 = { ...item0, blockId: 1 };
+  const notes = discussionToNotes(
+    {
+      reviewComments: [
+        {
+          id: 1,
+          user: { login: 'alice' },
+          body: 'rename d',
+          path: 'a.js',
+          line: 4,
+          side: 'RIGHT',
+        },
+      ],
+    },
+    [item0, item1],
+  );
+  assert.equal(notes.feedback.length, 1);
+  assert.equal(notes.feedback[0].blockId, 1);
+});
+
+test('discussionToNotes skips empty bodies and out of scope paths', () => {
+  const items = itemsFromFiles(parseDiff(PR_DIFF), 'pr');
+  const notes = discussionToNotes(
+    {
+      reviewComments: [
+        {
+          id: 1,
+          user: { login: 'a' },
+          body: '  ',
+          path: 'lib/parser.js',
+          line: 2,
+          side: 'RIGHT',
+        },
+        {
+          id: 2,
+          user: { login: 'a' },
+          body: 'readme nit',
+          path: 'README.md',
+          line: 1,
+          side: 'RIGHT',
+        },
+        {
+          id: 3,
+          user: { login: 'a' },
+          body: 'parser nit',
+          path: 'lib/parser.js',
+          line: 2,
+          side: 'RIGHT',
+        },
+      ],
+      issueComments: [{ user: { login: 'b' }, body: 'please add tests' }],
+    },
+    items,
+    ['lib'],
+  );
+  assert.equal(notes.feedback.length, 1);
+  assert.match(notes.feedback[0].text, /parser nit/);
+  assert.equal(notes.todos.length, 1);
+  assert.match(notes.todos[0].text, /please add tests/);
+});
+
+test('loadPullRequest imports review discussion', async () => {
+  const comment = {
+    id: 10,
+    user: { login: 'alice' },
+    body: 'use const',
+    path: 'lib/parser.js',
+    line: 2,
+    side: 'RIGHT',
+  };
+  const fetchImpl = mockFetch(PR_JSON, PR_DIFF, 200, {
+    reviewComments: [comment],
+    reviews: [{ user: { login: 'carol' }, body: 'Looks good overall' }],
+    issueComments: [{ user: { login: 'dave' }, body: 'Please add tests' }],
+    graphql: {
+      data: {
+        repository: {
+          pullRequest: {
+            reviewThreads: {
+              pageInfo: { hasNextPage: false, endCursor: null },
+              nodes: [
+                {
+                  isResolved: true,
+                  comments: { nodes: [{ databaseId: 10 }] },
+                },
+              ],
+            },
+          },
+        },
+      },
+    },
+  });
+  const loaded = await loadPullRequest(PR, { fetch: fetchImpl, token: '' });
+  assert.equal(loaded.imported.feedback.length, 1);
+  assert.equal(loaded.imported.feedback[0].done, true);
+  assert.match(loaded.imported.feedback[0].text, /use const/);
+  assert.equal(loaded.imported.todos.length, 2);
+});
+
+test('loadPullRequest paginates review comments', async () => {
+  const first = {
+    id: 1,
+    user: { login: 'a' },
+    body: 'first',
+    path: 'lib/parser.js',
+    line: 2,
+    side: 'RIGHT',
+  };
+  const second = {
+    id: 2,
+    user: { login: 'b' },
+    body: 'second',
+    path: 'lib/parser.js',
+    line: 2,
+    side: 'RIGHT',
+  };
+  const next = `${prApiUrl(PR)}/comments?page=2&per_page=100`;
+  let commentPages = 0;
+  const base = mockFetch(PR_JSON, PR_DIFF);
+  const fetchImpl = async (url, init) => {
+    if (`${url}`.includes('/pulls/') && `${url}`.includes('/comments')) {
+      commentPages += 1;
+      if (commentPages === 1) {
+        return jsonResponse(200, [first], {
+          Link: `<${next}>; rel="next"`,
+        });
+      }
+      return jsonResponse(200, [second]);
+    }
+    return base(url, init);
+  };
+  const loaded = await loadPullRequest(PR, { fetch: fetchImpl, token: '' });
+  assert.equal(commentPages, 2);
+  assert.equal(loaded.imported.feedback.length, 2);
+  assert.match(loaded.imported.feedback[0].text, /first/);
+  assert.match(loaded.imported.feedback[1].text, /second/);
+});
+
+test('loadPullRequest still opens when discussion import fails', async () => {
+  const base = mockFetch(PR_JSON, PR_DIFF);
+  const fetchImpl = async (url, init) => {
+    if (`${url}`.includes('/pulls/') && `${url}`.includes('/comments')) {
+      return jsonResponse(500, { message: 'boom' });
+    }
+    return base(url, init);
+  };
+  const loaded = await loadPullRequest(PR, {
+    fetch: fetchImpl,
+    token: '',
+    retry: { attempts: 1 },
+  });
+  assert.equal(loaded.change.number, 123);
+  assert.deepEqual(loaded.imported, { feedback: [], todos: [] });
+});
+
+test('loadPullRequest keeps comments if GraphQL resolved fails', async () => {
+  const comment = {
+    id: 10,
+    user: { login: 'alice' },
+    body: 'use const',
+    path: 'lib/parser.js',
+    line: 2,
+    side: 'RIGHT',
+  };
+  const base = mockFetch(PR_JSON, PR_DIFF, 200, {
+    reviewComments: [comment],
+  });
+  const fetchImpl = async (url, init) => {
+    if (`${url}`.includes('/graphql')) {
+      return jsonResponse(401, { message: 'Bad credentials' });
+    }
+    return base(url, init);
+  };
+  const loaded = await loadPullRequest(PR, { fetch: fetchImpl, token: '' });
+  assert.equal(loaded.imported.feedback.length, 1);
+  assert.equal(loaded.imported.feedback[0].done, false);
+  assert.match(loaded.imported.feedback[0].text, /use const/);
 });

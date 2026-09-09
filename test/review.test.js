@@ -11,6 +11,7 @@ const { allocateReviewPath, dateStamp, rankedTemplates } = review;
 const { prefixTemplates, upsertTemplate, createStore } = review;
 const { hasNotes, setFeedback, noteCounts, rememberTemplate } = review;
 const { addTodo, removeTodo, setTodoText, serializeReview } = review;
+const { applyImportedNotes } = review;
 const { flushReview, mergeTodos, loadTemplates, parseReview } = review;
 const { resolveReviewPath, latestReviewName } = review;
 const { REVIEW_STATUSES, parseFrontmatterStatus } = review;
@@ -423,4 +424,94 @@ test('mergeTodos puts one assigned todo page first per file', () => {
   assert.equal(draft[0].origin, 'todo');
   assert.equal(draft[0].file.newPath, 'a.js');
   assert.equal(draft[1], hunk);
+});
+
+test('applyImportedNotes maps comments onto feedback and todos', () => {
+  const store = createStore('/tmp/x.md');
+  applyImportedNotes(store, {
+    feedback: [
+      {
+        file: 'lib/parser.js',
+        oldStart: 1,
+        newStart: 1,
+        blockId: 0,
+        origin: 'pr',
+        header: '',
+        text: 'first',
+        done: true,
+      },
+      {
+        file: 'lib/parser.js',
+        oldStart: 1,
+        newStart: 1,
+        blockId: 0,
+        origin: 'pr',
+        header: '',
+        text: 'second',
+        done: true,
+      },
+    ],
+    todos: [
+      { file: 'pull request', text: 'add tests', done: false },
+      { file: 'lib/parser.js', text: 'types', done: true },
+    ],
+  });
+  const note = store.feedback.get('lib/parser.js:1:1:0');
+  assert.equal(note.text, 'first\n\nsecond');
+  assert.equal(note.done, true);
+  assert.equal(store.todos.length, 2);
+  assert.equal(store.todos[0].text, 'add tests');
+  assert.equal(store.todos[0].done, false);
+  assert.equal(store.todos[1].done, true);
+});
+
+test('applyImportedNotes keeps feedback open if any comment is open', () => {
+  const store = createStore('/tmp/x.md');
+  applyImportedNotes(store, {
+    feedback: [
+      {
+        file: 'a.js',
+        oldStart: 1,
+        newStart: 1,
+        blockId: 0,
+        text: 'a',
+        done: true,
+      },
+      {
+        file: 'a.js',
+        oldStart: 1,
+        newStart: 1,
+        blockId: 0,
+        text: 'b',
+        done: false,
+      },
+    ],
+  });
+  assert.equal(store.feedback.get('a.js:1:1:0').done, false);
+});
+
+test('imported feedback serializes reviewer and location once', () => {
+  const store = createStore('/repo/.review/2026-09-07-00.md');
+  applyImportedNotes(store, {
+    feedback: [
+      {
+        file: 'lib/websocket/frameParser.js',
+        oldStart: 127,
+        newStart: 127,
+        blockId: 0,
+        origin: 'pr',
+        text: '@tshemsedinov review at github: It is null by default',
+        done: false,
+      },
+    ],
+  });
+  const md = serializeReview(store);
+  const line =
+    '- [ ] @tshemsedinov review at github: It is null by default' +
+    ' - lib/websocket/frameParser.js:127:127:0';
+  assert.equal(md.includes(line), true);
+  assert.equal(md.split('tshemsedinov').length - 1, 1);
+  assert.doesNotMatch(md, /source:/);
+  assert.doesNotMatch(md, /reviewer:/);
+  assert.doesNotMatch(md, /line:/);
 });

@@ -54,13 +54,16 @@ test('AC12 clean repo prints nothing to review', async () => {
   }
 });
 
-test('parseArgv accepts -n and --new', () => {
+test('parseArgv accepts -n', () => {
   assert.equal(parseArgv([]).newReview, false);
   assert.equal(parseArgv(['-n']).newReview, true);
-  assert.equal(parseArgv(['--new', 'lib']).newReview, true);
-  assert.deepEqual(parseArgv(['--new', 'lib']).paths, ['lib']);
-  assert.match(helpText(), /-n \/ --new/);
-  assert.match(helpText(), /pull-request-url/);
+  assert.deepEqual(parseArgv(['-n', 'lib']).paths, ['lib']);
+  assert.equal(parseArgv(['-n', 'lib']).newReview, true);
+  assert.match(helpText(), /Use -n to start/);
+  assert.match(helpText(), /\[path \| commit \| pr-url\]/);
+  assert.doesNotMatch(helpText(), /--new/);
+  assert.doesNotMatch(helpText(), /path\.\.\./);
+  assert.throws(() => parseArgv(['--new']), /unknown option --new/);
 });
 
 test('unknown option exits 1', async () => {
@@ -87,9 +90,10 @@ test('AC22 resolveScope peels a commit from argv', () => {
   const peeled = resolveScope('/repo', ['7ac260c'], repo, missing);
   assert.equal(peeled.rev, '7ac260c3023283715b94337991458667b6c2a14d');
   assert.deepEqual(peeled.paths, []);
-  const scoped = resolveScope('/repo', ['7ac260c', 'lib'], repo, missing);
-  assert.equal(scoped.rev, peeled.rev);
-  assert.deepEqual(scoped.paths, ['lib']);
+  assert.throws(
+    () => resolveScope('/repo', ['7ac260c', 'lib'], repo, missing),
+    /commit or a path/,
+  );
   const exists = (full) => {
     if (full.endsWith(`${path.sep}src`)) return { isFile: () => false };
     throw Object.assign(new Error('enoent'), { code: 'ENOENT' });
@@ -112,6 +116,24 @@ test('AC22 unknown sha exits 1', async () => {
     const code = await run(proc);
     assert.equal(code, 1);
     assert.match(proc.stderrText(), /bad revision/);
+  } finally {
+    repo.cleanup();
+  }
+});
+
+test('commit plus a path exits 1', async () => {
+  const repo = makeRepo();
+  try {
+    repo.write('a.txt', 'ok\n');
+    repo.git(['add', 'a.txt']);
+    repo.git(['commit', '-m', 'init']);
+    const sha = repo.git(['rev-parse', 'HEAD']).trim();
+    const proc = fakeProc(repo.dir, {
+      argv: ['node', 'reslop', sha, 'a.txt'],
+    });
+    const code = await run(proc);
+    assert.equal(code, 1);
+    assert.match(proc.stderrText(), /commit or a path/);
   } finally {
     repo.cleanup();
   }
@@ -203,16 +225,23 @@ test('GitHub PR URL opens without a local git repository', async () => {
   }
 });
 
-test('optional review verb still opens a GitHub PR URL', async () => {
+test('review is not a subcommand before a GitHub PR URL', async () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'reslop-pr-'));
   try {
     const url = 'https://github.com/acme/app/pull/123';
     const proc = fakeProc(dir, {
       argv: ['node', 'reslop', 'review', url],
     });
-    const code = await run(proc, { loadPullRequest: mockPrLoad(dir) });
+    let loaded = false;
+    const code = await run(proc, {
+      loadPullRequest: async () => {
+        loaded = true;
+        return mockPrLoad(dir)();
+      },
+    });
+    assert.equal(loaded, false);
     assert.equal(code, 1);
-    assert.match(proc.stderrText(), /interactive terminal required/);
+    assert.match(proc.stderrText(), /not a git repository/);
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
   }
