@@ -11,7 +11,23 @@
   "files": [
     "bin/",
     "lib/",
-    "specs/"
+    "CHANGELOG.md"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/tshemsedinov/metadiff.git"
+  },
+  "homepage": "https://github.com/tshemsedinov/metadiff",
+  "bugs": {
+    "url": "https://github.com/tshemsedinov/metadiff/issues"
+  },
+  "keywords": [
+    "git",
+    "diff",
+    "review",
+    "cli",
+    "terminal",
+    "tui"
   ],
   "engines": {
     "node": ">=18"

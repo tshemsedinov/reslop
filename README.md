@@ -26,12 +26,6 @@ Local:
 npx reslop
 ```
 
-Unregister:
-
-```bash
-npm run disable
-```
-
 ## Usage
 
 ```bash
@@ -78,7 +72,7 @@ checkbox with ` - path:old:new:block` on the same line.
 | `←`         | Previous remaining block                |
 | `→`         | Next remaining block                    |
 | `l`         | File list (git status of this scope)    |
-| `Esc`       | Quit file list or a tool                |
+| `Esc`       | File list, then quit                    |
 | `m`         | Cycle unified / mixed / side-by-side    |
 | `f`         | Feedback on this diff block             |
 | `t`         | New todo for this file                  |
