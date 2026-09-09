@@ -14,16 +14,25 @@ those characters.
 
 ## Install
 
-From this directory, install the `reslop` command on PATH (any repo):
+Global:
 
 ```bash
-npm run enable
-source ~/.bashrc   # or open a new terminal
+npm i -g reslop
 ```
 
-That links `~/.local/bin/reslop` and writes `~/.bashrc.d/reslop.sh`
-so `~/.local/bin` is on PATH. After pulling changes, run enable again.
-Uninstall with `npm run disable`.
+Local:
+
+```bash
+npx reslop
+```
+
+Unregister:
+
+```bash
+npm run disable
+```
+
+## Usage
 
 ```bash
 reslop
@@ -35,9 +44,10 @@ reslop HEAD~1 path/to/file
 reslop --help
 ```
 
-No arguments, or a folder, opens a file list. A file argument opens
-that file's diff. A git revision that is not also an existing path
-opens that commit's patch.
+Starts on the diff. No arguments, or a folder, reviews that scope.
+A file argument opens that file's diff. A git revision that is not
+also an existing path opens that commit's patch. Esc opens the file
+list; Esc again quits.
 
 Specs go in `.review/YYYY-MM-DD-NN.md` with frontmatter `status`:
 
@@ -68,6 +78,7 @@ checkbox with ` - path:old:new:block` on the same line.
 | `←`         | Previous remaining block                |
 | `→`         | Next remaining block                    |
 | `l`         | File list (git status of this scope)    |
+| `Esc`       | Quit file list or a tool                |
 | `m`         | Cycle unified / mixed / side-by-side    |
 | `f`         | Feedback on this diff block             |
 | `t`         | New todo for this file                  |
