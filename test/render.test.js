@@ -541,9 +541,40 @@ test('header and file list keep a right-side gap', () => {
   assert.equal(header.startsWith(' '), true);
   assert.equal(header.endsWith(' '), true);
   assert.match(header, /👁️ {2}reslop/);
-  const row = stripAnsi(frame.rows[1]);
+  const row = stripAnsi(frame.rows[2]);
   assert.equal(row.endsWith(' '), true);
-  assert.match(row, /▷ a\.js/);
+  assert.match(row, /▶ a\.js/);
+});
+
+test('file list keeps a blank line before and after', () => {
+  const { stripAnsi, bg } = require('../lib/ansi.js');
+  const files = [
+    { path: 'a.js', status: 'unstaged', remaining: 1, firstIndex: 0 },
+    { path: 'b.js', status: 'staged', remaining: 1, firstIndex: 1 },
+  ];
+  const view = {
+    pane: 'files',
+    files,
+    fileCursor: 0,
+    repoName: 'demo',
+    counts: { staged: 1, unstaged: 1, untracked: 0 },
+    status: '',
+    help: false,
+    scroll: 0,
+  };
+  const frame = render.renderFrame(view, {
+    width: 40,
+    height: 8,
+    color: true,
+  });
+  assert.equal(stripAnsi(frame.rows[1]).trim(), '');
+  assert.ok(frame.rows[1].includes(bg(THEME.ctxBg)));
+  assert.match(stripAnsi(frame.rows[2]), /a\.js/);
+  assert.match(stripAnsi(frame.rows[3]), /b\.js/);
+  assert.equal(stripAnsi(frame.rows[4]).trim(), '');
+  assert.ok(frame.rows[4].includes(bg(THEME.ctxBg)));
+  assert.equal(frame.fileHits[0].y, 3);
+  assert.equal(frame.fileHits[1].y, 4);
 });
 
 test('header last column uses the light grey bar background', () => {
@@ -572,34 +603,29 @@ test('header last column uses the light grey bar background', () => {
   assert.ok(!body.includes(`${ESC}[2J`));
 });
 
-test('file list marks current file over cursor when they overlap', () => {
+test('file list marks only the cursor row', () => {
   const { stripAnsi } = require('../lib/ansi.js');
   const files = [
     { path: 'a.js', status: 'unstaged', remaining: 1, firstIndex: 0 },
     { path: 'b.js', status: 'staged', remaining: 1, firstIndex: 1 },
   ];
-  const base = {
-    pane: 'files',
-    files,
-    repoName: 'demo',
-    counts: { staged: 1, unstaged: 1, untracked: 0 },
-    status: '',
-    help: false,
-    scroll: 0,
-  };
-  const split = render.renderFrame(
-    { ...base, fileCursor: 0, reviewPath: 'b.js' },
+  const frame = render.renderFrame(
+    {
+      pane: 'files',
+      files,
+      fileCursor: 0,
+      reviewPath: 'b.js',
+      repoName: 'demo',
+      counts: { staged: 1, unstaged: 1, untracked: 0 },
+      status: '',
+      help: false,
+      scroll: 0,
+    },
     { width: 40, height: 8, color: false },
   );
-  assert.match(stripAnsi(split.rows[1]), /▷ a\.js/);
-  assert.match(stripAnsi(split.rows[2]), /▶ b\.js/);
-  const both = render.renderFrame(
-    { ...base, fileCursor: 1, reviewPath: 'b.js' },
-    { width: 40, height: 8, color: false },
-  );
-  assert.match(stripAnsi(both.rows[1]), / {2}a\.js/);
-  assert.match(stripAnsi(both.rows[2]), /▶ b\.js/);
-  assert.ok(!stripAnsi(both.rows[2]).includes('▷'));
+  assert.match(stripAnsi(frame.rows[2]), /▶ a\.js/);
+  assert.match(stripAnsi(frame.rows[3]), / {2}b\.js/);
+  assert.ok(!stripAnsi(frame.rows[3]).includes('▶'));
 });
 
 test('AC10 footer words highlight the bound letter', () => {
@@ -636,6 +662,13 @@ test('AC10 footer words highlight the bound letter', () => {
   const dimRow = dim.rows[dim.rows.length - 1];
   assert.match(dimRow, /add {2}unstage {2}revert {2}skip/);
   assert.ok(!dimRow.includes('['));
+  const skip = frame.buttons.find((hit) => hit.id === 'skip');
+  const mode = frame.buttons.find((hit) => hit.id === 'layout');
+  const feedback = frame.buttons.find((hit) => hit.id === 'feedback');
+  assert.equal(skip, undefined);
+  assert.equal(mode, undefined);
+  assert.equal(feedback, undefined);
+  assert.ok(frame.buttons.find((hit) => hit.id === 'add'));
 });
 
 test('AC26 file list status and counts are column-aligned', () => {
@@ -665,7 +698,7 @@ test('AC26 file list status and counts are column-aligned', () => {
     height: 10,
     color: false,
   });
-  const rows = [1, 2, 3].map((i) => stripAnsi(frame.rows[i]));
+  const rows = [2, 3, 4].map((i) => stripAnsi(frame.rows[i]));
   const columnEnds = (row) => {
     const t = row.trimEnd();
     let i = t.length - 1;
@@ -691,8 +724,38 @@ test('AC26 file list status and counts are column-aligned', () => {
     height: 4,
     color: false,
   });
-  const first = stripAnsi(slim.rows[1]);
+  const first = stripAnsi(slim.rows[2]);
   assert.match(first, /unstaged {3}4 $/);
+});
+
+test('file list paints git status colors', () => {
+  const files = [
+    { path: 'a.js', status: 'unstaged', remaining: 1, firstIndex: 0 },
+    { path: 'b.js', status: 'staged', remaining: 1, firstIndex: 1 },
+    { path: 'c.js', status: 'untracked', remaining: 1, firstIndex: 2 },
+    { path: 'd.js', status: 'partial', remaining: 2, firstIndex: 3 },
+  ];
+  const view = {
+    pane: 'files',
+    files,
+    fileCursor: 0,
+    repoName: 'demo',
+    counts: { staged: 1, unstaged: 1, untracked: 1 },
+    status: '',
+    help: false,
+    scroll: 0,
+  };
+  const frame = render.renderFrame(view, {
+    width: 48,
+    height: 10,
+    color: true,
+  });
+  assert.ok(frame.rows[2].includes(fg(THEME.delLineFg)));
+  assert.ok(frame.rows[3].includes(fg(THEME.addLineFg)));
+  assert.ok(frame.rows[4].includes(fg(THEME.mutedFg)));
+  assert.ok(frame.rows[5].includes(fg(THEME.warnFg)));
+  assert.ok(!frame.rows[3].includes(fg(THEME.delLineFg)));
+  assert.ok(!frame.rows[3].includes(fg(THEME.warnFg)));
 });
 
 test('AC25 header path roles use distinct greys', () => {

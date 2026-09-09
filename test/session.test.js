@@ -88,6 +88,7 @@ const openSession = (items, extra = {}) => {
     stdout,
     color: false,
     getSize: () => ({ width: 80, height: 16 }),
+    startPane: 'diff',
     ...reviewFs,
     ...extra,
     repo,
@@ -312,6 +313,7 @@ test('AC13 drag copies selected text', () => {
     cwd: '/tmp',
     stdout,
     color: false,
+    startPane: 'diff',
     getSize: () => ({ width: 80, height: 16 }),
     copyText: (text) => {
       copied.push(text);
@@ -397,6 +399,22 @@ test('escape from files with notes asks to finish or continue', () => {
   assert.equal(session.notes.status, 'editing');
 });
 
+test('starts on the file list', () => {
+  const item = sampleItem('a.js');
+  const repo = mockRepo([item]);
+  const stdout = sink();
+  const session = new Session({
+    repo,
+    cwd: '/tmp',
+    stdout,
+    color: false,
+    getSize: () => ({ width: 80, height: 16 }),
+    ...reviewFs,
+  });
+  session.load();
+  assert.equal(session.pane, 'files');
+});
+
 test('AC14 files pane lists paths and enter opens', () => {
   const a = sampleItem('a.js');
   const b = sampleItem('b.js');
@@ -419,8 +437,6 @@ test('AC14 files pane lists paths and enter opens', () => {
   assert.ok(!text.includes('@@'));
   assert.match(text, /a\.js/);
   assert.match(text, /b\.js/);
-  session.dispatch('add');
-  assert.equal(repo.added.length, 0);
   session.dispatch('scrollDown');
   assert.equal(session.fileCursor, 1);
   session.dispatch('open');
@@ -429,6 +445,110 @@ test('AC14 files pane lists paths and enter opens', () => {
   session.dispatch('files');
   assert.equal(session.pane, 'files');
   assert.equal(session.fileCursor, 1);
+});
+
+test('files pane add moves to the next file', () => {
+  const { session } = openSession(
+    [sampleItem('a.js'), sampleItem('b.js'), sampleItem('c.js')],
+    { startPane: 'files' },
+  );
+  session.dispatch('add');
+  assert.equal(session.fileCursor, 1);
+  assert.equal(session.fileList()[1].path, 'b.js');
+  assert.equal(session.items[0].origin, 'staged');
+  session.dispatch('prev');
+  session.dispatch('unstage');
+  assert.equal(session.fileCursor, 1);
+  assert.equal(session.items[0].origin, 'unstaged');
+});
+
+test('files pane add on last file keeps the cursor', () => {
+  const { session } = openSession(
+    [sampleItem('a.js'), sampleItem('b.js'), sampleItem('c.js')],
+    { startPane: 'files' },
+  );
+  session.dispatch('next');
+  session.dispatch('next');
+  assert.equal(session.fileCursor, 2);
+  session.reviewPath = 'a.js';
+  session.dispatch('add');
+  assert.equal(session.fileCursor, 2);
+  assert.equal(session.fileList()[2].path, 'c.js');
+  assert.equal(session.items[2].origin, 'staged');
+  session.dispatch('unstage');
+  assert.equal(session.fileCursor, 2);
+  assert.equal(session.items[2].origin, 'unstaged');
+});
+
+test('files pane add unstage revert apply to the whole file', () => {
+  const first = sampleItem('a.js');
+  const second = sampleItem('a.js');
+  second.blockId = 1;
+  second.hunk = {
+    ...second.hunk,
+    oldStart: 10,
+    newStart: 10,
+    header: '@@ -10,1 +10,1 @@',
+    blockId: 1,
+  };
+  const other = sampleItem('b.js');
+  const { session, repo } = openSession([first, second, other], {
+    startPane: 'files',
+  });
+  session.dispatch('add');
+  assert.equal(repo.added.length, 2);
+  assert.equal(repo.added[0].file.newPath, 'a.js');
+  assert.equal(repo.added[1].file.newPath, 'a.js');
+  assert.equal(session.items[0].origin, 'staged');
+  assert.equal(session.items[1].origin, 'staged');
+  assert.equal(session.items[2].origin, 'unstaged');
+  assert.equal(session.fileCursor, 1);
+  session.dispatch('prev');
+  session.dispatch('unstage');
+  assert.equal(repo.unstageCalls.length, 2);
+  assert.equal(session.items[0].origin, 'unstaged');
+  assert.equal(session.items[1].origin, 'unstaged');
+  assert.equal(session.fileCursor, 1);
+  session.dispatch('prev');
+  session.dispatch('revert');
+  assert.equal(repo.reverted.length, 2);
+  assert.equal(repo.reverted[0].file.newPath, 'a.js');
+  assert.equal(repo.reverted[1].file.newPath, 'a.js');
+  assert.equal(session.fileCursor, 0);
+  assert.equal(session.fileList()[0].path, 'b.js');
+});
+
+test('files pane disables skip mode and feedback', () => {
+  const { session } = openSession([sampleItem('a.js')], {
+    startPane: 'files',
+  });
+  session.dispatch('skip');
+  assert.equal(session.skipped.size, 0);
+  session.dispatch('layout');
+  assert.equal(session.layout, 'unified');
+  assert.equal(session.status, '');
+  session.dispatch('feedback');
+  assert.equal(session.mode, 'review');
+  assert.equal(session.pane, 'files');
+});
+
+test('files pane add on a staged file is already staged', () => {
+  const item = sampleItem('a.js', 'staged');
+  const next = sampleItem('b.js');
+  const { session, repo } = openSession([item, next], { startPane: 'files' });
+  session.dispatch('add');
+  assert.equal(session.status, 'already staged');
+  assert.equal(repo.added.length, 0);
+  assert.equal(session.fileCursor, 0);
+});
+
+test('files pane unstage on an unstaged file is not staged', () => {
+  const { session, repo } = openSession([sampleItem('a.js')], {
+    startPane: 'files',
+  });
+  session.dispatch('unstage');
+  assert.equal(session.status, 'not staged');
+  assert.equal(repo.unstageCalls.length, 0);
 });
 
 test('f maps feedback to the hunk location', () => {

@@ -109,7 +109,7 @@ test('displayLines shows latest sibling lines as context', () => {
 test('formatPatch mixed sides uses staged new context', () => {
   const file = parseDiff(SAMPLE)[0];
   const split = splitHunk(file.hunks[0]);
-  const sides = Object.assign(Object.create(null), { 0: 'new', 1: 'old' });
+  const sides = { 0: 'new', 1: 'old' };
   const patch = formatPatch(file, split.hunk, 1, sides);
   assert.match(patch, /^-BBB/m);
   assert.match(patch, /^\+bbb/m);
