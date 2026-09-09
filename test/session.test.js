@@ -203,6 +203,46 @@ test('AC21 commit add and revert are read only', () => {
   assert.equal(repo.added.length, 0);
 });
 
+test('PR add and revert are read only and feedback attaches', () => {
+  const item = sampleItem('lib/a.js', 'pr');
+  const { session, repo } = openSession([item], {
+    sourceLabel: '#12',
+    change: {
+      source: 'github-pr',
+      repository: 'acme/app',
+      title: 'Fix',
+      author: 'alice',
+      number: 12,
+    },
+    repoName: 'acme/app',
+  });
+  session.dispatch('add');
+  assert.equal(session.status, 'read only');
+  assert.equal(repo.added.length, 0);
+  session.dispatch('revert');
+  assert.equal(session.status, 'read only');
+  assert.equal(repo.reverted.length, 0);
+  session.dispatch('unstage');
+  assert.equal(session.status, 'read only');
+  const files = session.fileList();
+  assert.equal(files[0].status, '#12');
+  session.dispatch('feedback');
+  session.pushInput('prefer const');
+  session.handleEvent({ type: 'key', key: 'ctrl-s' });
+  const note = session.notes.feedback.get('lib/a.js:1:1:0');
+  assert.equal(note.text, 'prefer const');
+  assert.equal(session.counts().pr, 1);
+  assert.equal(session.counts().feedback, 1);
+  session.dispatch('next');
+  assert.equal(session.status, 'last block');
+  session.dispatch('prev');
+  assert.equal(session.current().file.newPath, 'lib/a.js');
+  const view = session.view();
+  assert.equal(view.sourceKind, 'pr');
+  assert.equal(view.sourceLabel, '#12');
+  assert.equal(view.repoName, 'acme/app');
+});
+
 test('AC9 hotkeys dispatch add revert skip next prev quit', () => {
   const a = sampleItem('a.js');
   const b = sampleItem('b.js');

@@ -838,6 +838,41 @@ test('commit review header and counts use short sha', () => {
   assert.match(frame.text, /commit 7ac260c {2}1 {2}feedback 0 {2}todo 0/);
 });
 
+test('PR review header and counts use pull request label', () => {
+  const hunk = {
+    oldStart: 1,
+    oldCount: 1,
+    newStart: 1,
+    newCount: 1,
+    header: '@@ -1,1 +1,1 @@',
+    lines: [{ type: 'add', text: 'x', noNl: false, blockId: 0 }],
+  };
+  const view = {
+    item: {
+      origin: 'pr',
+      file: { newPath: 'f.js', oldPath: 'f.js', isBinary: false },
+      hunk,
+      blockId: 0,
+    },
+    index: 0,
+    total: 1,
+    scroll: 0,
+    status: '',
+    help: false,
+    sourceKind: 'pr',
+    sourceLabel: '#123',
+    counts: { staged: 0, unstaged: 0, untracked: 0, commit: 0, pr: 1 },
+    repoName: 'acme/app',
+  };
+  assert.match(render.headerText(view), /reslop: acme\/app\/f\.js #123 1\/1/);
+  const frame = render.renderFrame(view, {
+    width: 80,
+    height: 16,
+    color: false,
+  });
+  assert.match(frame.text, /pr #123 {2}1 {2}feedback 0 {2}todo 0/);
+});
+
 test('compose panel sits above status and buttons', () => {
   const hunk = {
     oldStart: 1,

@@ -60,6 +60,7 @@ test('parseArgv accepts -n and --new', () => {
   assert.equal(parseArgv(['--new', 'lib']).newReview, true);
   assert.deepEqual(parseArgv(['--new', 'lib']).paths, ['lib']);
   assert.match(helpText(), /-n \/ --new/);
+  assert.match(helpText(), /pull-request-url/);
 });
 
 test('unknown option exits 1', async () => {
@@ -136,5 +137,119 @@ test('AC20 commit argv loads that commit not worktree', async () => {
     assert.equal(proc.stdoutText().includes('nothing to review'), false);
   } finally {
     repo.cleanup();
+  }
+});
+
+const prItem = () => ({
+  origin: 'pr',
+  file: {
+    oldPath: 'lib/a.js',
+    newPath: 'lib/a.js',
+    isNew: false,
+    isDeleted: false,
+    isBinary: false,
+    preamble: ['diff --git a/lib/a.js b/lib/a.js'],
+    hunks: [],
+  },
+  hunk: {
+    oldStart: 1,
+    oldCount: 1,
+    newStart: 1,
+    newCount: 1,
+    header: '@@ -1,1 +1,1 @@',
+    lines: [
+      { type: 'del', text: 'a', noNl: false, blockId: 0 },
+      { type: 'add', text: 'b', noNl: false, blockId: 0 },
+    ],
+  },
+  blockId: 0,
+  patchAdd: '',
+  patchRevert: '',
+});
+
+const mockPrLoad =
+  (dir, extra = {}) =>
+  async () => ({
+    top: dir,
+    items: extra.items ?? [prItem()],
+    sourceLabel: extra.sourceLabel ?? '#123',
+    change: {
+      source: 'github-pr',
+      title: extra.title ?? 'Fix parser',
+      author: extra.author ?? 'alice',
+      repository: extra.repository ?? 'acme/app',
+      number: extra.number ?? 123,
+      base: extra.base ?? 'main',
+      head: extra.head ?? 'fix-parser',
+      url: extra.url ?? 'https://github.com/acme/app/pull/123',
+      files: extra.files ?? ['lib/a.js'],
+    },
+  });
+
+test('GitHub PR URL opens without a local git repository', async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'reslop-pr-'));
+  try {
+    const url = 'https://github.com/acme/app/pull/123';
+    const proc = fakeProc(dir, {
+      argv: ['node', 'reslop', url],
+    });
+    const code = await run(proc, { loadPullRequest: mockPrLoad(dir) });
+    assert.equal(code, 1);
+    assert.match(proc.stderrText(), /interactive terminal required/);
+    assert.doesNotMatch(proc.stderrText(), /not a git repository/);
+    assert.equal(proc.stdoutText().includes('nothing to review'), false);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('optional review verb still opens a GitHub PR URL', async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'reslop-pr-'));
+  try {
+    const url = 'https://github.com/acme/app/pull/123';
+    const proc = fakeProc(dir, {
+      argv: ['node', 'reslop', 'review', url],
+    });
+    const code = await run(proc, { loadPullRequest: mockPrLoad(dir) });
+    assert.equal(code, 1);
+    assert.match(proc.stderrText(), /interactive terminal required/);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('empty GitHub PR prints nothing to review', async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'reslop-pr-'));
+  try {
+    const url = 'https://github.com/acme/app/pull/123';
+    const proc = fakeProc(dir, {
+      argv: ['node', 'reslop', url],
+    });
+    const code = await run(proc, {
+      loadPullRequest: mockPrLoad(dir, { items: [] }),
+    });
+    assert.equal(code, 0);
+    assert.equal(proc.stdoutText(), 'nothing to review\n');
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('GitHub PR load errors exit 1', async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'reslop-pr-'));
+  try {
+    const url = 'https://github.com/acme/app/pull/123';
+    const proc = fakeProc(dir, {
+      argv: ['node', 'reslop', url],
+    });
+    const code = await run(proc, {
+      loadPullRequest: async () => {
+        throw new Error('GitHub pull request not found');
+      },
+    });
+    assert.equal(code, 1);
+    assert.match(proc.stderrText(), /GitHub pull request not found/);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
   }
 });

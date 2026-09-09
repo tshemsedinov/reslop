@@ -28,5 +28,8 @@
     "eslint-config-metarhia": "^9.1.9",
     "metaskills": "^1.0.5",
     "prettier": "^3.8.4"
+  },
+  "dependencies": {
+    "metautil": "^5.5.2"
   }
 }

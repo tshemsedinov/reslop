@@ -6,7 +6,9 @@
 - Leave feedback, add todos.
 - Generate a plan the agent executes.
 
-Walk uncommitted git changes, or a given commit. Each contiguous block of diff lines can be staged, unstaged, reverted; add review and todos. Commit review is read-only.
+Walk uncommitted git changes, a given commit, or a GitHub pull request.
+Each contiguous block of diff lines can be staged, unstaged, reverted;
+add review and todos. Commit and pull request review is read-only.
 
 Intra-line highlighting paints the words that actually changed in a
 stronger red/green. A close edit inside one word still marks only
@@ -41,6 +43,7 @@ reslop path/to/folder
 reslop path/to/file
 reslop 7ac260c
 reslop HEAD~1 path/to/file
+reslop https://github.com/owner/repository/pull/123
 reslop --help
 ```
 
