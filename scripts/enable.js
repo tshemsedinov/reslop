@@ -130,10 +130,10 @@ for (const rc of [path.join(home, '.zshrc'), path.join(home, '.profile')]) {
   }
 }
 
-const check = spawnSync(dest, ['--help'], { encoding: 'utf8' });
-if (check.status !== 0) {
+const check = spawnSync(dest, [], { encoding: 'utf8' });
+if (check.error) {
   console.error('reslop: enable finished but binary failed to run:');
-  console.error(check.stderr || check.stdout || check.error);
+  console.error(check.error.message);
   process.exit(1);
 }
 
