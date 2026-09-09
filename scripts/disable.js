@@ -6,35 +6,35 @@ const os = require('node:os');
 const path = require('node:path');
 
 const home = os.homedir();
-const destDir = process.env.METADIFF_BIN_DIR
-  ? path.resolve(process.env.METADIFF_BIN_DIR)
+const destDir = process.env.RESLOP_BIN_DIR
+  ? path.resolve(process.env.RESLOP_BIN_DIR)
   : path.join(home, '.local', 'bin');
-const dest = path.join(destDir, 'metadiff');
+const dest = path.join(destDir, 'reslop');
 
-const MARK_BEGIN = '# >>> metadiff >>>';
-const MARK_END = '# <<< metadiff <<<';
+const MARK_BEGIN = '# >>> reslop >>>';
+const MARK_END = '# <<< reslop <<<';
 
 try {
   if (fs.existsSync(dest) || fs.lstatSync(dest).isSymbolicLink()) {
     fs.unlinkSync(dest);
-    console.log(`metadiff: removed ${dest}`);
+    console.log(`reslop: removed ${dest}`);
   } else {
-    console.log(`metadiff: nothing to remove at ${dest}`);
+    console.log(`reslop: nothing to remove at ${dest}`);
   }
 } catch (error) {
-  console.log(`metadiff: could not remove bin (${error.message})`);
+  console.log(`reslop: could not remove bin (${error.message})`);
 }
 
-const dropIn = path.join(home, '.bashrc.d', 'metadiff.sh');
+const dropIn = path.join(home, '.bashrc.d', 'reslop.sh');
 if (fs.existsSync(dropIn)) {
   fs.unlinkSync(dropIn);
-  console.log(`metadiff: removed ${dropIn}`);
+  console.log(`reslop: removed ${dropIn}`);
 }
 
-const envFile = path.join(home, '.config', 'environment.d', 'metadiff.conf');
+const envFile = path.join(home, '.config', 'environment.d', 'reslop.conf');
 if (fs.existsSync(envFile)) {
   fs.unlinkSync(envFile);
-  console.log(`metadiff: removed ${envFile}`);
+  console.log(`reslop: removed ${envFile}`);
 }
 
 const profiles = [
@@ -51,8 +51,8 @@ for (const filePath of profiles) {
     const re = new RegExp(`${MARK_BEGIN}[\\s\\S]*?${MARK_END}\\n?`, 'm');
     text = text.replace(re, '');
     fs.writeFileSync(filePath, text);
-    console.log(`metadiff: cleaned ${filePath}`);
+    console.log(`reslop: cleaned ${filePath}`);
   } catch (error) {
-    console.log(`metadiff: skip ${filePath} (${error.message})`);
+    console.log(`reslop: skip ${filePath} (${error.message})`);
   }
 }

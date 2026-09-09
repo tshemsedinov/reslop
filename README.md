@@ -1,53 +1,54 @@
-# metadiff
+# reslop
 
-Interactive terminal review of uncommitted git changes, or of a given
-commit. Each contiguous block of diff lines can be staged, unstaged,
-reverted to `HEAD`, skipped, or stepped with next/prev. Commit review
-is read-only.
+> Review diff and plan changes
+
+- Prepare specs for the agent.
+- Leave feedback, add todos.
+- Generate a plan the agent executes.
+
+Walk uncommitted git changes, or a given commit. Each contiguous block of diff lines can be staged, unstaged, reverted; add review and todos. Commit review is read-only.
 
 Intra-line highlighting paints the words that actually changed in a
 stronger red/green. A close edit inside one word still marks only
 those characters.
 
-Specs: [specs/README.md](specs/README.md).
-
 ## Install
 
-From this directory, install the `metadiff` command on PATH (any repo):
+From this directory, install the `reslop` command on PATH (any repo):
 
 ```bash
 npm run enable
 source ~/.bashrc   # or open a new terminal
 ```
 
-That links `~/.local/bin/metadiff` and writes `~/.bashrc.d/metadiff.sh`
+That links `~/.local/bin/reslop` and writes `~/.bashrc.d/reslop.sh`
 so `~/.local/bin` is on PATH. After pulling changes, run enable again.
 Uninstall with `npm run disable`.
 
 ```bash
-metadiff
-metadiff -n
-metadiff path/to/folder
-metadiff path/to/file
-metadiff 7ac260c
-metadiff HEAD~1 path/to/file
-metadiff --help
+reslop
+reslop -n
+reslop path/to/folder
+reslop path/to/file
+reslop 7ac260c
+reslop HEAD~1 path/to/file
+reslop --help
 ```
 
 No arguments, or a folder, opens a file list. A file argument opens
 that file's diff. A git revision that is not also an existing path
 opens that commit's patch.
 
-Notes go in `.review/YYYY-MM-DD-NN.md` with frontmatter `status`:
+Specs go in `.review/YYYY-MM-DD-NN.md` with frontmatter `status`:
 
 | Status  | Meaning                                     |
 | ------- | ------------------------------------------- |
-| editing | Still writing the review in metadiff        |
+| editing | Still writing the review in reslop          |
 | ready   | Ready for AI to work through the checkboxes |
 | partial | AI started; some items remain               |
 | done    | All items marked `[x]`                      |
 
-`metadiff` resumes the latest file when its status is `editing`. Any other
+`reslop` resumes the latest file when its status is `editing`. Any other
 status starts a new file. `-n` / `--new` always starts a new file. Quit asks
 `f` (finish as `ready`, for the agent to execute) or `c` (keep `editing` and
 continue next time). The agent should execute `ready` and `partial` reviews.
@@ -74,11 +75,6 @@ checkbox with ` - path:old:new:block` on the same line.
 | `⏎`         | Open the selected file                  |
 | `q`         | Quit                                    |
 | `?`         | Help                                    |
-
-The footer draws the same actions as clickable words (the bound
-letter is bold white; no `[a Add]` brackets). Drag to select text;
-release copies to the clipboard (OSC 52, then `wl-copy` / `xclip` /
-`xsel`).
 
 ## License
 

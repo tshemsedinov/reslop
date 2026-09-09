@@ -349,7 +349,7 @@ test('AC14 files pane lists paths and enter opens', () => {
   assert.equal(session.pane, 'files');
   session.draw();
   const text = stdout.dump();
-  assert.match(text, /metadiff: tmp\/a\.js\s+unstaged 1\/2/);
+  assert.match(text, /reslop: tmp\/a\.js\s+unstaged 1\/2/);
   assert.ok(!text.includes('@@'));
   assert.match(text, /a\.js/);
   assert.match(text, /b\.js/);

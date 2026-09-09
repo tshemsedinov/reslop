@@ -59,7 +59,7 @@ test('AC2 muted line color differs from strong char color', () => {
   assert.ok(!frame.text.includes(fg(THEME.delLineFg)));
   assert.equal(frame.rows.length, 16);
   assert.ok(!frame.text.includes('@@'));
-  assert.match(render.headerText(view), /metadiff: demo\/f\.js unstaged 1\/1/);
+  assert.match(render.headerText(view), /reslop: demo\/f\.js unstaged 1\/1/);
 });
 
 test('AC27 side layout paints old left and new right', () => {
@@ -540,7 +540,7 @@ test('header and file list keep a right-side gap', () => {
   const header = stripAnsi(frame.rows[0]);
   assert.equal(header.startsWith(' '), true);
   assert.equal(header.endsWith(' '), true);
-  assert.match(header, /👁️ {2}metadiff/);
+  assert.match(header, /👁️ {2}reslop/);
   const row = stripAnsi(frame.rows[1]);
   assert.equal(row.endsWith(' '), true);
   assert.match(row, /▷ a\.js/);
@@ -829,7 +829,7 @@ test('commit review header and counts use short sha', () => {
     counts: { staged: 0, unstaged: 0, untracked: 0, commit: 1 },
     repoName: 'demo',
   };
-  assert.match(render.headerText(view), /metadiff: demo\/f\.js 7ac260c 1\/1/);
+  assert.match(render.headerText(view), /reslop: demo\/f\.js 7ac260c 1\/1/);
   const frame = render.renderFrame(view, {
     width: 80,
     height: 16,

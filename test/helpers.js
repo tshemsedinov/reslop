@@ -14,7 +14,7 @@ const gitEnv = {
 };
 
 const makeRepo = () => {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'metadiff-'));
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'reslop-'));
   const git = (args, input) => {
     const result = spawnSync('git', args, {
       cwd: dir,

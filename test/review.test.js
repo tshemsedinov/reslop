@@ -151,7 +151,7 @@ test('serializeReview groups todos then feedback with position', () => {
   });
   const md = serializeReview(store);
   assert.match(md, /status: editing/);
-  assert.match(md, /# metadiff review 2026-09-07-00/);
+  assert.match(md, /# reslop review 2026-09-07-00/);
   assert.match(md, /## Agent instructions/);
   assert.match(md, /^## lib\/session\.js$/m);
   assert.ok(!md.includes('> lib/session.js'));
@@ -159,7 +159,7 @@ test('serializeReview groups todos then feedback with position', () => {
   assert.ok(!md.includes('### Feedback'));
   assert.match(md, /- \[ \] rewrite the retry loop/);
   assert.match(md, /- \[ \] extract a helper - lib\/session\.js:84:84:0/);
-  assert.ok(!md.includes('<!-- metadiff:'));
+  assert.ok(!md.includes('<!-- reslop:'));
   assert.ok(!md.includes('Feedback `'));
   assert.ok(!md.includes('@@ -84,12 +84,20 @@'));
   assert.equal(hasNotes(store), true);
@@ -221,7 +221,7 @@ test('parseReview reads the old HTML comment feedback format', () => {
     '',
     '### Feedback `lib/database.js` +41 (@@ -41,1 +41,1 @@, block 0)',
     '',
-    '<!-- metadiff:staged:lib/database.js:41:41:0 -->',
+    '<!-- reslop:staged:lib/database.js:41:41:0 -->',
     '- [ ] old note',
     '',
   ].join('\n');
@@ -344,7 +344,7 @@ test('setTodoText deletes empty todos without template history', () => {
 });
 
 test('flushReview writes markdown and templates when notes exist', () => {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'metadiff-review-'));
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'reslop-review-'));
   try {
     const reviewPath = path.join(dir, '.review', '2026-09-07-00.md');
     const store = createStore(reviewPath);

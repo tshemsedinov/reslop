@@ -8,7 +8,7 @@ const fail = (reason) => {
   try {
     process.stdout.write(LEAVE_TERM);
   } catch {}
-  process.stderr.write(`metadiff: ${errorMessage(reason)}\n`);
+  process.stderr.write(`reslop: ${errorMessage(reason)}\n`);
   process.exit(1);
 };
 

@@ -62,6 +62,22 @@ test('AC19 identifier replace marks whole words', () => {
   );
 });
 
+test('snake_case segment replace marks the whole segment', () => {
+  const oldText = 'const destDir = process.env.METADIFF_BIN_DIR';
+  const newText = 'const destDir = process.env.RESLOP_BIN_DIR';
+  const diff = diffChars(oldText, newText);
+  assert.equal(changedText(diff.oldSpans), 'METADIFF');
+  assert.equal(changedText(diff.newSpans), 'RESLOP');
+  assert.equal(
+    unchangedText(diff.oldSpans),
+    'const destDir = process.env._BIN_DIR',
+  );
+  assert.equal(
+    unchangedText(diff.newSpans),
+    'const destDir = process.env._BIN_DIR',
+  );
+});
+
 const KEYS_FOR = [
   '  const keys = Object.keys(delta);',
   '  for (const key of keys) {',
