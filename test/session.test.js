@@ -331,6 +331,32 @@ test('draw writes once for an unchanged frame', () => {
   assert.ok(!extra.includes('[2J'));
 });
 
+test('escape from diff opens the file list, then quits', () => {
+  const { session } = openSession([sampleItem('a.js'), sampleItem('b.js')]);
+  assert.equal(session.pane, 'diff');
+  session.handleEvent({ type: 'key', key: 'escape' });
+  assert.equal(session.pane, 'files');
+  assert.equal(session.done, false);
+  session.handleEvent({ type: 'key', key: 'escape' });
+  assert.equal(session.done, true);
+});
+
+test('escape from files with notes asks to finish or continue', () => {
+  const { session } = openSession([sampleItem('a.js')]);
+  session.dispatch('feedback');
+  session.pushInput('nits');
+  session.handleEvent({ type: 'key', key: 'ctrl-s' });
+  session.handleEvent({ type: 'key', key: 'escape' });
+  assert.equal(session.pane, 'files');
+  assert.equal(session.done, false);
+  session.handleEvent({ type: 'key', key: 'escape' });
+  assert.equal(session.done, false);
+  assert.equal(session.mode, 'confirmQuit');
+  session.pushInput('c');
+  assert.equal(session.done, true);
+  assert.equal(session.notes.status, 'editing');
+});
+
 test('AC14 files pane lists paths and enter opens', () => {
   const a = sampleItem('a.js');
   const b = sampleItem('b.js');

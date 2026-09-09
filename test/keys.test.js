@@ -69,6 +69,7 @@ test('actionFromKey matches ACTIONS', () => {
   assert.equal(actionFromKey('backspace'), 'removeTodo');
   assert.equal(actionFromKey('delete'), 'removeTodo');
   assert.equal(actionFromKey('q'), 'quit');
+  assert.equal(actionFromKey('escape'), null);
 });
 
 test('layoutButtons hitboxes cover labels', () => {
