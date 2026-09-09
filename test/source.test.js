@@ -13,12 +13,11 @@ test('selectChangeSource recognizes a GitHub pull request URL', () => {
   assert.deepEqual(selected.paths, []);
 });
 
-test('selectChangeSource peels optional review verb before a PR URL', () => {
+test('selectChangeSource does not treat review as a subcommand', () => {
   const url = 'https://github.com/acme/app/pull/123';
   const selected = selectChangeSource(['review', url, 'lib']);
-  assert.equal(selected.kind, 'github-pr');
-  assert.equal(selected.pr.number, 123);
-  assert.deepEqual(selected.paths, ['lib']);
+  assert.equal(selected.kind, 'local');
+  assert.deepEqual(selected.paths, ['review', url, 'lib']);
 });
 
 test('selectChangeSource keeps local paths and commits', () => {

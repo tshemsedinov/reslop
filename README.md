@@ -39,11 +39,9 @@ npm run disable
 ```bash
 reslop
 reslop -n
-reslop path/to/folder
-reslop path/to/file
+reslop path/file
 reslop 7ac260c
-reslop HEAD~1 path/to/file
-reslop https://github.com/owner/repository/pull/123
+reslop https://github.com/metarhia/metacom/pull/555
 reslop --help
 ```
 

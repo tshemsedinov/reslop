@@ -81,16 +81,16 @@ const reviewFs = {
 };
 
 const openSession = (items, extra = {}) => {
-  const repo = mockRepo(items);
+  const repo = extra.repo ?? mockRepo(items);
   const stdout = sink();
   const session = new Session({
-    repo,
     cwd: '/tmp',
     stdout,
     color: false,
     getSize: () => ({ width: 80, height: 16 }),
     ...reviewFs,
     ...extra,
+    repo,
   });
   session.load();
   return { session, repo, stdout };
@@ -1068,4 +1068,75 @@ test('quit without notes does not write a review file', () => {
   session.dispatch('quit');
   assert.equal(session.done, true);
   assert.equal(writes.length, 0);
+});
+
+test('load applies imported GitHub notes on a new review', () => {
+  const item = sampleItem('lib/parser.js', 'pr');
+  const imported = {
+    feedback: [
+      {
+        file: 'lib/parser.js',
+        oldStart: 1,
+        newStart: 1,
+        blockId: 0,
+        origin: 'pr',
+        header: '@@ -1,1 +1,1 @@',
+        text: '@alice review at github: use const',
+        done: false,
+      },
+    ],
+    todos: [
+      {
+        file: 'pull request',
+        text: '@bob review at github: add tests',
+        done: false,
+      },
+    ],
+  };
+  const repo = {
+    load: () => ({
+      top: '/tmp',
+      items: [item],
+      imported,
+      sourceLabel: '#123',
+    }),
+    add: () => {},
+    unstage: () => {},
+    revert: () => {},
+  };
+  const { session } = openSession([item], { repo });
+  const notes = [...session.notes.feedback.values()];
+  assert.equal(notes.length, 1);
+  assert.match(notes[0].text, /use const/);
+  assert.equal(session.notes.todos.length, 1);
+  assert.equal(session.notes.todos[0].file, 'pull request');
+  assert.equal(
+    session.items.some((entry) => entry.origin === 'todo'),
+    true,
+  );
+  session.load();
+  assert.equal(session.notes.todos.length, 1);
+});
+
+test('load skips imported GitHub notes when resuming a review', () => {
+  const draft = createStore('/tmp/.review/2026-09-07-00.md');
+  addTodo(draft, 'a.js', 'rewrite loop');
+  const md = serializeReview(draft);
+  const item = sampleItem('lib/parser.js', 'pr');
+  const imported = {
+    feedback: [],
+    todos: [{ file: 'pull request', text: 'from github', done: false }],
+  };
+  const { session } = openSession([item], {
+    repo: {
+      load: () => ({ top: '/tmp', items: [item], imported }),
+      add: () => {},
+      unstage: () => {},
+      revert: () => {},
+    },
+    readdirSync: () => ['2026-09-07-00.md'],
+    readFileSync: reviewReader(md),
+  });
+  assert.equal(session.notes.todos.length, 1);
+  assert.equal(session.notes.todos[0].text, 'rewrite loop');
 });
