@@ -16,7 +16,7 @@ const fakeProc = (cwd, extra = {}) => {
   const stdout = sink();
   const stderr = sink();
   return {
-    argv: extra.argv ?? ['node', 'metadiff'],
+    argv: extra.argv ?? ['node', 'reslop'],
     cwd: () => cwd,
     stdin: { isTTY: extra.tty ?? false },
     stdout,
@@ -28,7 +28,7 @@ const fakeProc = (cwd, extra = {}) => {
 };
 
 test('AC11 not a git directory exits 1', async () => {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'metadiff-nogit-'));
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'reslop-nogit-'));
   try {
     const proc = fakeProc(dir);
     const code = await run(proc);
@@ -64,7 +64,7 @@ test('parseArgv accepts -n and --new', () => {
 
 test('unknown option exits 1', async () => {
   const proc = fakeProc(process.cwd(), {
-    argv: ['node', 'metadiff', '--nope'],
+    argv: ['node', 'reslop', '--nope'],
   });
   const code = await run(proc);
   assert.equal(code, 1);
@@ -119,7 +119,7 @@ test('AC22 unknown sha exits 1', async () => {
     repo.git(['commit', '-m', 'init']);
     const fake = 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa';
     const proc = fakeProc(repo.dir, {
-      argv: ['node', 'metadiff', fake],
+      argv: ['node', 'reslop', fake],
     });
     const code = await run(proc);
     assert.equal(code, 1);
@@ -141,7 +141,7 @@ test('AC20 commit argv loads that commit not worktree', async () => {
     const sha = repo.git(['rev-parse', 'HEAD']).trim();
     repo.write('a.txt', 'DIRTY\n');
     const proc = fakeProc(repo.dir, {
-      argv: ['node', 'metadiff', sha],
+      argv: ['node', 'reslop', sha],
     });
     const code = await run(proc);
     assert.equal(code, 1);

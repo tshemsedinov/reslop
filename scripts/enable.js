@@ -7,15 +7,15 @@ const path = require('node:path');
 const { spawnSync } = require('node:child_process');
 
 const root = path.resolve(__dirname, '..');
-const binSrc = path.join(root, 'bin', 'metadiff.js');
+const binSrc = path.join(root, 'bin', 'reslop.js');
 const home = os.homedir();
-const destDir = process.env.METADIFF_BIN_DIR
-  ? path.resolve(process.env.METADIFF_BIN_DIR)
+const destDir = process.env.RESLOP_BIN_DIR
+  ? path.resolve(process.env.RESLOP_BIN_DIR)
   : path.join(home, '.local', 'bin');
-const dest = path.join(destDir, 'metadiff');
+const dest = path.join(destDir, 'reslop');
 
-const MARK_BEGIN = '# >>> metadiff >>>';
-const MARK_END = '# <<< metadiff <<<';
+const MARK_BEGIN = '# >>> reslop >>>';
+const MARK_END = '# <<< reslop <<<';
 
 const shellBlock = `${MARK_BEGIN}
 export PATH="$HOME/.local/bin:$PATH"
@@ -44,7 +44,7 @@ const upsertShellConfig = (filePath) => {
   if (text.length && !text.endsWith('\n')) text += '\n';
   text += `\n${shellBlock}`;
   fs.writeFileSync(filePath, text);
-  console.log(`metadiff: updated ${filePath}`);
+  console.log(`reslop: updated ${filePath}`);
 };
 
 const removeMarkedBlock = (filePath) => {
@@ -54,9 +54,9 @@ const removeMarkedBlock = (filePath) => {
     if (!text.includes(MARK_BEGIN)) return;
     text = stripMarkedBlock(text);
     fs.writeFileSync(filePath, text);
-    console.log(`metadiff: cleaned old block from ${filePath}`);
+    console.log(`reslop: cleaned old block from ${filePath}`);
   } catch (error) {
-    console.log(`metadiff: skip ${filePath} (${error.message})`);
+    console.log(`reslop: skip ${filePath} (${error.message})`);
   }
 };
 
@@ -73,7 +73,7 @@ const installBin = () => {
 
   try {
     fs.symlinkSync(binSrc, dest);
-    console.log(`metadiff: linked ${dest} → ${binSrc}`);
+    console.log(`reslop: linked ${dest} → ${binSrc}`);
   } catch (error) {
     try {
       fs.unlinkSync(dest);
@@ -85,11 +85,11 @@ exec node ${JSON.stringify(binSrc)} "$@"
 `;
     try {
       fs.writeFileSync(dest, wrapper, { mode: 0o755, flag: 'wx' });
-      console.log(`metadiff: installed wrapper ${dest}`);
+      console.log(`reslop: installed wrapper ${dest}`);
       console.log(`(symlink failed: ${error.message}; used wrapper instead)`);
     } catch (writeError) {
       console.error(
-        `metadiff: could not install bin at ${dest}: ${writeError.message}`,
+        `reslop: could not install bin at ${dest}: ${writeError.message}`,
       );
       process.exit(1);
     }
@@ -99,26 +99,26 @@ exec node ${JSON.stringify(binSrc)} "$@"
 installBin();
 
 const bashrcd = path.join(home, '.bashrc.d');
-const dropIn = path.join(bashrcd, 'metadiff.sh');
+const dropIn = path.join(bashrcd, 'reslop.sh');
 try {
   if (fs.existsSync(bashrcd) || fs.existsSync(path.join(home, '.bashrc'))) {
     fs.mkdirSync(bashrcd, { recursive: true });
     fs.writeFileSync(dropIn, shellBlock, { mode: 0o644 });
-    console.log(`metadiff: wrote ${dropIn}`);
+    console.log(`reslop: wrote ${dropIn}`);
     removeMarkedBlock(path.join(home, '.bashrc'));
   }
 } catch (error) {
-  console.log(`metadiff: skip shell drop-in (${error.message})`);
+  console.log(`reslop: skip shell drop-in (${error.message})`);
 }
 
 try {
   const envDir = path.join(home, '.config', 'environment.d');
   fs.mkdirSync(envDir, { recursive: true });
-  const envFile = path.join(envDir, 'metadiff.conf');
+  const envFile = path.join(envDir, 'reslop.conf');
   fs.writeFileSync(envFile, `PATH=${destDir}:$PATH\n`);
-  console.log(`metadiff: wrote ${envFile}`);
+  console.log(`reslop: wrote ${envFile}`);
 } catch (error) {
-  console.log(`metadiff: skip environment.d (${error.message})`);
+  console.log(`reslop: skip environment.d (${error.message})`);
 }
 
 for (const rc of [path.join(home, '.zshrc'), path.join(home, '.profile')]) {
@@ -126,13 +126,13 @@ for (const rc of [path.join(home, '.zshrc'), path.join(home, '.profile')]) {
   try {
     upsertShellConfig(rc);
   } catch (error) {
-    console.log(`metadiff: skip ${rc} (${error.message})`);
+    console.log(`reslop: skip ${rc} (${error.message})`);
   }
 }
 
 const check = spawnSync(dest, ['--help'], { encoding: 'utf8' });
 if (check.status !== 0) {
-  console.error('metadiff: enable finished but binary failed to run:');
+  console.error('reslop: enable finished but binary failed to run:');
   console.error(check.stderr || check.stdout || check.error);
   process.exit(1);
 }
@@ -141,9 +141,9 @@ const ready = [
   '',
   'Ready. Apply in this terminal:',
   '',
-  '  source ~/.bashrc.d/metadiff.sh',
+  '  source ~/.bashrc.d/reslop.sh',
   '',
-  'Then run metadiff from any git repository.',
+  'Then run reslop from any git repository.',
   '',
 ];
 console.log(ready.join('\n'));

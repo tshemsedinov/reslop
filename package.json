@@ -1,12 +1,12 @@
 {
-  "name": "metadiff",
+  "name": "reslop",
   "version": "0.1.0",
   "description": "Interactive terminal git diff with intra-line highlighting",
   "license": "MIT",
   "author": "Timur Shemsedinov <timur.shemsedinov@gmail.com>",
   "main": "lib/api.js",
   "bin": {
-    "metadiff": "bin/metadiff.js"
+    "reslop": "bin/reslop.js"
   },
   "files": [
     "bin/",
