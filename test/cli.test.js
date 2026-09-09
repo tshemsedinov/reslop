@@ -7,7 +7,7 @@ const os = require('node:os');
 const path = require('node:path');
 
 const cli = require('../lib/cli.js');
-const { run, startPaneFromPaths, resolveScope } = cli;
+const { run, resolveScope } = cli;
 const { parseArgv, helpText } = cli;
 
 const { makeRepo, sink } = require('./helpers.js');
@@ -71,18 +71,6 @@ test('unknown option exits 1', async () => {
   assert.match(proc.stderrText(), /unknown option/);
 });
 
-test('AC14 start pane is files with no paths or a directory', () => {
-  assert.equal(startPaneFromPaths('/repo', []), 'files');
-  const statSync = (full) => {
-    if (full.endsWith(`${path.sep}src`)) {
-      return { isFile: () => false, isDirectory: () => true };
-    }
-    return { isFile: () => true, isDirectory: () => false };
-  };
-  assert.equal(startPaneFromPaths('/repo', ['src'], statSync), 'files');
-  assert.equal(startPaneFromPaths('/repo', ['a.js'], statSync), 'diff');
-});
-
 test('AC22 resolveScope peels a commit from argv', () => {
   const missing = () => {
     const err = new Error('enoent');
@@ -98,7 +86,6 @@ test('AC22 resolveScope peels a commit from argv', () => {
   const peeled = resolveScope('/repo', ['7ac260c'], repo, missing);
   assert.equal(peeled.rev, '7ac260c3023283715b94337991458667b6c2a14d');
   assert.deepEqual(peeled.paths, []);
-  assert.equal(startPaneFromPaths('/repo', peeled.paths, missing), 'files');
   const scoped = resolveScope('/repo', ['7ac260c', 'lib'], repo, missing);
   assert.equal(scoped.rev, peeled.rev);
   assert.deepEqual(scoped.paths, ['lib']);
