@@ -1,6 +1,6 @@
 {
   "name": "reslop",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Interactive code review and repair planning for AI-assisted changes",
   "keywords": [
     "code-review",
@@ -23,7 +23,7 @@
     "planning",
     "security-review",
     "quality-review",
-    "maintenability",
+    "maintainability",
     "refactoring"
   ],
   "homepage": "https://github.com/tshemsedinov/reslop",
@@ -42,7 +42,8 @@
   },
   "files": [
     "bin/",
-    "lib/"
+    "lib/",
+    "CHANGELOG.md"
   ],
   "engines": {
     "node": ">=18"
