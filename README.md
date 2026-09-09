@@ -1,8 +1,15 @@
-# reslop
+# reslop — Review diff and plan changes
 
-> Review diff and plan changes
+> Turn generated changes into owned changes
 
-- Prepare specs for the agent.
+```text
+Review → Plan → Repair → Verify
+```
+
+`0.1.x` implements Review: open a change, leave findings and todos, and
+prepare a repair plan for the agent. Plan, repair, and verify come later.
+
+- Prepare review findings and a repair plan for the agent.
 - Leave feedback, add todos.
 - Generate a plan the agent executes.
 
@@ -30,28 +37,12 @@ reslop 7ac260c
 reslop https://github.com/metarhia/metacom/pull/555
 ```
 
-Starts on the diff. No arguments, or a folder, reviews that scope.
-A file argument opens that file's diff. A git revision that is not
-also an existing path opens that commit's patch. Esc opens the file
-list; Esc again quits.
+Reviews go in `.review/YYYY-MM-DD-NN.md` with frontmatter `status`:
 
-Specs go in `.review/YYYY-MM-DD-NN.md` with frontmatter `status`:
-
-| Status  | Meaning                                     |
-| ------- | ------------------------------------------- |
-| editing | Still writing the review in reslop          |
-| ready   | Ready for AI to work through the checkboxes |
-| partial | AI started; some items remain               |
-| done    | All items marked `[x]`                      |
-
-`reslop` resumes the latest file when its status is `editing`. Any other
-status starts a new file. `-n` / `--new` always starts a new file. Quit asks
-`f` (finish as `ready`, for the agent to execute) or `c` (keep `editing` and
-continue next time). The agent should execute `ready` and `partial` reviews.
-Files in `.review/` are omitted from the diff list.
-
-A `##` heading names the file. Todos are checkboxes under it. Feedback is a
-checkbox with ` - path:old:new:block` on the same line.
+- `editing`: still writing the review in reslop
+- `ready`: ready for AI to work through the checkboxes
+- `partial`: AI started; some items remain
+- `done`: all items marked `[x]`
 
 ## Keys and buttons
 

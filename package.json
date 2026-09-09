@@ -1,17 +1,48 @@
 {
   "name": "reslop",
   "version": "0.1.0",
-  "description": "Interactive terminal git diff with intra-line highlighting",
+  "description": "Interactive code review and repair planning for AI-assisted changes",
+  "keywords": [
+    "code-review",
+    "git",
+    "diff",
+    "ai",
+    "llm",
+    "coding-agent",
+    "repair-plan",
+    "human-in-the-loop",
+    "tui",
+    "code-quality",
+    "developer-tools",
+    "deslop",
+    "neuroslop",
+    "agent",
+    "agentic",
+    "vibecoding",
+    "sdd",
+    "planning",
+    "security-review",
+    "quality-review",
+    "maintenability",
+    "refactoring"
+  ],
+  "homepage": "https://github.com/tshemsedinov/reslop",
+  "bugs": {
+    "url": "https://github.com/tshemsedinov/reslop/issues"
+  },
   "license": "MIT",
   "author": "Timur Shemsedinov <timur.shemsedinov@gmail.com>",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/tshemsedinov/reslop.git"
+  },
   "main": "lib/api.js",
   "bin": {
     "reslop": "bin/reslop.js"
   },
   "files": [
     "bin/",
-    "lib/",
-    "specs/"
+    "lib/"
   ],
   "engines": {
     "node": ">=18"
