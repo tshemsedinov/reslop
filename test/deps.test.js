@@ -23,6 +23,14 @@ const pkgJson = (dependencies, extra = {}) => {
   return `${JSON.stringify(body, null, 2)}\n`;
 };
 
+const pkgLib = (dependencies, extra = {}) =>
+  pkgJson(dependencies, { main: 'index.js', ...extra });
+
+const noExportPkg = (name) => {
+  const bin = { [name]: 'cli.js' };
+  return `${JSON.stringify({ name, bin }, null, 2)}\n`;
+};
+
 const lockV3 = (dependencies, versions) => {
   const packages = { '': { dependencies } };
   for (const [name, version] of Object.entries(versions)) {
@@ -127,6 +135,12 @@ const sessionFor = (dir) => {
 };
 
 const hunkTexts = (item) => item.hunk.lines.map((line) => line.text);
+
+const assertBlankAfter = (lines, heading) => {
+  const at = lines.indexOf(heading);
+  assert.ok(at >= 0, heading);
+  assert.equal(lines[at + 1], '');
+};
 
 const depByName = (items, name) => {
   for (const item of items) {
@@ -272,12 +286,12 @@ test('foldDepItems splits each dependency into its own item', () => {
   assert.deepEqual(folded[2].dep.files, ['package.json', 'package-lock.json']);
   const added = hunkTexts(folded[1]);
   assert.equal(added[0], DEP_CAPTION);
-  assert.ok(added.includes('dependency added'));
+  assertBlankAfter(added, 'dependency added');
   assert.ok(added.some((line) => line.includes('leftpad')));
   assert.ok(!added.some((line) => line.includes('lodash')));
   const bumped = hunkTexts(folded[2]);
   assert.equal(bumped[0], DEP_CAPTION);
-  assert.ok(bumped.includes('dependency version changed'));
+  assertBlankAfter(bumped, 'dependency version changed');
   assert.equal(bumped.filter((line) => line.includes('lodash')).length, 2);
   assert.ok(!bumped.some((line) => line.includes('leftpad')));
 });
@@ -291,8 +305,8 @@ test('foldDepItems marks an added dependency that is not imported', () => {
     items,
     sidesOf({
       'package.json': {
-        oldText: pkgJson(oldDeps),
-        newText: pkgJson(newDeps),
+        oldText: pkgLib(oldDeps),
+        newText: pkgLib(newDeps),
       },
       'package-lock.json': {
         oldText: lockV3(oldDeps, { lodash: '4.17.20' }),
@@ -304,7 +318,13 @@ test('foldDepItems marks an added dependency that is not imported', () => {
   const leftpad = depByName(folded, 'leftpad');
   assert.ok(leftpad);
   assert.equal(leftpad.dep.change.unused, true);
-  assert.ok(hunkTexts(leftpad).includes('dependency added, unused'));
+  assert.equal(leftpad.dep.change.propose, true);
+  const lines = hunkTexts(leftpad);
+  const heading = 'npm uninstall: dependency unused';
+  const entry = '"leftpad": "1.0.0"';
+  assertBlankAfter(lines, heading);
+  const gone = leftpad.hunk.lines.find((line) => line.text === entry);
+  assert.equal(gone.type, 'del');
 });
 
 test('foldDepItems does not mark an imported added dependency unused', () => {
@@ -324,9 +344,110 @@ test('foldDepItems does not mark an imported added dependency unused', () => {
   );
   const leftpad = depByName(folded, 'leftpad');
   assert.ok(leftpad);
-  assert.equal(leftpad.dep.change.unused, false);
+  assert.ok(!leftpad.dep.change.unused);
   assert.ok(hunkTexts(leftpad).includes('dependency added'));
   assert.ok(!hunkTexts(leftpad).includes('dependency added, unused'));
+  assert.ok(!hunkTexts(leftpad).includes('npm uninstall: dependency unused'));
+});
+
+test('foldDepItems does not mark unused without an export entry', () => {
+  const oldDeps = { lodash: '^4.17.20' };
+  const newDeps = { lodash: '^4.17.20', leftpad: '1.0.0' };
+  const items = [dummyItem('package.json')];
+  const used = new Set(['lodash']);
+  const folded = foldDepItems(
+    items,
+    sidesOf({
+      'package.json': {
+        oldText: pkgJson(oldDeps),
+        newText: pkgJson(newDeps),
+      },
+    }),
+    used,
+  );
+  const leftpad = depByName(folded, 'leftpad');
+  assert.ok(leftpad);
+  assert.ok(!leftpad.dep.change.unused);
+  assertBlankAfter(hunkTexts(leftpad), 'dependency added');
+  assert.ok(!hunkTexts(leftpad).includes('npm uninstall: dependency unused'));
+});
+
+test('proposeDepItems shows an unused dependency as a removal', () => {
+  const used = new Set(['eslint']);
+  const pkg = pkgLib({ eslint: '^9.39.5', leftpad: '1.0.0' });
+  const proposed = proposeDepItems(pkg, null, null, { usedNames: used });
+  const item = depByName(proposed, 'leftpad');
+  assert.ok(item);
+  assert.equal(item.dep.change.propose, true);
+  assert.equal(item.dep.change.unused, true);
+  assert.equal(item.dep.change.action, 'removed');
+  const lines = hunkTexts(item);
+  assertBlankAfter(lines, 'npm uninstall: dependency unused');
+  const entry = '"leftpad": "1.0.0"';
+  const gone = item.hunk.lines.find((line) => line.text === entry);
+  assert.equal(gone.type, 'del');
+  assert.equal(depByName(proposed, 'eslint'), null);
+});
+
+test('proposeDepItems skips unused without an export entry', () => {
+  const used = new Set(['eslint']);
+  const pkg = pkgJson({ eslint: '^9.39.5', leftpad: '1.0.0' });
+  const proposed = proposeDepItems(pkg, null, null, { usedNames: used });
+  assert.equal(depByName(proposed, 'leftpad'), null);
+});
+
+test('foldDepItems skips unused for a dep with no exports', () => {
+  const repo = makeRepo();
+  try {
+    const oldDeps = { lodash: '^4.17.20' };
+    const newDeps = { lodash: '^4.17.20', metaskills: '^1.0.5' };
+    repo.write(
+      'node_modules/metaskills/package.json',
+      noExportPkg('metaskills'),
+    );
+    const items = [dummyItem('package.json')];
+    const used = new Set(['lodash']);
+    const folded = foldDepItems(
+      items,
+      sidesOf({
+        'package.json': {
+          oldText: pkgLib(oldDeps),
+          newText: pkgLib(newDeps),
+        },
+      }),
+      used,
+      null,
+      null,
+      { root: repo.dir },
+    );
+    const item = depByName(folded, 'metaskills');
+    assert.ok(item);
+    assert.ok(!item.dep.change.unused);
+    assertBlankAfter(hunkTexts(item), 'dependency added');
+    const heading = 'npm uninstall: dependency unused';
+    assert.ok(!hunkTexts(item).includes(heading));
+  } finally {
+    repo.cleanup();
+  }
+});
+
+test('proposeDepItems skips unused for a dep with no exports', () => {
+  const repo = makeRepo();
+  try {
+    repo.write(
+      'node_modules/metaskills/package.json',
+      noExportPkg('metaskills'),
+    );
+    const used = new Set(['eslint']);
+    const pkg = pkgLib({ eslint: '^9.39.5', metaskills: '^1.0.5' });
+    const proposed = proposeDepItems(pkg, null, null, {
+      usedNames: used,
+      root: repo.dir,
+    });
+    assert.equal(depByName(proposed, 'metaskills'), null);
+  } finally {
+    repo.cleanup();
+  }
 });
 
 test('parseAuditReport reads npm audit v2 vulnerabilities', () => {
@@ -363,7 +484,9 @@ test('parseAuditReport keeps every advisory title', () => {
         via: [
           {
             name: 'brace-expansion',
-            title: 'DoS via exponential-time expansion of consecutive groups',
+            title:
+              'brace-expansion: DoS via exponential-time expansion of ' +
+              'consecutive groups',
           },
           {
             name: 'brace-expansion',
@@ -377,6 +500,7 @@ test('parseAuditReport keeps every advisory title', () => {
   const found = audit.get('brace-expansion');
   assert.equal(found.titles.length, 2);
   assert.ok(found.titles[0].startsWith('brace-expansion: DoS via exponential'));
+  assert.ok(!found.titles[0].includes('brace-expansion: brace-expansion:'));
   assert.ok(found.titles[1].includes('unbounded expansion length'));
 });
 
@@ -467,7 +591,7 @@ test('proposeDepItems shows an outdated bump as a diff', () => {
   assert.equal(item.dep.change.propose, true);
   assert.equal(item.dep.change.to, '^4.17.21');
   const lines = hunkTexts(item);
-  assert.ok(lines.includes('npm outdated: dependency version changed'));
+  assertBlankAfter(lines, 'npm outdated: dependency version changed');
   assert.ok(!lines.some((line) => line.startsWith('npm outdated  ')));
 });
 
@@ -558,6 +682,8 @@ test('proposeDepItems shows a transitive npm audit finding', () => {
   assert.equal(lines[titleAt + 5], note);
   const title = item.hunk.lines.find((line) => line.text === heading);
   assert.equal(title.type, 'warn');
+  const noteLine = item.hunk.lines.find((line) => line.text === note);
+  assert.equal(noteLine.type, 'note');
   const oldLine = item.hunk.lines.find((line) => line.text === oldEntry);
   const newLine = item.hunk.lines.find((line) => line.text === newEntry);
   assert.equal(oldLine.type, 'del');
@@ -722,7 +848,9 @@ test('foldDepItems hides lockfile-only noise', () => {
   assert.deepEqual(folded[1].dep.files, ['package-lock.json']);
   assert.equal(folded[1].dep.change.section, 'resolved');
   assert.equal(folded[1].dep.change.name, 'lodash');
-  assert.equal(hunkTexts(folded[1])[0], DEP_CAPTION);
+  const lockLines = hunkTexts(folded[1]);
+  assert.equal(lockLines[0], DEP_CAPTION);
+  assertBlankAfter(lockLines, 'lockfile resolved version changed');
 });
 
 test('foldDepItems pairs nested package.json with its lockfile', () => {
@@ -824,17 +952,82 @@ test('load marks an added dependency that is not imported', () => {
     const newDeps = { lodash: '^4.17.20', leftpad: '1.0.0' };
     const newVers = { lodash: '4.17.20', leftpad: '1.0.0' };
     repo.write('app.js', 'const _ = require("lodash");\n');
-    repo.write('package.json', pkgJson(oldDeps));
+    repo.write('package.json', pkgLib(oldDeps));
     repo.write('package-lock.json', lockV3(oldDeps, { lodash: '4.17.20' }));
     repo.git(['add', '.']);
     repo.git(['commit', '-m', 'init']);
-    repo.write('package.json', pkgJson(newDeps));
+    repo.write('package.json', pkgLib(newDeps));
     repo.write('package-lock.json', lockV3(newDeps, newVers));
     const loaded = load(repo.dir);
     const leftpad = depByName(loaded.items, 'leftpad');
     assert.ok(leftpad);
     assert.equal(leftpad.dep.change.unused, true);
-    assert.ok(hunkTexts(leftpad).includes('dependency added, unused'));
+    assert.equal(leftpad.dep.change.propose, true);
+    const lines = hunkTexts(leftpad);
+    assertBlankAfter(lines, 'npm uninstall: dependency unused');
+    const entry = '"leftpad": "1.0.0"';
+    const gone = leftpad.hunk.lines.find((line) => line.text === entry);
+    assert.equal(gone.type, 'del');
+  } finally {
+    repo.cleanup();
+  }
+});
+
+test('load proposes an unused dependency with no package diffs', () => {
+  const repo = makeRepo();
+  try {
+    const deps = { lodash: '^4.17.20', leftpad: '1.0.0' };
+    repo.write('app.js', 'const _ = require("lodash");\n');
+    repo.write('package.json', pkgLib(deps));
+    repo.write(
+      'package-lock.json',
+      lockV3(deps, {
+        lodash: '4.17.20',
+        leftpad: '1.0.0',
+      }),
+    );
+    repo.git(['add', '.']);
+    repo.git(['commit', '-m', 'init']);
+    const loaded = load(repo.dir, [], {
+      audit: true,
+      outdatedMap: null,
+      auditMap: null,
+    });
+    const item = depByName(loaded.items, 'leftpad');
+    assert.ok(item);
+    assert.equal(item.dep.change.propose, true);
+    assert.equal(item.dep.change.unused, true);
+    assertBlankAfter(hunkTexts(item), 'npm uninstall: dependency unused');
+  } finally {
+    repo.cleanup();
+  }
+});
+
+test('load does not propose unused for a dep with no exports', () => {
+  const repo = makeRepo();
+  try {
+    const deps = { lodash: '^4.17.20', metaskills: '^1.0.5' };
+    repo.write('app.js', 'const _ = require("lodash");\n');
+    repo.write('package.json', pkgLib(deps));
+    repo.write(
+      'package-lock.json',
+      lockV3(deps, {
+        lodash: '4.17.20',
+        metaskills: '1.0.5',
+      }),
+    );
+    repo.write(
+      'node_modules/metaskills/package.json',
+      noExportPkg('metaskills'),
+    );
+    repo.git(['add', '.']);
+    repo.git(['commit', '-m', 'init']);
+    const loaded = load(repo.dir, [], {
+      audit: true,
+      outdatedMap: null,
+      auditMap: null,
+    });
+    assert.equal(depByName(loaded.items, 'metaskills'), null);
   } finally {
     repo.cleanup();
   }
@@ -908,6 +1101,45 @@ test('add on a proposed update writes package.json and runs npm i', () => {
     const cached = repo.git(['diff', '--cached', '--name-only']);
     assert.match(cached, /package\.json/);
     assert.match(cached, /package-lock\.json/);
+  } finally {
+    repo.cleanup();
+  }
+});
+
+test('add on an unused dependency runs npm uninstall', () => {
+  const repo = makeRepo();
+  try {
+    const keep = { lodash: '^4.17.20' };
+    const added = { lodash: '^4.17.20', leftpad: '1.0.0' };
+    repo.write('app.js', 'const _ = require("lodash");\n');
+    repo.write('package.json', pkgLib(keep));
+    repo.write('package-lock.json', lockV3(keep, { lodash: '4.17.20' }));
+    repo.git(['add', '.']);
+    repo.git(['commit', '-m', 'init']);
+    repo.write('package.json', pkgLib(added));
+    repo.write(
+      'package-lock.json',
+      lockV3(added, {
+        lodash: '4.17.20',
+        leftpad: '1.0.0',
+      }),
+    );
+    const loaded = load(repo.dir);
+    const item = depByName(loaded.items, 'leftpad');
+    assert.ok(item);
+    let removed = '';
+    item.dep.install = (cwd) => {
+      removed = cwd;
+      repo.write('package.json', pkgJson(keep));
+      repo.write('package-lock.json', lockV3(keep, { lodash: '4.17.20' }));
+      return { status: 0 };
+    };
+    addItem(loaded.top, item);
+    assert.equal(removed, repo.dir);
+    const pkg = JSON.parse(repo.read('package.json'));
+    assert.equal(pkg.dependencies.leftpad, undefined);
+    const lock = JSON.parse(repo.read('package-lock.json'));
+    assert.equal(lock.packages['node_modules/leftpad'], undefined);
   } finally {
     repo.cleanup();
   }
@@ -1259,15 +1491,16 @@ test('render shows a readable dependency summary', () => {
   assert.doesNotMatch(text, /node_modules/);
 });
 
-test('render paints npm audit lines red and wraps long advisories', () => {
-  const long =
+test('render paints npm audit notes grey with separators', () => {
+  const first =
     'brace-expansion: DoS via exponential-time expansion of ' +
     'consecutive non-expanding groups';
+  const second = 'brace-expansion: DoS via unbounded expansion length';
   const audit = new Map();
   audit.set('brace-expansion', {
     severity: 'high',
-    title: long,
-    titles: [long],
+    title: first,
+    titles: [first, second],
     range: '<=1.1.17',
   });
   const pkg = pkgJson({ eslint: '^9.39.5' });
@@ -1286,20 +1519,26 @@ test('render paints npm audit lines red and wraps long advisories', () => {
       help: false,
       counts: { staged: 0, unstaged: 1, untracked: 0 },
     },
-    { width: 42, height: 22, color: true },
+    { width: 42, height: 24, color: true },
   );
   const text = stripAnsi(frame.text);
   assert.match(text, /lockfile vulnerable/);
-  assert.match(text, /"brace-expansion": "1.1.15"/);
-  assert.match(text, /"brace-expansion": "1.1.18"/);
   assert.match(text, /exponential-time/);
-  assert.match(text, /consecutive/);
+  assert.match(text, /unbounded expansion/);
+  assert.doesNotMatch(text, /brace-expansion: brace-expansion:/);
+  assert.match(text, /─/);
   const red = bg(THEME.delLineBg);
-  const painted = frame.rows.some((row) => {
+  const grey = bg(THEME.noteBg);
+  const heading = frame.rows.some((row) => {
     if (!row.includes(red)) return false;
+    return stripAnsi(row).includes('lockfile vulnerable');
+  });
+  const note = frame.rows.some((row) => {
+    if (!row.includes(grey)) return false;
     return stripAnsi(row).includes('npm audit');
   });
-  assert.ok(painted);
+  assert.ok(heading);
+  assert.ok(note);
 });
 
 test('lockPackageCount ignores the root package entry', () => {
