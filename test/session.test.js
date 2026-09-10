@@ -7,6 +7,7 @@ const { Session } = require('../lib/session.js');
 const { hitAction } = require('../lib/keys.js');
 const { sink } = require('./helpers.js');
 const { createStore, addTodo, serializeReview } = require('../lib/review.js');
+const { stripAnsi } = require('../lib/ansi.js');
 
 const sampleItem = (name, origin = 'unstaged') => ({
   origin,
@@ -57,6 +58,13 @@ const mockRepo = (initial) => {
       reverted.push(item);
       items = items.filter((entry) => entry !== item);
     },
+    revertFile: (top, rel, group) => {
+      const targets = group && group.length ? group : [];
+      for (const item of targets) {
+        reverted.push(item);
+        items = items.filter((entry) => entry !== item);
+      }
+    },
   };
 };
 
@@ -97,34 +105,20 @@ const openSession = (items, extra = {}) => {
   return { session, repo, stdout };
 };
 
-test('AC6 skip then prev keeps first unstaged', () => {
+test('prev at first block stays and next reaches last', () => {
   const a = sampleItem('a.js');
   const b = sampleItem('b.js');
   const c = sampleItem('c.js');
-  const { session, repo } = openSession([a, b, c]);
-  session.dispatch('skip');
-  assert.equal(session.current().file.newPath, 'b.js');
-  assert.equal(repo.added.length, 0);
+  const { session } = openSession([a, b, c]);
   session.dispatch('prev');
-  assert.equal(session.current().file.newPath, 'b.js');
+  assert.equal(session.current().file.newPath, 'a.js');
   assert.equal(session.status, 'first block');
   session.dispatch('next');
-  assert.equal(session.current().file.newPath, 'c.js');
-  session.dispatch('prev');
   assert.equal(session.current().file.newPath, 'b.js');
-});
-
-test('skip last remaining leaves git unchanged', () => {
-  const a = sampleItem('a.js');
-  const { session, repo } = openSession([a]);
-  session.dispatch('skip');
-  assert.equal(session.current(), null);
-  assert.equal(session.status, 'all skipped');
-  assert.equal(repo.added.length, 0);
   session.dispatch('next');
-  assert.equal(session.status, 'all skipped');
-  session.dispatch('add');
-  assert.equal(repo.added.length, 0);
+  assert.equal(session.current().file.newPath, 'c.js');
+  session.dispatch('next');
+  assert.equal(session.status, 'last block');
 });
 
 test('AC8 add on staged is a no-op with status', () => {
@@ -199,8 +193,8 @@ test('AC21 commit add and revert are read only', () => {
   assert.equal(repo.unstageCalls.length, 0);
   const files = session.fileList();
   assert.equal(files[0].status, '7ac260c');
-  session.dispatch('skip');
-  assert.equal(session.status, 'all skipped');
+  session.dispatch('next');
+  assert.equal(session.status, 'last block');
   assert.equal(repo.added.length, 0);
 });
 
@@ -244,7 +238,7 @@ test('PR add and revert are read only and feedback attaches', () => {
   assert.equal(view.repoName, 'acme/app');
 });
 
-test('AC9 hotkeys dispatch add revert skip next prev quit', () => {
+test('AC9 hotkeys dispatch add revert next prev quit', () => {
   const a = sampleItem('a.js');
   const b = sampleItem('b.js');
   const c = sampleItem('c.js');
@@ -254,11 +248,9 @@ test('AC9 hotkeys dispatch add revert skip next prev quit', () => {
   assert.equal(session.current().file.newPath, 'b.js');
   session.pushInput('p');
   assert.equal(session.current().file.newPath, 'a.js');
-  session.pushInput('s');
-  assert.equal(session.current().file.newPath, 'b.js');
   session.pushInput('a');
   assert.equal(repo.added.length, 1);
-  assert.equal(repo.added[0].file.newPath, 'b.js');
+  assert.equal(repo.added[0].file.newPath, 'a.js');
   session.pushInput('r');
   assert.equal(repo.reverted.length, 1);
   session.pushInput('m');
@@ -364,7 +356,7 @@ test('draw writes once for an unchanged frame', () => {
   assert.equal(stdout.dump(), first);
   assert.ok(first.includes('[?2026h'));
   assert.ok(first.includes('[2J'));
-  session.dispatch('skip');
+  session.dispatch('layout');
   session.draw();
   const second = stdout.dump();
   assert.ok(second.length > first.length);
@@ -518,12 +510,10 @@ test('files pane add unstage revert apply to the whole file', () => {
   assert.equal(session.fileList()[0].path, 'b.js');
 });
 
-test('files pane disables skip mode and feedback', () => {
+test('files pane disables mode and feedback', () => {
   const { session } = openSession([sampleItem('a.js')], {
     startPane: 'files',
   });
-  session.dispatch('skip');
-  assert.equal(session.skipped.size, 0);
   session.dispatch('layout');
   assert.equal(session.layout, 'unified');
   assert.equal(session.status, '');
@@ -567,7 +557,6 @@ test('f maps feedback to the hunk location', () => {
   assert.equal(session.counts().feedback, 1);
   assert.equal(session.counts().todo, 0);
   assert.equal(session.idleNoteText(), '[ ] extract helper');
-  assert.equal(session.idleNoteKind(), 'feedback');
 });
 
 test('compose arrows move by visual wrap rows', () => {
@@ -671,7 +660,6 @@ test('feedback templates are picked with tab arrows enter and click', () => {
   session.dispatch('feedback');
   assert.equal(session.mode, 'compose');
   session.draw();
-  const { stripAnsi } = require('../lib/ansi.js');
   const body = stripAnsi(session.lastFrame.rows.join('\n'));
   assert.match(body, /extract helper/);
   assert.match(body, /add tests/);
@@ -722,7 +710,6 @@ test('feedback templates filter by prefix and hide if none match', () => {
   ];
   session.dispatch('feedback');
   session.draw();
-  const { stripAnsi } = require('../lib/ansi.js');
   let body = stripAnsi(session.lastFrame.rows.join('\n'));
   assert.match(body, /extract helper/);
   assert.match(body, /add tests/);
@@ -766,7 +753,6 @@ test('exact template text hides the template list', () => {
   session.dispatch('feedback');
   session.pushInput('extract helper');
   session.draw();
-  const { stripAnsi } = require('../lib/ansi.js');
   const body = stripAnsi(session.lastFrame.rows.join('\n'));
   assert.match(body, /extract helper/);
   assert.ok(!body.includes('add tests'));
@@ -789,7 +775,6 @@ test('existing unique feedback hides the template list', () => {
   });
   session.dispatch('feedback');
   session.draw();
-  const { stripAnsi } = require('../lib/ansi.js');
   const body = stripAnsi(session.lastFrame.rows.join('\n'));
   assert.match(body, /unique note/);
   assert.ok(!body.includes('extract helper'));
@@ -802,7 +787,6 @@ test('todo edits in the list not the note line', () => {
   session.dispatch('todo');
   session.pushInput('in the list');
   session.draw();
-  const { stripAnsi } = require('../lib/ansi.js');
   const body = stripAnsi(session.lastFrame.rows.join('\n'));
   assert.match(body, /\[ \] in the list/);
   assert.equal(body.split('in the list').length - 1, 1);
@@ -1015,7 +999,6 @@ test('todo list stays on screen while composing', () => {
   session.pushInput('draft two');
   assert.equal(session.mode, 'compose');
   session.draw();
-  const { stripAnsi } = require('../lib/ansi.js');
   const body = stripAnsi(session.lastFrame.rows.join('\n'));
   assert.match(body, /\[ \] first note/);
   const hit = session.lastFrame.todoHits.find((row) => row.cursor === 0);

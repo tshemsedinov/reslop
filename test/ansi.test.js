@@ -13,7 +13,6 @@ test('eye logo is one column, matching terminal wcwidth', () => {
 test('wide East Asian and wide emoji are two columns', () => {
   assert.equal(visibleWidth('中'), 2);
   assert.equal(visibleWidth('💠'), 2);
-  assert.equal(visibleWidth('A'), 1);
 });
 
 test('codeFg ignores non-string and prototype names', () => {

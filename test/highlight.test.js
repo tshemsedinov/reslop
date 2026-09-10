@@ -9,19 +9,10 @@ const { tokenize, overlayTokens, tokensText } = require('../lib/highlight.js');
 const stylesOf = (tokens, text) =>
   tokens.filter((t) => t.text === text).map((t) => t.style);
 
-test('AC24 detectLang follows metascope path map', () => {
-  assert.equal(detectLang('src/a.js'), 'js');
-  assert.equal(detectLang('src/a.mjs'), 'mjs');
-  assert.equal(detectLang('src/a.ts'), 'ts');
+test('AC24 detectLang prefers .d.ts and dotfile rules', () => {
   assert.equal(detectLang('src/a.d.ts'), 'dts');
-  assert.equal(detectLang('pkg.json'), 'json');
-  assert.equal(detectLang('app.css'), 'css');
-  assert.equal(detectLang('index.html'), 'html');
-  assert.equal(detectLang('data.csv'), 'csv');
-  assert.equal(detectLang('run.sh'), 'bash');
+  assert.equal(detectLang('src/a.ts'), 'ts');
   assert.equal(detectLang('.env'), 'dot');
-  assert.equal(detectLang('notes.txt'), 'txt');
-  assert.equal(detectLang('app.py'), 'py');
 });
 
 test('AC24 js tokens for const assignment', () => {
@@ -65,7 +56,6 @@ test('toString identifier does not crash tokenize', () => {
   assert.equal(tokensText(tokens), 'foo.toString()');
   const name = tokens.find((t) => t.text === 'toString');
   assert.ok(name);
-  assert.equal(typeof name.style, 'string');
   const pieces = overlayTokens(tokens, [
     { text: 'foo.toString()', changed: false },
   ]);

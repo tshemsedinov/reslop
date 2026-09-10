@@ -77,8 +77,8 @@ const installBin = () => {
   } catch (error) {
     try {
       fs.unlinkSync(dest);
-    } catch (unlinkError) {
-      void unlinkError;
+    } catch {
+      // ignore missing dest
     }
     const wrapper = `#!/usr/bin/env bash
 exec node ${JSON.stringify(binSrc)} "$@"

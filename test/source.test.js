@@ -47,5 +47,7 @@ test('createLoadedSource is read only and returns a copy of items', () => {
   source.add();
   source.unstage();
   source.revert();
+  source.revertFile();
+  assert.equal(source.resolveRev(), null);
   assert.equal(second.items[0].origin, 'pr');
 });

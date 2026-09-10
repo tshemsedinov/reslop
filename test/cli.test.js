@@ -8,7 +8,6 @@ const path = require('node:path');
 
 const cli = require('../lib/cli.js');
 const { run, parseArgv, resolveScope } = cli;
-
 const { makeRepo, sink } = require('./helpers.js');
 
 const fakeProc = (cwd, extra = {}) => {

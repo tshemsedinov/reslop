@@ -3,12 +3,13 @@
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 
-const { load, addItem, unstageItem, revertItem } = require('../lib/git.js');
+const git = require('../lib/git.js');
+const { load, addItem, unstageItem, revertItem } = git;
+const { createGitRepo } = git;
 const { Session } = require('../lib/session.js');
 const { makeRepo, sink } = require('./helpers.js');
 
 const sessionFor = (dir) => {
-  const { createGitRepo } = require('../lib/git.js');
   const stdout = sink();
   const session = new Session({
     repo: createGitRepo(),
@@ -292,7 +293,6 @@ test('AC15 file argv loads only that file', () => {
     const folder = load(repo.dir, ['src']);
     assert.equal(folder.items.length, 1);
     assert.equal(folder.items[0].file.newPath, 'src/a.txt');
-    const { createGitRepo } = require('../lib/git.js');
     const session = new Session({
       repo: createGitRepo(),
       cwd: repo.dir,
