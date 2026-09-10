@@ -33,7 +33,8 @@ const noExportPkg = (name) => {
 
 const lockV3 = (dependencies, versions) => {
   const packages = { '': { dependencies } };
-  for (const [name, version] of Object.entries(versions)) {
+  for (const name of Object.keys(versions)) {
+    const version = versions[name];
     packages[`node_modules/${name}`] = { version };
   }
   const body = { lockfileVersion: 3, packages };
@@ -587,7 +588,7 @@ test('proposeDepItems shows an outdated bump as a diff', () => {
   });
   const proposed = proposeDepItems(pkgJson({ lodash: '^4.17.20' }), outdated);
   assert.equal(proposed.length, 1);
-  const [item] = proposed;
+  const item = proposed[0];
   assert.equal(item.dep.change.propose, true);
   assert.equal(item.dep.change.to, '^4.17.21');
   const lines = hunkTexts(item);
@@ -631,7 +632,7 @@ test('proposeDepItems shows an audit-only direct dependency', () => {
     null,
     audit,
   );
-  const [item] = proposed;
+  const item = proposed[0];
   assert.ok(item);
   assert.equal(item.dep.change.action, 'vulnerable');
   const lines = hunkTexts(item);
@@ -702,7 +703,7 @@ test('proposeDepItems uses an audit fix version when not outdated', () => {
     null,
     audit,
   );
-  const [item] = proposed;
+  const item = proposed[0];
   assert.ok(item);
   assert.equal(item.dep.change.to, '^4.17.21');
   const lines = hunkTexts(item);
@@ -1222,9 +1223,7 @@ test('session revert dismisses a proposed outdated update', () => {
     assert.ok(depByName(session.items, 'lodash'));
     session.dispatch('revert');
     assert.equal(repo.read('package.json'), pkgJson({ lodash: '^4.17.20' }));
-    const lodash = depByName(session.items, 'lodash');
-    assert.ok(lodash);
-    assert.equal(session.isRemaining(lodash), false);
+    assert.equal(depByName(session.items, 'lodash'), null);
   } finally {
     repo.cleanup();
   }
@@ -1459,7 +1458,7 @@ test('render shows a readable dependency summary', () => {
   const oldDeps = { lodash: '^4.17.20' };
   const newDeps = { lodash: '^4.17.21' };
   const items = [dummyItem('package.json'), dummyItem('package-lock.json')];
-  const [item] = foldDepItems(
+  const folded = foldDepItems(
     items,
     sidesOf({
       'package.json': {
@@ -1472,6 +1471,7 @@ test('render shows a readable dependency summary', () => {
       },
     }),
   );
+  const item = folded[0];
   const frame = render.renderFrame(
     {
       item,
@@ -1479,7 +1479,6 @@ test('render shows a readable dependency summary', () => {
       total: 1,
       scroll: 0,
       status: '',
-      help: false,
       counts: { staged: 0, unstaged: 1, untracked: 0 },
     },
     { width: 80, height: 16, color: false },
@@ -1508,7 +1507,8 @@ test('render paints npm audit notes grey with separators', () => {
     { eslint: '^9.39.5' },
     { eslint: '9.39.5', 'brace-expansion': '1.1.15' },
   );
-  const [item] = proposeDepItems(pkg, null, audit, { lockText: lock });
+  const proposed = proposeDepItems(pkg, null, audit, { lockText: lock });
+  const item = proposed[0];
   const frame = render.renderFrame(
     {
       item,
@@ -1516,7 +1516,6 @@ test('render paints npm audit notes grey with separators', () => {
       total: 1,
       scroll: 0,
       status: '',
-      help: false,
       counts: { staged: 0, unstaged: 1, untracked: 0 },
     },
     { width: 42, height: 24, color: true },

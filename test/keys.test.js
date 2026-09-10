@@ -51,24 +51,19 @@ test('decodeChunk parses SGR mouse drag and release', () => {
   assert.equal(up.press, false);
 });
 
-test('actionFromKey matches ACTIONS', () => {
-  assert.equal(actionFromKey('a'), 'add');
-  assert.equal(actionFromKey('u'), 'unstage');
-  assert.equal(actionFromKey('r'), 'revert');
-  assert.equal(actionFromKey('s'), 'skip');
-  assert.equal(actionFromKey('n'), 'next');
+test('actionFromKey maps aliases and ignores unbound keys', () => {
   assert.equal(actionFromKey('right'), 'next');
-  assert.equal(actionFromKey('p'), 'prev');
-  assert.equal(actionFromKey('l'), 'files');
-  assert.equal(actionFromKey('m'), 'layout');
-  assert.equal(actionFromKey('f'), 'feedback');
-  assert.equal(actionFromKey('t'), 'todo');
-  assert.equal(actionFromKey('v'), null);
-  assert.equal(actionFromKey('g'), null);
+  assert.equal(actionFromKey('up'), 'scrollUp');
+  assert.equal(actionFromKey('down'), 'scrollDown');
   assert.equal(actionFromKey('enter'), 'open');
   assert.equal(actionFromKey('backspace'), 'removeTodo');
   assert.equal(actionFromKey('delete'), 'removeTodo');
-  assert.equal(actionFromKey('q'), 'quit');
+  assert.equal(actionFromKey('j'), null);
+  assert.equal(actionFromKey('k'), null);
+  assert.equal(actionFromKey('s'), null);
+  assert.equal(actionFromKey('h'), null);
+  assert.equal(actionFromKey('?'), null);
+  assert.equal(actionFromKey('v'), null);
   assert.equal(actionFromKey('escape'), null);
 });
 
@@ -80,13 +75,9 @@ test('layoutButtons hitboxes cover labels', () => {
   assert.equal(layout.parts[0].piece, '  add');
   assert.ok(!layout.parts[0].piece.includes('['));
   assert.equal(layout.parts[1].action.id, 'unstage');
-  assert.equal(layout.parts[4].action.id, 'prev');
-  assert.equal(layout.parts[5].action.id, 'next');
+  assert.equal(layout.parts[3].action.id, 'prev');
+  assert.equal(layout.parts[4].action.id, 'next');
   assert.equal(hitAction(layout.hits, layout.hits[0].x0), 'add');
-  assert.equal(ACTIONS[0].id, 'add');
-  const ids = ACTIONS.map((action) => action.id);
-  assert.deepEqual(ids.slice(0, 3), ['add', 'unstage', 'revert']);
-  assert.deepEqual(ids.slice(4, 6), ['prev', 'next']);
   const letters = layoutButtons(20, true);
   assert.equal(letters.parts[0].label, 'a');
   assert.equal(letters.parts[0].piece, '  a');
@@ -95,24 +86,16 @@ test('layoutButtons hitboxes cover labels', () => {
   assert.equal(prev.label, '←');
   const off = layoutButtons(160, false, FILES_DISABLED);
   const hitIds = off.hits.map((hit) => hit.id);
-  assert.equal(hitIds.includes('skip'), false);
   assert.equal(hitIds.includes('layout'), false);
   assert.equal(hitIds.includes('feedback'), false);
   assert.equal(hitIds.includes('add'), true);
-  const skip = off.parts.find((part) => part.action.id === 'skip');
-  assert.equal(skip.disabled, true);
+  const mode = off.parts.find((part) => part.action.id === 'layout');
+  assert.equal(mode.disabled, true);
 });
 
-test('actionLetter is the bound letter inside the word', () => {
-  const byId = Object.fromEntries(ACTIONS.map((a) => [a.id, a]));
-  assert.equal(actionLetter(byId.add), 'a');
-  assert.equal(actionLetter(byId.unstage), 'u');
-  assert.equal(actionLetter(byId.revert), 'r');
-  assert.equal(actionLetter(byId.files), 'l');
-  assert.equal(actionLetter(byId.next), '→');
-  assert.equal(actionLetter(byId.prev), '←');
-  assert.equal(buttonWord(byId.add), 'add');
-  assert.equal(buttonWord(byId.unstage), 'unstage');
-  assert.equal(buttonWord(byId.next), '→next');
-  assert.equal(buttonWord(byId.prev), '←prev');
+test('buttonWord prefixes a hot mark when it is not in the label', () => {
+  assert.equal(actionLetter(ACTIONS.next), '→');
+  assert.equal(actionLetter(ACTIONS.prev), '←');
+  assert.equal(buttonWord(ACTIONS.next), '→next');
+  assert.equal(buttonWord(ACTIONS.prev), '←prev');
 });

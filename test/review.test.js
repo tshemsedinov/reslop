@@ -7,14 +7,14 @@ const os = require('node:os');
 const path = require('node:path');
 
 const review = require('../lib/review.js');
-const { allocateReviewPath, dateStamp, rankedTemplates } = review;
+const { allocateReviewPath, rankedTemplates } = review;
 const { prefixTemplates, upsertTemplate, createStore } = review;
 const { hasNotes, setFeedback, noteCounts, rememberTemplate } = review;
 const { addTodo, removeTodo, setTodoText, serializeReview } = review;
 const { applyImportedNotes } = review;
 const { flushReview, mergeTodos, loadTemplates, parseReview } = review;
 const { resolveReviewPath, latestReviewName } = review;
-const { REVIEW_STATUSES, parseFrontmatterStatus } = review;
+const { parseFrontmatterStatus } = review;
 
 test('allocateReviewPath uses 00 then 01 on the same day', () => {
   const date = new Date(2026, 8, 7);
@@ -81,10 +81,6 @@ test('resolveReviewPath resumes editing and starts new otherwise', () => {
     forced.reviewPath,
     path.join(dir, '.review', '2026-09-07-01.md'),
   );
-});
-
-test('dateStamp pads month and day', () => {
-  assert.equal(dateStamp(new Date(2026, 0, 5)), '2026-01-05');
 });
 
 test('rankedTemplates sorts by frequency then text', () => {
@@ -173,7 +169,6 @@ test('serializeReview writes ready when status is ready', () => {
   const md = serializeReview(store);
   assert.match(md, /status: ready/);
   assert.match(md, /Execute reviews with `status: ready` or `status: partial`/);
-  assert.deepEqual(REVIEW_STATUSES, ['editing', 'ready', 'partial', 'done']);
 });
 
 test('parseFrontmatterStatus maps pending to ready', () => {
