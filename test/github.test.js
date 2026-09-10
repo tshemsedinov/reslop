@@ -137,6 +137,34 @@ test('githubToken reads GITHUB_TOKEN then GH_TOKEN', () => {
   assert.equal(githubToken({}), '');
 });
 
+const DEP_PR_DIFF = `diff --git a/package.json b/package.json
+index 1111111..2222222 100644
+--- a/package.json
++++ b/package.json
+@@ -1,6 +1,6 @@
+ {
+   "name": "demo",
+   "dependencies": {
+-    "lodash": "^4.17.20"
++    "lodash": "^4.17.21"
+   }
+ }
+diff --git a/package-lock.json b/package-lock.json
+index 1111111..2222222 100644
+--- a/package-lock.json
++++ b/package-lock.json
+@@ -1,8 +1,8 @@
+ {
+   "lockfileVersion": 3,
+   "packages": {
+     "node_modules/lodash": {
+-      "version": "4.17.20"
++      "version": "4.17.21"
+     }
+   }
+ }
+`;
+
 test('loadPullRequest converts a GitHub patch into pr items', async () => {
   const fetchImpl = mockFetch(PR_JSON, PR_DIFF);
   const loaded = await loadPullRequest(PR, {
@@ -162,6 +190,22 @@ test('loadPullRequest converts a GitHub patch into pr items', async () => {
   assert.ok(loaded.items[0].hunk);
   assert.equal(loaded.items[1].file.newPath, 'README.md');
   assert.deepEqual(loaded.imported, { feedback: [], todos: [] });
+});
+
+test('loadPullRequest folds package.json and lockfile changes', async () => {
+  const fetchImpl = mockFetch(PR_JSON, DEP_PR_DIFF);
+  const loaded = await loadPullRequest(PR, {
+    fetch: fetchImpl,
+    token: '',
+    cwd: '/tmp',
+  });
+  assert.deepEqual(loaded.change.files, ['package.json', 'package-lock.json']);
+  assert.equal(loaded.items.length, 1);
+  assert.ok(loaded.items[0].dep);
+  const hunkLines = loaded.items[0].hunk.lines;
+  const lines = hunkLines.map((line) => line.text);
+  assert.equal(lines[0], 'Dependencies in package.json & package-lock.json');
+  assert.ok(lines.includes('dependency version changed'));
 });
 
 test('loadPullRequest sends a bearer token', async () => {
