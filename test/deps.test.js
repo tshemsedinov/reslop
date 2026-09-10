@@ -15,6 +15,7 @@ const { load, addItem, unstageItem, revertItem } = git;
 const { foldDepItems, readSections, diffSections } = deps;
 const { mergeResolved, lockEntries, lockPackageCount } = deps;
 const { mergeDepFile, collectUsedNames, parseAuditReport } = deps;
+const { parseOutdatedReport, applyWantedRange, proposeDepItems } = deps;
 
 const pkgJson = (dependencies, extra = {}) => {
   const body = { name: 'demo', ...extra, dependencies };
@@ -350,6 +351,26 @@ test('parseAuditReport reads npm audit v2 vulnerabilities', () => {
   assert.equal(found.title, 'Prototype Pollution in lodash');
 });
 
+test('parseAuditReport maps affected dependents from effects', () => {
+  const report = {
+    auditReportVersion: 2,
+    vulnerabilities: {
+      minimatch: {
+        name: 'minimatch',
+        severity: 'high',
+        effects: ['eslint'],
+        via: [{ title: 'ReDoS in minimatch', severity: 'high' }],
+        fixAvailable: true,
+      },
+    },
+  };
+  const audit = parseAuditReport(JSON.stringify(report));
+  const eslint = audit.get('eslint');
+  assert.ok(eslint);
+  assert.equal(eslint.severity, 'high');
+  assert.equal(eslint.title, 'ReDoS in minimatch');
+});
+
 test('foldDepItems marks a dependency with an npm audit warning', () => {
   const oldDeps = { lodash: '^4.17.20' };
   const newDeps = { lodash: '^4.17.21' };
@@ -377,7 +398,111 @@ test('foldDepItems marks a dependency with an npm audit warning', () => {
   assert.ok(lodash);
   assert.equal(lodash.dep.change.audit.severity, 'high');
   const lines = hunkTexts(lodash);
-  assert.ok(lines.includes('dependency version changed, high'));
+  assert.ok(lines.includes('npm audit: dependency version changed, high'));
+  assert.ok(lines.includes('npm audit  high  Prototype Pollution in lodash'));
+});
+
+test('parseOutdatedReport reads npm outdated json', () => {
+  const report = {
+    lodash: {
+      current: '4.17.20',
+      wanted: '4.17.21',
+      latest: '4.17.21',
+      type: 'dependencies',
+    },
+  };
+  const outdated = parseOutdatedReport(JSON.stringify(report));
+  const found = outdated.get('lodash');
+  assert.ok(found);
+  assert.equal(found.wanted, '4.17.21');
+  assert.equal(found.current, '4.17.20');
+});
+
+test('applyWantedRange keeps caret and tilde prefixes', () => {
+  assert.equal(applyWantedRange('^4.17.20', '4.17.21'), '^4.17.21');
+  assert.equal(applyWantedRange('~1.2.3', '1.2.9'), '~1.2.9');
+  assert.equal(applyWantedRange('4.17.20', '4.17.21'), '4.17.21');
+});
+
+test('proposeDepItems shows an outdated bump as a diff', () => {
+  const outdated = new Map();
+  outdated.set('lodash', {
+    current: '4.17.20',
+    wanted: '4.17.21',
+    latest: '4.17.21',
+    type: 'dependencies',
+  });
+  const proposed = proposeDepItems(pkgJson({ lodash: '^4.17.20' }), outdated);
+  assert.equal(proposed.length, 1);
+  const [item] = proposed;
+  assert.equal(item.dep.change.propose, true);
+  assert.equal(item.dep.change.to, '^4.17.21');
+  const lines = hunkTexts(item);
+  assert.ok(lines.includes('npm outdated: dependency version changed'));
+  assert.ok(!lines.some((line) => line.startsWith('npm outdated  ')));
+});
+
+test('proposeDepItems names npm audit next to npm outdated', () => {
+  const outdated = new Map();
+  outdated.set('lodash', {
+    current: '4.17.20',
+    wanted: '4.17.21',
+    latest: '4.17.21',
+    type: 'dependencies',
+  });
+  const audit = new Map();
+  audit.set('lodash', {
+    severity: 'high',
+    title: 'Prototype Pollution in lodash',
+    fix: '',
+  });
+  const proposed = proposeDepItems(
+    pkgJson({ lodash: '^4.17.20' }),
+    outdated,
+    audit,
+  );
+  const lines = hunkTexts(proposed[0]);
+  const title = 'npm outdated, npm audit: dependency version changed, high';
+  assert.ok(lines.includes(title));
+});
+
+test('proposeDepItems shows an audit-only direct dependency', () => {
+  const audit = new Map();
+  audit.set('lodash', {
+    severity: 'high',
+    title: 'Prototype Pollution in lodash',
+    fix: '',
+  });
+  const proposed = proposeDepItems(
+    pkgJson({ lodash: '^4.17.20' }),
+    null,
+    audit,
+  );
+  const [item] = proposed;
+  assert.ok(item);
+  assert.equal(item.dep.change.action, 'vulnerable');
+  const lines = hunkTexts(item);
+  assert.ok(lines.includes('npm audit: dependency vulnerable, high'));
+  assert.ok(lines.includes('"lodash": "^4.17.20"'));
+});
+
+test('proposeDepItems uses an audit fix version when not outdated', () => {
+  const audit = new Map();
+  audit.set('lodash', {
+    severity: 'high',
+    title: 'Prototype Pollution in lodash',
+    fix: '4.17.21',
+  });
+  const proposed = proposeDepItems(
+    pkgJson({ lodash: '^4.17.20' }),
+    null,
+    audit,
+  );
+  const [item] = proposed;
+  assert.ok(item);
+  assert.equal(item.dep.change.to, '^4.17.21');
+  const lines = hunkTexts(item);
+  assert.ok(lines.includes('npm audit: dependency version changed, high'));
   assert.ok(lines.includes('npm audit  high  Prototype Pollution in lodash'));
 });
 
@@ -632,6 +757,164 @@ test('load marks an added dependency that is not imported', () => {
     assert.ok(leftpad);
     assert.equal(leftpad.dep.change.unused, true);
     assert.ok(hunkTexts(leftpad).includes('dependency added, unused'));
+  } finally {
+    repo.cleanup();
+  }
+});
+
+test('load proposes an outdated dependency with no package diffs', () => {
+  const repo = makeRepo();
+  try {
+    repo.write('package.json', pkgJson({ lodash: '^4.17.20' }));
+    repo.git(['add', '.']);
+    repo.git(['commit', '-m', 'init']);
+    const outdated = new Map();
+    outdated.set('lodash', {
+      current: '4.17.20',
+      wanted: '4.17.21',
+      latest: '4.17.21',
+      type: 'dependencies',
+    });
+    const loaded = load(repo.dir, [], {
+      audit: true,
+      outdatedMap: outdated,
+      auditMap: null,
+    });
+    const lodash = depByName(loaded.items, 'lodash');
+    assert.ok(lodash);
+    assert.equal(lodash.dep.change.propose, true);
+    assert.equal(lodash.dep.change.to, '^4.17.21');
+    const lines = hunkTexts(lodash);
+    assert.ok(lines.includes('npm outdated: dependency version changed'));
+    assert.ok(!lines.some((line) => line.startsWith('npm outdated  ')));
+  } finally {
+    repo.cleanup();
+  }
+});
+
+test('add on a proposed update writes package.json and runs npm i', () => {
+  const repo = makeRepo();
+  try {
+    const oldDeps = { lodash: '^4.17.20' };
+    repo.write('package.json', pkgJson(oldDeps));
+    repo.write('package-lock.json', lockV3(oldDeps, { lodash: '4.17.20' }));
+    repo.git(['add', '.']);
+    repo.git(['commit', '-m', 'init']);
+    const outdated = new Map();
+    outdated.set('lodash', {
+      current: '4.17.20',
+      wanted: '4.17.21',
+      latest: '4.17.21',
+      type: 'dependencies',
+    });
+    const loaded = load(repo.dir, [], {
+      audit: true,
+      outdatedMap: outdated,
+      auditMap: null,
+    });
+    const item = depByName(loaded.items, 'lodash');
+    assert.ok(item);
+    let installed = '';
+    item.dep.install = (cwd) => {
+      installed = cwd;
+      const next = { lodash: '^4.17.21' };
+      repo.write('package-lock.json', lockV3(next, { lodash: '4.17.21' }));
+      return { status: 0 };
+    };
+    addItem(loaded.top, item);
+    assert.equal(installed, repo.dir);
+    const pkg = JSON.parse(repo.read('package.json'));
+    assert.equal(pkg.dependencies.lodash, '^4.17.21');
+    const lock = JSON.parse(repo.read('package-lock.json'));
+    assert.equal(lock.packages['node_modules/lodash'].version, '4.17.21');
+    const cached = repo.git(['diff', '--cached', '--name-only']);
+    assert.match(cached, /package\.json/);
+    assert.match(cached, /package-lock\.json/);
+  } finally {
+    repo.cleanup();
+  }
+});
+
+test('session add applies a proposed outdated update', () => {
+  const repo = makeRepo();
+  try {
+    const oldDeps = { lodash: '^4.17.20' };
+    repo.write('package.json', pkgJson(oldDeps));
+    repo.write('package-lock.json', lockV3(oldDeps, { lodash: '4.17.20' }));
+    repo.git(['add', '.']);
+    repo.git(['commit', '-m', 'init']);
+    const outdated = new Map();
+    outdated.set('lodash', {
+      current: '4.17.20',
+      wanted: '4.17.21',
+      latest: '4.17.21',
+      type: 'dependencies',
+    });
+    const stdout = sink();
+    const session = new Session({
+      repo: git.createGitRepo(),
+      cwd: repo.dir,
+      stdout,
+      color: false,
+      startPane: 'diff',
+      audit: true,
+      outdatedMap: outdated,
+      auditMap: null,
+      getSize: () => ({ width: 80, height: 16 }),
+    });
+    session.load();
+    const item = depByName(session.items, 'lodash');
+    assert.ok(item);
+    item.dep.install = () => {
+      const next = { lodash: '^4.17.21' };
+      repo.write('package-lock.json', lockV3(next, { lodash: '4.17.21' }));
+      return { status: 0 };
+    };
+    session.dispatch('add');
+    assert.equal(session.status, 'staged');
+    const pkg = JSON.parse(repo.read('package.json'));
+    assert.equal(pkg.dependencies.lodash, '^4.17.21');
+    const staged = depByName(session.items, 'lodash');
+    assert.ok(staged);
+    assert.equal(staged.origin, 'staged');
+    assert.equal(staged.dep.change.propose, undefined);
+  } finally {
+    repo.cleanup();
+  }
+});
+
+test('session revert dismisses a proposed outdated update', () => {
+  const repo = makeRepo();
+  try {
+    repo.write('package.json', pkgJson({ lodash: '^4.17.20' }));
+    repo.git(['add', '.']);
+    repo.git(['commit', '-m', 'init']);
+    const outdated = new Map();
+    outdated.set('lodash', {
+      current: '4.17.20',
+      wanted: '4.17.21',
+      latest: '4.17.21',
+      type: 'dependencies',
+    });
+    const stdout = sink();
+    const session = new Session({
+      repo: git.createGitRepo(),
+      cwd: repo.dir,
+      stdout,
+      color: false,
+      startPane: 'diff',
+      audit: true,
+      outdatedMap: outdated,
+      auditMap: null,
+      getSize: () => ({ width: 80, height: 16 }),
+    });
+    session.load();
+    assert.ok(depByName(session.items, 'lodash'));
+    session.dispatch('revert');
+    assert.equal(repo.read('package.json'), pkgJson({ lodash: '^4.17.20' }));
+    const lodash = depByName(session.items, 'lodash');
+    assert.ok(lodash);
+    assert.equal(session.isRemaining(lodash), false);
   } finally {
     repo.cleanup();
   }
