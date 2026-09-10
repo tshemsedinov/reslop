@@ -9,13 +9,14 @@ const git = require('../lib/git.js');
 const render = require('../lib/render.js');
 const { Session } = require('../lib/session.js');
 const { makeRepo, sink } = require('./helpers.js');
-const { stripAnsi } = require('../lib/ansi.js');
+const { stripAnsi, THEME, bg } = require('../lib/ansi.js');
 const { parseDiff, itemsFromFiles } = diff;
 const { load, addItem, unstageItem, revertItem } = git;
 const { foldDepItems, readSections, diffSections } = deps;
 const { mergeResolved, lockEntries, lockPackageCount } = deps;
 const { mergeDepFile, collectUsedNames, parseAuditReport } = deps;
 const { parseOutdatedReport, applyWantedRange, proposeDepItems } = deps;
+const { patchedFromRange } = deps;
 
 const pkgJson = (dependencies, extra = {}) => {
   const body = { name: 'demo', ...extra, dependencies };
@@ -348,7 +349,35 @@ test('parseAuditReport reads npm audit v2 vulnerabilities', () => {
   const found = audit.get('lodash');
   assert.ok(found);
   assert.equal(found.severity, 'high');
-  assert.equal(found.title, 'Prototype Pollution in lodash');
+  assert.equal(found.title, 'lodash: Prototype Pollution in lodash');
+  assert.deepEqual(found.titles, ['lodash: Prototype Pollution in lodash']);
+});
+
+test('parseAuditReport keeps every advisory title', () => {
+  const report = {
+    auditReportVersion: 2,
+    vulnerabilities: {
+      'brace-expansion': {
+        name: 'brace-expansion',
+        severity: 'high',
+        via: [
+          {
+            name: 'brace-expansion',
+            title: 'DoS via exponential-time expansion of consecutive groups',
+          },
+          {
+            name: 'brace-expansion',
+            title: 'DoS via unbounded expansion length',
+          },
+        ],
+      },
+    },
+  };
+  const audit = parseAuditReport(JSON.stringify(report));
+  const found = audit.get('brace-expansion');
+  assert.equal(found.titles.length, 2);
+  assert.ok(found.titles[0].startsWith('brace-expansion: DoS via exponential'));
+  assert.ok(found.titles[1].includes('unbounded expansion length'));
 });
 
 test('parseAuditReport maps affected dependents from effects', () => {
@@ -368,7 +397,7 @@ test('parseAuditReport maps affected dependents from effects', () => {
   const eslint = audit.get('eslint');
   assert.ok(eslint);
   assert.equal(eslint.severity, 'high');
-  assert.equal(eslint.title, 'ReDoS in minimatch');
+  assert.equal(eslint.title, 'minimatch: ReDoS in minimatch');
 });
 
 test('foldDepItems marks a dependency with an npm audit warning', () => {
@@ -484,6 +513,55 @@ test('proposeDepItems shows an audit-only direct dependency', () => {
   const lines = hunkTexts(item);
   assert.ok(lines.includes('npm audit: dependency vulnerable, high'));
   assert.ok(lines.includes('"lodash": "^4.17.20"'));
+});
+
+test('patchedFromRange takes the first version outside the advisory', () => {
+  assert.equal(patchedFromRange('1.1.15', '<=1.1.17'), '1.1.18');
+  assert.equal(patchedFromRange('1.1.11', '<1.1.12'), '1.1.12');
+  const split = '<=1.1.11 || >=2.0.0 <=2.0.1';
+  assert.equal(patchedFromRange('1.1.11', split), '1.1.12');
+  assert.equal(patchedFromRange('2.0.1', split), '2.0.2');
+  assert.equal(patchedFromRange('1.1.18', '<=1.1.17'), '');
+});
+
+test('proposeDepItems shows a transitive npm audit finding', () => {
+  const audit = new Map();
+  audit.set('brace-expansion', {
+    severity: 'high',
+    title: 'DoS via exponential-time expansion',
+    fix: '',
+    range: '<=1.1.17',
+  });
+  const pkg = pkgJson({ eslint: '^9.39.5' });
+  const lock = lockV3(
+    { eslint: '^9.39.5' },
+    { eslint: '9.39.5', 'brace-expansion': '1.1.15' },
+  );
+  const proposed = proposeDepItems(pkg, null, audit, { lockText: lock });
+  const item = depByName(proposed, 'brace-expansion');
+  assert.ok(item);
+  assert.equal(item.dep.change.section, 'resolved');
+  assert.equal(item.dep.change.from, '1.1.15');
+  assert.equal(item.dep.change.to, '1.1.18');
+  assert.deepEqual(item.dep.files, ['package-lock.json']);
+  const lines = hunkTexts(item);
+  const heading = 'npm audit: lockfile vulnerable, high';
+  const oldEntry = '"brace-expansion": "1.1.15"';
+  const newEntry = '"brace-expansion": "1.1.18"';
+  const note = 'npm audit  high  DoS via exponential-time expansion';
+  const titleAt = lines.indexOf(heading);
+  assert.ok(titleAt >= 0);
+  assert.equal(lines[titleAt + 1], '');
+  assert.equal(lines[titleAt + 2], oldEntry);
+  assert.equal(lines[titleAt + 3], newEntry);
+  assert.equal(lines[titleAt + 4], '');
+  assert.equal(lines[titleAt + 5], note);
+  const title = item.hunk.lines.find((line) => line.text === heading);
+  assert.equal(title.type, 'warn');
+  const oldLine = item.hunk.lines.find((line) => line.text === oldEntry);
+  const newLine = item.hunk.lines.find((line) => line.text === newEntry);
+  assert.equal(oldLine.type, 'del');
+  assert.equal(newLine.type, 'add');
 });
 
 test('proposeDepItems uses an audit fix version when not outdated', () => {
@@ -1179,6 +1257,49 @@ test('render shows a readable dependency summary', () => {
   assert.match(text, /dependency version changed/);
   assert.match(text, /lodash/);
   assert.doesNotMatch(text, /node_modules/);
+});
+
+test('render paints npm audit lines red and wraps long advisories', () => {
+  const long =
+    'brace-expansion: DoS via exponential-time expansion of ' +
+    'consecutive non-expanding groups';
+  const audit = new Map();
+  audit.set('brace-expansion', {
+    severity: 'high',
+    title: long,
+    titles: [long],
+    range: '<=1.1.17',
+  });
+  const pkg = pkgJson({ eslint: '^9.39.5' });
+  const lock = lockV3(
+    { eslint: '^9.39.5' },
+    { eslint: '9.39.5', 'brace-expansion': '1.1.15' },
+  );
+  const [item] = proposeDepItems(pkg, null, audit, { lockText: lock });
+  const frame = render.renderFrame(
+    {
+      item,
+      index: 0,
+      total: 1,
+      scroll: 0,
+      status: '',
+      help: false,
+      counts: { staged: 0, unstaged: 1, untracked: 0 },
+    },
+    { width: 42, height: 22, color: true },
+  );
+  const text = stripAnsi(frame.text);
+  assert.match(text, /lockfile vulnerable/);
+  assert.match(text, /"brace-expansion": "1.1.15"/);
+  assert.match(text, /"brace-expansion": "1.1.18"/);
+  assert.match(text, /exponential-time/);
+  assert.match(text, /consecutive/);
+  const red = bg(THEME.delLineBg);
+  const painted = frame.rows.some((row) => {
+    if (!row.includes(red)) return false;
+    return stripAnsi(row).includes('npm audit');
+  });
+  assert.ok(painted);
 });
 
 test('lockPackageCount ignores the root package entry', () => {

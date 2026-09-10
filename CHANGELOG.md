@@ -4,8 +4,9 @@
 
 - Dependency review: each dependency once across package.json and package-lock
 - Mark unused npm dependencies: that are not imported or used
-- Mark dependency review items with npm audit warnings
+- Mark dependency review items, show npm audit findings
 - Show npm outdated and npm audit updates as proposed diffs
+- Propose a lockfile version bump for transitive dependencies
 
 ## [0.1.1][] - 2026-09-10
 
