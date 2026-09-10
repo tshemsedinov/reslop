@@ -3,6 +3,8 @@
 ## [Unreleased][unreleased]
 
 - Dependency review: each dependency once across package.json and package-lock
+- Mark unused npm dependencies: that are not imported or used
+- Mark dependency review items with npm audit warnings
 
 ## [0.1.1][] - 2026-09-10
 

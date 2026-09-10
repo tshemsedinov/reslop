@@ -14,7 +14,7 @@ const { parseDiff, itemsFromFiles } = diff;
 const { load, addItem, unstageItem, revertItem } = git;
 const { foldDepItems, readSections, diffSections } = deps;
 const { mergeResolved, lockEntries, lockPackageCount } = deps;
-const { mergeDepFile } = deps;
+const { mergeDepFile, collectUsedNames, parseAuditReport } = deps;
 
 const pkgJson = (dependencies, extra = {}) => {
   const body = { name: 'demo', ...extra, dependencies };
@@ -220,6 +220,21 @@ test('mergeResolved does not duplicate a package.json change', () => {
   assert.equal(merged[0].resolvedTo, '4.17.21');
 });
 
+test('collectUsedNames reads require and npm scripts', () => {
+  const repo = makeRepo();
+  try {
+    const scripts = { lint: 'eslint .' };
+    const body = { name: 'demo', scripts, dependencies: { lodash: '1' } };
+    repo.write('app.js', 'const _ = require("lodash");\n');
+    repo.write('package.json', `${JSON.stringify(body, null, 2)}\n`);
+    const used = collectUsedNames(repo.dir);
+    assert.ok(used.has('lodash'));
+    assert.ok(used.has('eslint'));
+  } finally {
+    repo.cleanup();
+  }
+});
+
 test('foldDepItems splits each dependency into its own item', () => {
   const oldDeps = { lodash: '^4.17.20' };
   const newDeps = { lodash: '^4.17.21', leftpad: '1.0.0' };
@@ -263,6 +278,107 @@ test('foldDepItems splits each dependency into its own item', () => {
   assert.ok(bumped.includes('dependency version changed'));
   assert.equal(bumped.filter((line) => line.includes('lodash')).length, 2);
   assert.ok(!bumped.some((line) => line.includes('leftpad')));
+});
+
+test('foldDepItems marks an added dependency that is not imported', () => {
+  const oldDeps = { lodash: '^4.17.20' };
+  const newDeps = { lodash: '^4.17.20', leftpad: '1.0.0' };
+  const items = [dummyItem('package.json'), dummyItem('package-lock.json')];
+  const used = new Set(['lodash']);
+  const folded = foldDepItems(
+    items,
+    sidesOf({
+      'package.json': {
+        oldText: pkgJson(oldDeps),
+        newText: pkgJson(newDeps),
+      },
+      'package-lock.json': {
+        oldText: lockV3(oldDeps, { lodash: '4.17.20' }),
+        newText: lockV3(newDeps, { lodash: '4.17.20', leftpad: '1.0.0' }),
+      },
+    }),
+    used,
+  );
+  const leftpad = depByName(folded, 'leftpad');
+  assert.ok(leftpad);
+  assert.equal(leftpad.dep.change.unused, true);
+  assert.ok(hunkTexts(leftpad).includes('dependency added, unused'));
+});
+
+test('foldDepItems does not mark an imported added dependency unused', () => {
+  const oldDeps = { lodash: '^4.17.20' };
+  const newDeps = { lodash: '^4.17.20', leftpad: '1.0.0' };
+  const items = [dummyItem('package.json')];
+  const used = new Set(['leftpad']);
+  const folded = foldDepItems(
+    items,
+    sidesOf({
+      'package.json': {
+        oldText: pkgJson(oldDeps),
+        newText: pkgJson(newDeps),
+      },
+    }),
+    used,
+  );
+  const leftpad = depByName(folded, 'leftpad');
+  assert.ok(leftpad);
+  assert.equal(leftpad.dep.change.unused, false);
+  assert.ok(hunkTexts(leftpad).includes('dependency added'));
+  assert.ok(!hunkTexts(leftpad).includes('dependency added, unused'));
+});
+
+test('parseAuditReport reads npm audit v2 vulnerabilities', () => {
+  const report = {
+    auditReportVersion: 2,
+    vulnerabilities: {
+      lodash: {
+        name: 'lodash',
+        severity: 'high',
+        via: [
+          {
+            title: 'Prototype Pollution in lodash',
+            severity: 'high',
+          },
+        ],
+      },
+    },
+  };
+  const audit = parseAuditReport(JSON.stringify(report));
+  const found = audit.get('lodash');
+  assert.ok(found);
+  assert.equal(found.severity, 'high');
+  assert.equal(found.title, 'Prototype Pollution in lodash');
+});
+
+test('foldDepItems marks a dependency with an npm audit warning', () => {
+  const oldDeps = { lodash: '^4.17.20' };
+  const newDeps = { lodash: '^4.17.21' };
+  const items = [dummyItem('package.json'), dummyItem('package-lock.json')];
+  const audit = new Map();
+  const severity = 'high';
+  const title = 'Prototype Pollution in lodash';
+  audit.set('lodash', { severity, title });
+  const folded = foldDepItems(
+    items,
+    sidesOf({
+      'package.json': {
+        oldText: pkgJson(oldDeps),
+        newText: pkgJson(newDeps),
+      },
+      'package-lock.json': {
+        oldText: lockV3(oldDeps, { lodash: '4.17.20' }),
+        newText: lockV3(newDeps, { lodash: '4.17.21' }),
+      },
+    }),
+    null,
+    audit,
+  );
+  const lodash = depByName(folded, 'lodash');
+  assert.ok(lodash);
+  assert.equal(lodash.dep.change.audit.severity, 'high');
+  const lines = hunkTexts(lodash);
+  assert.ok(lines.includes('dependency version changed, high'));
+  assert.ok(lines.includes('npm audit  high  Prototype Pollution in lodash'));
 });
 
 test('foldDepItems keeps package.json hunks for whitespace-only edits', () => {
@@ -493,6 +609,29 @@ test('load folds local dependency files into one review item', () => {
       'package.json',
       'package-lock.json',
     ]);
+  } finally {
+    repo.cleanup();
+  }
+});
+
+test('load marks an added dependency that is not imported', () => {
+  const repo = makeRepo();
+  try {
+    const oldDeps = { lodash: '^4.17.20' };
+    const newDeps = { lodash: '^4.17.20', leftpad: '1.0.0' };
+    const newVers = { lodash: '4.17.20', leftpad: '1.0.0' };
+    repo.write('app.js', 'const _ = require("lodash");\n');
+    repo.write('package.json', pkgJson(oldDeps));
+    repo.write('package-lock.json', lockV3(oldDeps, { lodash: '4.17.20' }));
+    repo.git(['add', '.']);
+    repo.git(['commit', '-m', 'init']);
+    repo.write('package.json', pkgJson(newDeps));
+    repo.write('package-lock.json', lockV3(newDeps, newVers));
+    const loaded = load(repo.dir);
+    const leftpad = depByName(loaded.items, 'leftpad');
+    assert.ok(leftpad);
+    assert.equal(leftpad.dep.change.unused, true);
+    assert.ok(hunkTexts(leftpad).includes('dependency added, unused'));
   } finally {
     repo.cleanup();
   }
