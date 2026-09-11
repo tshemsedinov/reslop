@@ -649,12 +649,31 @@ test('AC10 footer words highlight the bound letter', () => {
 
 test('AC26 file list status and counts are column-aligned', () => {
   const files = [
-    { path: 'a.js', status: 'unstaged', remaining: 4, firstIndex: 0 },
-    { path: 'b.js', status: 'staged', remaining: 1, firstIndex: 1 },
+    {
+      path: 'a.js',
+      status: 'unstaged',
+      remaining: 4,
+      staged: 0,
+      added: 12,
+      removed: 5,
+      firstIndex: 0,
+    },
+    {
+      path: 'b.js',
+      status: 'staged',
+      remaining: 1,
+      staged: 1,
+      added: 3,
+      removed: 1,
+      firstIndex: 1,
+    },
     {
       path: 'README.md',
       status: 'untracked',
       remaining: 12,
+      staged: 0,
+      added: 20,
+      removed: 0,
       firstIndex: 2,
     },
   ];
@@ -675,39 +694,50 @@ test('AC26 file list status and counts are column-aligned', () => {
   const rows = [2, 3, 4].map((i) => stripAnsi(frame.rows[i]));
   const columnEnds = (row) => {
     const t = row.trimEnd();
-    let i = t.length - 1;
-    while (i >= 0 && t[i] >= '0' && t[i] <= '9') {
-      i -= 1;
-    }
-    const countEnd = t.length;
-    while (i >= 0 && t[i] === ' ') {
-      i -= 1;
-    }
-    const statusEnd = i + 1;
-    return { countEnd, statusEnd };
+    const ratio = /(\d+\/\d+)$/.exec(t);
+    const ratioEnd = t.length;
+    const before = t.slice(0, t.length - ratio[0].length).trimEnd();
+    const statusEnd = before.length;
+    const stat = /\+[0-9]+\/-[0-9]+/.exec(t);
+    const slashAt = stat.index + stat[0].indexOf('/');
+    return { ratioEnd, statusEnd, slashAt };
   };
   const ends = rows.map(columnEnds);
-  assert.equal(new Set(ends.map((e) => e.countEnd)).size, 1);
+  assert.equal(new Set(ends.map((e) => e.ratioEnd)).size, 1);
   assert.equal(new Set(ends.map((e) => e.statusEnd)).size, 1);
-  assert.ok(ends[0].statusEnd < ends[0].countEnd);
+  assert.equal(new Set(ends.map((e) => e.slashAt)).size, 1);
+  assert.ok(ends[0].statusEnd < ends[0].ratioEnd);
   assert.match(rows[0], /unstaged/);
   assert.match(rows[1], /staged/);
   assert.match(rows[2], /untracked/);
+  assert.match(rows[0], /\+12\/-5/);
+  assert.match(rows[1], /\+3\/-1/);
+  assert.match(rows[2], /\+20\/-0/);
+  assert.match(rows[0], /0\/4/);
+  assert.match(rows[1], /1\/1/);
+  assert.match(rows[2], /0\/12/);
   const slim = render.renderFrame(base, {
     width: 48,
     height: 4,
     color: false,
   });
   const first = stripAnsi(slim.rows[2]);
-  assert.match(first, /unstaged {3}4 $/);
+  assert.match(first, /unstaged {3}0\/4 $/);
 });
 
 test('file list paints git status colors', () => {
   const files = [
-    { path: 'a.js', status: 'unstaged', remaining: 1, firstIndex: 0 },
-    { path: 'b.js', status: 'staged', remaining: 1, firstIndex: 1 },
-    { path: 'c.js', status: 'untracked', remaining: 1, firstIndex: 2 },
-    { path: 'd.js', status: 'partial', remaining: 2, firstIndex: 3 },
+    { path: 'a.js', status: 'unstaged', remaining: 1, staged: 0, firstIndex: 0 },
+    { path: 'b.js', status: 'staged', remaining: 1, staged: 1, firstIndex: 1 },
+    { path: 'c.js', status: 'untracked', remaining: 1, staged: 0, firstIndex: 2 },
+    {
+      path: 'd.js',
+      status: 'partial',
+      remaining: 3,
+      staged: 2,
+      unstaged: 1,
+      firstIndex: 3,
+    },
   ];
   const view = {
     pane: 'files',
@@ -729,6 +759,9 @@ test('file list paints git status colors', () => {
   assert.ok(frame.rows[5].includes(fg(THEME.warnFg)));
   assert.ok(!frame.rows[3].includes(fg(THEME.delLineFg)));
   assert.ok(!frame.rows[3].includes(fg(THEME.warnFg)));
+  const mixed = stripAnsi(frame.rows[5]);
+  assert.match(mixed, /2\/1/);
+  assert.ok(!mixed.includes('partial'));
 });
 
 test('AC25 header path roles use distinct greys', () => {
