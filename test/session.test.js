@@ -522,23 +522,27 @@ test('files pane disables mode and feedback', () => {
   assert.equal(session.pane, 'files');
 });
 
-test('files pane add on a staged file is already staged', () => {
+test('files pane add on a staged file still moves down', () => {
   const item = sampleItem('a.js', 'staged');
   const next = sampleItem('b.js');
   const { session, repo } = openSession([item, next], { startPane: 'files' });
   session.dispatch('add');
   assert.equal(session.status, 'already staged');
   assert.equal(repo.added.length, 0);
-  assert.equal(session.fileCursor, 0);
+  assert.equal(session.fileCursor, 1);
+  assert.equal(session.fileList()[1].path, 'b.js');
 });
 
-test('files pane unstage on an unstaged file is not staged', () => {
-  const { session, repo } = openSession([sampleItem('a.js')], {
-    startPane: 'files',
-  });
+test('files pane unstage on an unstaged file still moves down', () => {
+  const { session, repo } = openSession(
+    [sampleItem('a.js'), sampleItem('b.js')],
+    { startPane: 'files' },
+  );
   session.dispatch('unstage');
   assert.equal(session.status, 'not staged');
   assert.equal(repo.unstageCalls.length, 0);
+  assert.equal(session.fileCursor, 1);
+  assert.equal(session.fileList()[1].path, 'b.js');
 });
 
 test('f maps feedback to the hunk location', () => {
