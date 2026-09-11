@@ -2,10 +2,12 @@
 
 ## [Unreleased][unreleased]
 
-- Dependency review: each dependency once across package.json and package-lock
-- Mark unused npm dependencies: that are not imported or used
+## [0.1.2][] - 2026-09-11
+
+- Review each dependency once across package.json and package-lock
+- Mark unused npm dependencies that are not imported or used
 - Propose unused dependency removals and run npm uninstall
-- Mark dependency review items, show npm audit findings
+- Mark dependency review items and show npm audit findings
 - Show npm outdated and npm audit updates as proposed diffs
 - Propose a lockfile version bump for transitive dependencies
 
@@ -24,6 +26,7 @@
 - Feedback and todos that produce a repair plan for an agent
 - Intra-line highlighting in unified, mixed, and side-by-side layouts
 
-[unreleased]: https://github.com/tshemsedinov/reslop/compare/v0.1.1...HEAD
+[unreleased]: https://github.com/tshemsedinov/reslop/compare/v0.1.2...HEAD
+[0.1.2]: https://github.com/tshemsedinov/reslop/compare/v0.1.1...v0.1.2
 [0.1.1]: https://github.com/tshemsedinov/reslop/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/tshemsedinov/reslop/releases/tag/v0.1.0

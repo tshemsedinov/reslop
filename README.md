@@ -2,20 +2,22 @@
 
 > Turn generated changes into owned changes
 
+Open a change, leave findings and todos, and prepare a repair plan
+for the agent.
+
 ```text
 Review → Plan → Repair → Verify
 ```
 
-`0.1.x` implements Review: open a change, leave findings and todos, and
-prepare a repair plan for the agent. Plan, repair, and verify come later.
+- Review uncommitted git diffs, a given commit, or a GitHub pull request.
+- Stage, unstage, or revert each contiguous block of diff lines.
+- Leave feedback and todos that become a repair plan for the agent.
+- Import GitHub pull request review comments into the local plan for AI.
+- Review each npm dependency once across `package.json` and the lockfile.
+- Propose unused removals, npm audit fixes, and outdated updates as diffs.
 
-- Prepare review findings and a repair plan for the agent.
-- Leave feedback, add todos.
-- Generate a plan the agent executes.
-
-Walk uncommitted git changes, a given commit, or a GitHub pull request.
-Each contiguous block of diff lines can be staged, unstaged, reverted;
-add review and todos. Commit and pull request review is read-only.
+Commit and pull request review is read-only. Applying a dependency
+proposal stages the files and runs `npm i` or `npm uninstall`.
 
 Intra-line highlighting paints the words that actually changed in a
 stronger red/green. A close edit inside one word still marks only
