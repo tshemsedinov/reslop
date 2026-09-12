@@ -48,29 +48,24 @@ Reviews go in `.review/YYYY-MM-DD-NN.md` with frontmatter `status`:
 
 ## Keys and buttons
 
-| Key         | Action                                   |
-| ----------- | ---------------------------------------- |
-| `a`         | Stage this block (`git add`)             |
-| `u`         | Unstage this block (keep worktree)       |
-| `r`         | Restore this block to the last commit    |
-| `s`         | Skip (leave unstaged, drop from review)  |
-| `←` / `k`   | Previous remaining block / previous file |
-| `→` / `j`   | Next remaining block / next file         |
-| `Ctrl-e`    | Scroll down one line                     |
-| `Ctrl-y`    | Scroll up one line                       |
-| `Ctrl-f`    | Scroll page down                         |
-| `Ctrl-b`    | Scroll page up                           |
-| `Ctrl-d`    | Scroll half-page down                    |
-| `Ctrl-u`    | Scroll half-page up                      |
-| `l`         | File list (git status of this scope)     |
-| `Esc`       | Quit file list or a tool                 |
-| `m`         | Cycle unified / mixed / side-by-side     |
-| `f`         | Feedback on this diff block              |
-| `t`         | New todo for this file                   |
-| `⌫` / `Del` | Remove the selected todo                 |
-| `⏎`         | Open the selected file                   |
-| `q`         | Quit                                     |
-| `?`         | Help                                     |
+| Key                 | Action                                   |
+| ------------------- | ---------------------------------------- |
+| `a`                 | Stage this block (`git add`)             |
+| `u`                 | Unstage this block (keep worktree)       |
+| `r`                 | Restore this block to the last commit    |
+| `f`                 | Feedback on this diff block              |
+| `t`                 | New todo for this file                   |
+| `l`                 | File list (git status of this scope)     |
+| `m`                 | Cycle unified / mixed / side-by-side     |
+| `⏎`                 | Open the selected file                   |
+| `Esc`               | Quit file list or a tool                 |
+| `→` / `j`           | Next remaining block / next file         |
+| `←` / `k`           | Previous remaining block / previous file |
+| `Ctrl-e` / `Ctrl-y` | Scroll one line down / up                |
+| `Ctrl-f` / `Ctrl-b` | Scroll page down / up                    |
+| `Ctrl-d` / `Ctrl-u` | Scroll half-page down / up               |
+| `⌫` / `Del`         | Remove the selected todo                 |
+| `q`                 | Quit                                     |
 
 ## License
 
