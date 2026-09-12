@@ -1299,3 +1299,70 @@ test('load skips imported GitHub notes when resuming a review', () => {
   assert.equal(session.notes.todos.length, 1);
   assert.equal(session.notes.todos[0].text, 'rewrite loop');
 });
+
+test('openLoad paints git items before npm extras arrive', async () => {
+  const gitItem = sampleItem('a.js');
+  const extraItem = sampleItem('package.json');
+  extraItem.dep = { change: { name: 'lodash', section: 'dependencies' } };
+  let extrasResolve;
+  const extras = new Promise((resolve) => {
+    extrasResolve = resolve;
+  });
+  let extrasStarted = false;
+  const repo = {
+    loadAsync: async () => ({
+      top: '/tmp',
+      items: [gitItem],
+      parsed: [gitItem],
+      pending: true,
+    }),
+    loadExtras: async () => {
+      extrasStarted = true;
+      await extras;
+      return {
+        top: '/tmp',
+        items: [gitItem, extraItem],
+        pending: false,
+      };
+    },
+    load: () => ({ top: '/tmp', items: [gitItem] }),
+    add: () => {},
+    unstage: () => {},
+    revert: () => {},
+  };
+  const stdout = sink();
+  const session = new Session({
+    repo,
+    cwd: '/tmp',
+    stdout,
+    color: false,
+    audit: true,
+    startPane: 'files',
+    getSize: () => ({ width: 80, height: 16 }),
+    ...reviewFs,
+  });
+  session.uiOpen = true;
+  const pending = session.openLoad();
+  await new Promise((resolve, reject) => {
+    const tick = (left) => {
+      if (extrasStarted) {
+        resolve();
+        return;
+      }
+      if (left <= 0) {
+        reject(new Error('extras did not start'));
+        return;
+      }
+      setImmediate(() => tick(left - 1));
+    };
+    tick(50);
+  });
+  assert.equal(session.items.length, 1);
+  assert.equal(session.items[0].file.newPath, 'a.js');
+  assert.equal(session.busy, 'checking npm');
+  session.dispatch('next');
+  extrasResolve();
+  await pending;
+  assert.equal(session.items.length, 2);
+  assert.equal(session.busy, '');
+});

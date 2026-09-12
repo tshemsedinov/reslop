@@ -11,7 +11,7 @@ const { Session } = require('../lib/session.js');
 const { makeRepo, sink } = require('./helpers.js');
 const { stripAnsi, THEME, bg } = require('../lib/ansi.js');
 const { parseDiff, itemsFromFiles } = diff;
-const { load, addItem, unstageItem, revertItem } = git;
+const { load, loadExtras, addItem, unstageItem, revertItem } = git;
 const { foldDepItems, readSections, diffSections } = deps;
 const { mergeResolved, lockEntries, lockPackageCount } = deps;
 const { mergeDepFile, collectUsedNames, parseAuditReport } = deps;
@@ -999,6 +999,37 @@ test('load proposes an unused dependency with no package diffs', () => {
     assert.equal(item.dep.change.propose, true);
     assert.equal(item.dep.change.unused, true);
     assertBlankAfter(hunkTexts(item), 'npm uninstall: dependency unused');
+  } finally {
+    repo.cleanup();
+  }
+});
+
+test('deferred load shows unused deps after extras', async () => {
+  const repo = makeRepo();
+  try {
+    const deps = { lodash: '^4.17.20', leftpad: '1.0.0' };
+    repo.write('app.js', 'const _ = require("lodash");\n');
+    repo.write('package.json', pkgLib(deps));
+    repo.write(
+      'package-lock.json',
+      lockV3(deps, {
+        lodash: '4.17.20',
+        leftpad: '1.0.0',
+      }),
+    );
+    repo.git(['add', '.']);
+    repo.git(['commit', '-m', 'init']);
+    const loaded = load(repo.dir, [], { audit: true, deferExtras: true });
+    assert.equal(depByName(loaded.items, 'leftpad'), null);
+    assert.equal(loaded.pending, true);
+    const extra = await loadExtras(loaded, {
+      audit: true,
+      outdatedMap: null,
+      auditMap: null,
+    });
+    const item = depByName(extra.items, 'leftpad');
+    assert.ok(item);
+    assert.equal(item.dep.change.unused, true);
   } finally {
     repo.cleanup();
   }
