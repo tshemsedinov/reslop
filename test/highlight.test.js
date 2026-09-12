@@ -12,6 +12,8 @@ const stylesOf = (tokens, text) =>
 test('AC24 detectLang prefers .d.ts and dotfile rules', () => {
   assert.equal(detectLang('src/a.d.ts'), 'dts');
   assert.equal(detectLang('src/a.ts'), 'ts');
+  assert.equal(detectLang('src/a.jsx'), 'jsx');
+  assert.equal(detectLang('src/a.tsx'), 'tsx');
   assert.equal(detectLang('.env'), 'dot');
 });
 
@@ -49,6 +51,40 @@ test('json property vs string', () => {
 test('bash highlights echo as function', () => {
   const tokens = tokenize('bash', 'echo "hi"');
   assert.equal(stylesOf(tokens, 'echo')[0], 'function');
+});
+
+test('jsx highlights tags attrs and expressions', () => {
+  const src = '<div className="card">{title}</div>';
+  const tokens = tokenize('jsx', src);
+  assert.equal(tokensText(tokens), src);
+  assert.equal(stylesOf(tokens, 'div')[0], 'tag');
+  assert.equal(stylesOf(tokens, 'className')[0], 'attr');
+  assert.equal(stylesOf(tokens, '"card"')[0], 'string');
+  assert.equal(stylesOf(tokens, 'title')[0], 'variable');
+});
+
+test('jsx keeps less-than as an operator', () => {
+  const src = 'if (a < b) return a;';
+  const tokens = tokenize('jsx', src);
+  assert.equal(tokensText(tokens), src);
+  assert.equal(stylesOf(tokens, '<')[0], 'operator');
+});
+
+test('tsx highlights components and keeps types', () => {
+  const src = 'const n: number = 1;\nconst el = <Card title={n} />;';
+  const tokens = tokenize('tsx', src);
+  assert.equal(tokensText(tokens), src);
+  assert.equal(stylesOf(tokens, 'number')[0], 'type');
+  assert.equal(stylesOf(tokens, 'Card')[0], 'className');
+  assert.equal(stylesOf(tokens, 'title')[0], 'attr');
+});
+
+test('tsx does not treat generics as jsx', () => {
+  const src = 'useState<number>(0)';
+  const tokens = tokenize('tsx', src);
+  assert.equal(tokensText(tokens), src);
+  assert.equal(stylesOf(tokens, 'number')[0], 'type');
+  assert.equal(stylesOf(tokens, '<')[0], 'operator');
 });
 
 test('toString identifier does not crash tokenize', () => {
