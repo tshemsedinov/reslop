@@ -28,6 +28,10 @@ test('decodeChunk maps letters and arrows', () => {
   assert.equal(save.key, 'ctrl-s');
   const undo = decodeChunk('\x1a').events[0];
   assert.equal(undo.key, 'ctrl-z');
+  const scrollDown = decodeChunk('\x05').events[0];
+  assert.equal(scrollDown.key, 'ctrl-e');
+  const pageDown = decodeChunk('\x06').events[0];
+  assert.equal(pageDown.key, 'ctrl-f');
   const del = decodeChunk('\x1b[3~').events[0];
   assert.equal(del.key, 'delete');
 });
@@ -53,13 +57,20 @@ test('decodeChunk parses SGR mouse drag and release', () => {
 
 test('actionFromKey maps aliases and ignores unbound keys', () => {
   assert.equal(actionFromKey('right'), 'next');
+  assert.equal(actionFromKey('j'), 'next');
+  assert.equal(actionFromKey('left'), 'prev');
+  assert.equal(actionFromKey('k'), 'prev');
   assert.equal(actionFromKey('up'), 'scrollUp');
   assert.equal(actionFromKey('down'), 'scrollDown');
+  assert.equal(actionFromKey('ctrl-y'), 'scrollUp');
+  assert.equal(actionFromKey('ctrl-e'), 'scrollDown');
+  assert.equal(actionFromKey('ctrl-b'), 'pageUp');
+  assert.equal(actionFromKey('ctrl-f'), 'pageDown');
+  assert.equal(actionFromKey('ctrl-u'), 'halfUp');
+  assert.equal(actionFromKey('ctrl-d'), 'halfDown');
   assert.equal(actionFromKey('enter'), 'open');
   assert.equal(actionFromKey('backspace'), 'removeTodo');
   assert.equal(actionFromKey('delete'), 'removeTodo');
-  assert.equal(actionFromKey('j'), null);
-  assert.equal(actionFromKey('k'), null);
   assert.equal(actionFromKey('s'), null);
   assert.equal(actionFromKey('h'), null);
   assert.equal(actionFromKey('?'), null);
