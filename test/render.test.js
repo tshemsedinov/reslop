@@ -692,27 +692,32 @@ test('AC26 file list status and counts are column-aligned', () => {
     color: false,
   });
   const rows = [2, 3, 4].map((i) => stripAnsi(frame.rows[i]));
-  const columnEnds = (row) => {
+  const columnMarks = (row) => {
     const t = row.trimEnd();
-    const ratio = /(\d+\/\d+)$/.exec(t);
-    const ratioEnd = t.length;
-    const before = t.slice(0, t.length - ratio[0].length).trimEnd();
-    const statusEnd = before.length;
-    const stat = /\+[0-9]+\/-[0-9]+/.exec(t);
-    const slashAt = stat.index + stat[0].indexOf('/');
-    return { ratioEnd, statusEnd, slashAt };
+    const add = /\+[0-9]+/.exec(t);
+    const del = /-[0-9]+/.exec(t);
+    const status = /(unstaged|staged|untracked)/.exec(t);
+    const ratio = /(\d+)\/(\d+)$/.exec(t);
+    const addEnd = add.index + add[0].length;
+    const delEnd = del.index + del[0].length;
+    const statusEnd = status.index + status[0].length;
+    const slashAt = ratio.index + ratio[1].length;
+    return { addEnd, delEnd, statusEnd, slashAt };
   };
-  const ends = rows.map(columnEnds);
-  assert.equal(new Set(ends.map((e) => e.ratioEnd)).size, 1);
-  assert.equal(new Set(ends.map((e) => e.statusEnd)).size, 1);
-  assert.equal(new Set(ends.map((e) => e.slashAt)).size, 1);
-  assert.ok(ends[0].statusEnd < ends[0].ratioEnd);
+  const marks = rows.map(columnMarks);
+  assert.equal(new Set(marks.map((m) => m.addEnd)).size, 1);
+  assert.equal(new Set(marks.map((m) => m.delEnd)).size, 1);
+  assert.equal(new Set(marks.map((m) => m.statusEnd)).size, 1);
+  assert.equal(new Set(marks.map((m) => m.slashAt)).size, 1);
+  assert.ok(marks[0].addEnd < marks[0].delEnd);
+  assert.ok(marks[0].delEnd < marks[0].statusEnd);
+  assert.ok(marks[0].statusEnd < marks[0].slashAt);
   assert.match(rows[0], /unstaged/);
   assert.match(rows[1], /staged/);
   assert.match(rows[2], /untracked/);
-  assert.match(rows[0], /\+12\/-5/);
-  assert.match(rows[1], /\+3\/-1/);
-  assert.match(rows[2], /\+20\/-0/);
+  assert.match(rows[0], /\+12 {2}-5/);
+  assert.match(rows[1], /\+3 {2}-1/);
+  assert.match(rows[2], /\+20 {2}-0/);
   assert.match(rows[0], /0\/4/);
   assert.match(rows[1], /1\/1/);
   assert.match(rows[2], /0\/12/);
@@ -722,14 +727,26 @@ test('AC26 file list status and counts are column-aligned', () => {
     color: false,
   });
   const first = stripAnsi(slim.rows[2]);
-  assert.match(first, /unstaged {3}0\/4 $/);
+  assert.match(first, /unstaged {2}0\/4 {2}$/);
 });
 
 test('file list paints git status colors', () => {
   const files = [
-    { path: 'a.js', status: 'unstaged', remaining: 1, staged: 0, firstIndex: 0 },
+    {
+      path: 'a.js',
+      status: 'unstaged',
+      remaining: 1,
+      staged: 0,
+      firstIndex: 0,
+    },
     { path: 'b.js', status: 'staged', remaining: 1, staged: 1, firstIndex: 1 },
-    { path: 'c.js', status: 'untracked', remaining: 1, staged: 0, firstIndex: 2 },
+    {
+      path: 'c.js',
+      status: 'untracked',
+      remaining: 1,
+      staged: 0,
+      firstIndex: 2,
+    },
     {
       path: 'd.js',
       status: 'partial',
@@ -755,13 +772,13 @@ test('file list paints git status colors', () => {
   });
   assert.ok(frame.rows[2].includes(fg(THEME.delLineFg)));
   assert.ok(frame.rows[3].includes(fg(THEME.addLineFg)));
+  assert.ok(frame.rows[3].includes(fg(THEME.delLineFg)));
   assert.ok(frame.rows[4].includes(fg(THEME.mutedFg)));
   assert.ok(frame.rows[5].includes(fg(THEME.warnFg)));
-  assert.ok(!frame.rows[3].includes(fg(THEME.delLineFg)));
   assert.ok(!frame.rows[3].includes(fg(THEME.warnFg)));
   const mixed = stripAnsi(frame.rows[5]);
-  assert.match(mixed, /2\/1/);
-  assert.ok(!mixed.includes('partial'));
+  assert.match(mixed, /partial/);
+  assert.match(mixed, /2\/3/);
 });
 
 test('AC25 header path roles use distinct greys', () => {
