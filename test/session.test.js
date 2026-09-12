@@ -267,6 +267,58 @@ test('AC9 hotkeys dispatch add revert next prev quit', () => {
   assert.equal(session.done, true);
 });
 
+test('j and k move next and prev on the diff', () => {
+  const a = sampleItem('a.js');
+  const b = sampleItem('b.js');
+  const { session } = openSession([a, b]);
+  session.pushInput('j');
+  assert.equal(session.current().file.newPath, 'b.js');
+  session.pushInput('k');
+  assert.equal(session.current().file.newPath, 'a.js');
+});
+
+test('j and k move the files cursor', () => {
+  const a = sampleItem('a.js');
+  const b = sampleItem('b.js');
+  const { session } = openSession([a, b], { startPane: 'files' });
+  assert.equal(session.fileCursor, 0);
+  session.pushInput('j');
+  assert.equal(session.fileCursor, 1);
+  session.pushInput('k');
+  assert.equal(session.fileCursor, 0);
+});
+
+test('vim ctrl keys scroll the diff by line and page', () => {
+  const { session } = openSession([sampleItem('a.js')]);
+  session.draw();
+  const page = session.lastFrame.bodyH;
+  assert.ok(page > 1);
+  session.handleEvent({ type: 'key', key: 'ctrl-e' });
+  assert.equal(session.scroll, 1);
+  session.handleEvent({ type: 'key', key: 'ctrl-y' });
+  assert.equal(session.scroll, 0);
+  session.handleEvent({ type: 'key', key: 'ctrl-f' });
+  assert.equal(session.scroll, page);
+  session.handleEvent({ type: 'key', key: 'ctrl-b' });
+  assert.equal(session.scroll, 0);
+  session.handleEvent({ type: 'key', key: 'ctrl-d' });
+  assert.equal(session.scroll, Math.max(1, Math.floor(page * 0.5)));
+  session.handleEvent({ type: 'key', key: 'ctrl-u' });
+  assert.equal(session.scroll, 0);
+});
+
+test('vim ctrl-f pages down the files list', () => {
+  const items = [];
+  for (let i = 0; i < 20; i++) items.push(sampleItem(`f${i}.js`));
+  const { session } = openSession(items, { startPane: 'files' });
+  session.draw();
+  const page = session.lastFrame.bodyH;
+  session.handleEvent({ type: 'key', key: 'ctrl-f' });
+  assert.equal(session.fileCursor, page);
+  session.handleEvent({ type: 'key', key: 'ctrl-b' });
+  assert.equal(session.fileCursor, 0);
+});
+
 test('AC10 footer Add hitbox dispatches add', () => {
   const item = sampleItem('c.js');
   const { session, repo } = openSession([item]);
