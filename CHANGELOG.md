@@ -2,6 +2,8 @@
 
 ## [Unreleased][unreleased]
 
+- Added `-r` read-only mode that blocks stage, unstage, revert, and npm apply
+
 ## [0.1.3][] - 2026-09-12
 
 - Showed added/removed and staged/total counts in the file list

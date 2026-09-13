@@ -52,11 +52,15 @@ test('AC12 clean repo prints nothing to review', async () => {
   }
 });
 
-test('parseArgv accepts -n', () => {
+test('parseArgv accepts -n and -r', () => {
   assert.equal(parseArgv([]).newReview, false);
+  assert.equal(parseArgv([]).readOnly, false);
   assert.equal(parseArgv(['-n']).newReview, true);
+  assert.equal(parseArgv(['-r']).readOnly, true);
   assert.deepEqual(parseArgv(['-n', 'lib']).paths, ['lib']);
   assert.equal(parseArgv(['-n', 'lib']).newReview, true);
+  assert.equal(parseArgv(['-n', '-r']).newReview, true);
+  assert.equal(parseArgv(['-n', '-r']).readOnly, true);
   const unknown = ['--new', '--help', '-h', '--version', '-v'];
   for (const flag of unknown) {
     const message = `unknown option ${flag}`;
@@ -72,7 +76,7 @@ test('unknown option exits 1', async () => {
   assert.equal(code, 1);
   const err = proc.stderrText();
   assert.match(err, /unknown option/);
-  assert.match(err, /Usage: reslop \[-n\] \[path \| commit \| pr-url\]/);
+  assert.match(err, /Usage: reslop \[-n\] \[-r\] \[path \| commit \| pr-url\]/);
   assert.doesNotMatch(err, /--help/);
 });
 

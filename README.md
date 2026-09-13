@@ -16,13 +16,6 @@ Review → Plan → Repair → Verify
 - Review each npm dependency once across `package.json` and the lockfile.
 - Propose unused removals, npm audit fixes, and outdated updates as diffs.
 
-Commit and pull request review is read-only. Applying a dependency
-proposal stages the files and runs `npm i` or `npm uninstall`.
-
-Intra-line highlighting paints the words that actually changed in a
-stronger red/green. A close edit inside one word still marks only
-those characters.
-
 ## Install
 
 ```bash
@@ -31,13 +24,12 @@ npm i -g reslop
 
 ## Usage
 
-```bash
-reslop
-reslop -n
-reslop path/file
-reslop 7ac260c
-reslop https://github.com/metarhia/metacom/pull/555
-```
+- `reslop` uncommitted diffs in this repository
+- `reslop path/file` sjow only that path or file
+- `reslop 7ac260c` show that commit (read-only)
+- `reslop https://github.com/metarhia/metacom/pull/555` GitHub PR (read-only)
+- `reslop -n` start a new review even if the latest is still editing
+- `reslop -r` read-only: no stage, unstage, revert, or npm apply
 
 Reviews go in `.review/YYYY-MM-DD-NN.md` with frontmatter `status`:
 
@@ -46,7 +38,7 @@ Reviews go in `.review/YYYY-MM-DD-NN.md` with frontmatter `status`:
 - `partial`: AI started; some items remain
 - `done`: all items marked `[x]`
 
-## Keys and buttons
+## Hotkeys
 
 | Key                 | Action                                   |
 | ------------------- | ---------------------------------------- |

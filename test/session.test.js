@@ -238,6 +238,30 @@ test('PR add and revert are read only and feedback attaches', () => {
   assert.equal(view.repoName, 'acme/app');
 });
 
+test('-r blocks add unstage revert and still takes feedback', () => {
+  const item = sampleItem('a.js');
+  const { session, repo } = openSession([item], { readOnly: true });
+  session.dispatch('add');
+  assert.equal(session.status, 'read only');
+  assert.equal(repo.added.length, 0);
+  session.dispatch('unstage');
+  assert.equal(session.status, 'read only');
+  assert.equal(repo.unstageCalls.length, 0);
+  session.dispatch('revert');
+  assert.equal(session.status, 'read only');
+  assert.equal(repo.reverted.length, 0);
+  session.pane = 'files';
+  session.dispatch('add');
+  assert.equal(session.status, 'read only');
+  assert.equal(repo.added.length, 0);
+  session.pane = 'diff';
+  session.dispatch('feedback');
+  session.pushInput('keep this');
+  session.handleEvent({ type: 'key', key: 'ctrl-s' });
+  const note = session.notes.feedback.get('a.js:1:1:0');
+  assert.equal(note.text, 'keep this');
+});
+
 test('AC9 hotkeys dispatch add revert next prev quit', () => {
   const a = sampleItem('a.js');
   const b = sampleItem('b.js');
