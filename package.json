@@ -53,7 +53,7 @@
     "disable": "node scripts/disable.js",
     "lint": "eslint . && prettier -c \"**/*.js\" \"**/*.json\" \"**/*.md\"",
     "fix": "eslint . --fix && prettier --write \"**/*.js\" \"**/*.json\" \"**/*.md\"",
-    "test": "npm run -s lint && node --test \"test/**/*.test.js\""
+    "test": "npm run -s lint && node --test"
   },
   "devDependencies": {
     "eslint": "^9.39.4",

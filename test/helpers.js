@@ -14,7 +14,8 @@ const gitEnv = {
 };
 
 const makeRepo = () => {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'reslop-'));
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'reslop-'));
+  const dir = fs.realpathSync(tmp); // macOS /var -> /private/var
   const git = (args, input) => {
     const result = spawnSync('git', args, {
       cwd: dir,
