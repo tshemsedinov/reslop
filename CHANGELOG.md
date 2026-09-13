@@ -2,10 +2,12 @@
 
 ## [Unreleased][unreleased]
 
+- Open a GitLab merge request by URL and import review comments
 - Added `-r` read-only mode that blocks stage, unstage, revert, and npm apply
 - Ran on Windows: npm.cmd, clip, terminal resize, and a .cmd installer
 - Fixed `npm test` so it finds tests on Windows, macOS, and Node 18
 - Compare git cwd, slashes, and line endings on macOS and Windows
+- Support GitLab MR
 
 ## [0.1.3][] - 2026-09-12
 

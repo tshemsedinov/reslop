@@ -13,6 +13,19 @@ test('selectChangeSource recognizes a GitHub pull request URL', () => {
   assert.deepEqual(selected.paths, []);
 });
 
+test('selectChangeSource recognizes a GitLab merge request URL', () => {
+  const url = 'https://gitlab.com/acme/app/-/merge_requests/123';
+  const selected = selectChangeSource([url]);
+  assert.equal(selected.kind, 'gitlab-mr');
+  assert.deepEqual(selected.mr, {
+    host: 'gitlab.com',
+    project: 'acme/app',
+    number: 123,
+    origin: 'https://gitlab.com',
+  });
+  assert.deepEqual(selected.paths, []);
+});
+
 test('selectChangeSource does not treat review as a subcommand', () => {
   const url = 'https://github.com/acme/app/pull/123';
   const selected = selectChangeSource(['review', url, 'lib']);

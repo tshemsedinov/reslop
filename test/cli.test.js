@@ -76,7 +76,9 @@ test('unknown option exits 1', async () => {
   assert.equal(code, 1);
   const err = proc.stderrText();
   assert.match(err, /unknown option/);
-  assert.match(err, /Usage: reslop \[-n\] \[-r\] \[path \| commit \| pr-url\]/);
+  const usage =
+    /Usage: reslop \[-n\] \[-r\] \[path \| commit \| pr-url \| mr-url\]/;
+  assert.match(err, usage);
   assert.doesNotMatch(err, /--help/);
 });
 
@@ -283,6 +285,78 @@ test('GitHub PR load errors exit 1', async () => {
     });
     assert.equal(code, 1);
     assert.match(proc.stderrText(), /GitHub pull request not found/);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+const mockMrLoad =
+  (dir, extra = {}) =>
+  async () => ({
+    top: dir,
+    items: extra.items ?? [prItem()],
+    sourceLabel: extra.sourceLabel ?? '!123',
+    change: {
+      source: 'gitlab-mr',
+      title: extra.title ?? 'Fix parser',
+      author: extra.author ?? 'alice',
+      repository: extra.repository ?? 'acme/app',
+      number: extra.number ?? 123,
+      base: extra.base ?? 'main',
+      head: extra.head ?? 'fix-parser',
+      url: extra.url ?? 'https://gitlab.com/acme/app/-/merge_requests/123',
+      files: extra.files ?? ['lib/a.js'],
+    },
+  });
+
+test('GitLab MR URL opens without a local git repository', async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'reslop-mr-'));
+  try {
+    const url = 'https://gitlab.com/acme/app/-/merge_requests/123';
+    const proc = fakeProc(dir, {
+      argv: ['node', 'reslop', url],
+    });
+    const code = await run(proc, { loadMergeRequest: mockMrLoad(dir) });
+    assert.equal(code, 1);
+    assert.match(proc.stderrText(), /interactive terminal required/);
+    assert.doesNotMatch(proc.stderrText(), /not a git repository/);
+    assert.equal(proc.stdoutText().includes('nothing to review'), false);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('empty GitLab MR prints nothing to review', async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'reslop-mr-'));
+  try {
+    const url = 'https://gitlab.com/acme/app/-/merge_requests/123';
+    const proc = fakeProc(dir, {
+      argv: ['node', 'reslop', url],
+    });
+    const code = await run(proc, {
+      loadMergeRequest: mockMrLoad(dir, { items: [] }),
+    });
+    assert.equal(code, 0);
+    assert.equal(proc.stdoutText(), 'nothing to review\n');
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('GitLab MR load errors exit 1', async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'reslop-mr-'));
+  try {
+    const url = 'https://gitlab.com/acme/app/-/merge_requests/123';
+    const proc = fakeProc(dir, {
+      argv: ['node', 'reslop', url],
+    });
+    const code = await run(proc, {
+      loadMergeRequest: async () => {
+        throw new Error('GitLab merge request not found');
+      },
+    });
+    assert.equal(code, 1);
+    assert.match(proc.stderrText(), /GitLab merge request not found/);
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
   }

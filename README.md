@@ -16,10 +16,10 @@ for the agent.
 Review → Plan → Repair → Verify
 ```
 
-- Review uncommitted git diffs, a given commit, or a GitHub pull request.
+- Review uncommitted git diffs, a given commit, a GitHub PR, or a GitLab MR.
 - Stage, unstage, or revert each contiguous block of diff lines.
 - Leave feedback and todos that become a repair plan for the agent.
-- Import GitHub pull request review comments into the local plan for AI.
+- Import GitHub PR and GitLab MR review comments into the local plan for AI.
 - Review each npm dependency once across `package.json` and the lockfile.
 - Propose unused removals, npm audit fixes, and outdated updates as diffs.
 
@@ -36,7 +36,7 @@ Works on Linux, macOS, and Windows. On Windows use Windows Terminal.
 - `reslop` uncommitted diffs in this repository
 - `reslop path/file` sjow only that path or file
 - `reslop 7ac260c` show that commit (read-only)
-- `reslop https://github.com/metarhia/metacom/pull/555` GitHub PR (read-only)
+- `reslop https://github.com/metarhia/metacom/pull/555` GitHub/GitLab PR/MR
 - `reslop -n` start a new review even if the latest is still editing
 - `reslop -r` read-only: no stage, unstage, revert, or npm apply
 
