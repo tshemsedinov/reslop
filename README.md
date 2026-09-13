@@ -29,6 +29,8 @@ Review → Plan → Repair → Verify
 npm i -g reslop
 ```
 
+Works on Linux, macOS, and Windows. On Windows use Windows Terminal.
+
 ## Usage
 
 - `reslop` uncommitted diffs in this repository

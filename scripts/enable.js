@@ -6,13 +6,16 @@ const os = require('node:os');
 const path = require('node:path');
 const { spawnSync } = require('node:child_process');
 
+const { IS_WIN, spawnBase } = require('../lib/sys.js');
+
 const root = path.resolve(__dirname, '..');
 const binSrc = path.join(root, 'bin', 'reslop.js');
 const home = os.homedir();
 const destDir = process.env.RESLOP_BIN_DIR
   ? path.resolve(process.env.RESLOP_BIN_DIR)
   : path.join(home, '.local', 'bin');
-const dest = path.join(destDir, 'reslop');
+const destName = IS_WIN ? 'reslop.cmd' : 'reslop';
+const dest = path.join(destDir, destName);
 
 const MARK_BEGIN = '# >>> reslop >>>';
 const MARK_END = '# <<< reslop <<<';
@@ -61,7 +64,11 @@ const removeMarkedBlock = (filePath) => {
 };
 
 const installBin = () => {
-  fs.chmodSync(binSrc, 0o755);
+  try {
+    fs.chmodSync(binSrc, 0o755);
+  } catch {
+    // Windows
+  }
   fs.mkdirSync(destDir, { recursive: true });
 
   try {
@@ -69,6 +76,14 @@ const installBin = () => {
     fs.unlinkSync(dest);
   } catch (error) {
     if (error.code !== 'ENOENT') throw error;
+  }
+
+  if (IS_WIN) {
+    const quoted = `"${binSrc.replaceAll('"', '')}"`;
+    const wrapper = `@echo off\r\nnode ${quoted} %*\r\n`;
+    fs.writeFileSync(dest, wrapper);
+    console.log(`reslop: installed ${dest}`);
+    return;
   }
 
   try {
@@ -98,52 +113,68 @@ exec node ${JSON.stringify(binSrc)} "$@"
 
 installBin();
 
-const bashrcd = path.join(home, '.bashrc.d');
-const dropIn = path.join(bashrcd, 'reslop.sh');
-try {
-  if (fs.existsSync(bashrcd) || fs.existsSync(path.join(home, '.bashrc'))) {
-    fs.mkdirSync(bashrcd, { recursive: true });
-    fs.writeFileSync(dropIn, shellBlock, { mode: 0o644 });
-    console.log(`reslop: wrote ${dropIn}`);
-    removeMarkedBlock(path.join(home, '.bashrc'));
-  }
-} catch (error) {
-  console.log(`reslop: skip shell drop-in (${error.message})`);
-}
-
-try {
-  const envDir = path.join(home, '.config', 'environment.d');
-  fs.mkdirSync(envDir, { recursive: true });
-  const envFile = path.join(envDir, 'reslop.conf');
-  fs.writeFileSync(envFile, `PATH=${destDir}:$PATH\n`);
-  console.log(`reslop: wrote ${envFile}`);
-} catch (error) {
-  console.log(`reslop: skip environment.d (${error.message})`);
-}
-
-for (const rc of [path.join(home, '.zshrc'), path.join(home, '.profile')]) {
-  if (!fs.existsSync(rc)) continue;
+if (!IS_WIN) {
+  const bashrcd = path.join(home, '.bashrc.d');
+  const dropIn = path.join(bashrcd, 'reslop.sh');
   try {
-    upsertShellConfig(rc);
+    if (fs.existsSync(bashrcd) || fs.existsSync(path.join(home, '.bashrc'))) {
+      fs.mkdirSync(bashrcd, { recursive: true });
+      fs.writeFileSync(dropIn, shellBlock, { mode: 0o644 });
+      console.log(`reslop: wrote ${dropIn}`);
+      removeMarkedBlock(path.join(home, '.bashrc'));
+    }
   } catch (error) {
-    console.log(`reslop: skip ${rc} (${error.message})`);
+    console.log(`reslop: skip shell drop-in (${error.message})`);
+  }
+
+  try {
+    const envDir = path.join(home, '.config', 'environment.d');
+    fs.mkdirSync(envDir, { recursive: true });
+    const envFile = path.join(envDir, 'reslop.conf');
+    fs.writeFileSync(envFile, `PATH=${destDir}:$PATH\n`);
+    console.log(`reslop: wrote ${envFile}`);
+  } catch (error) {
+    console.log(`reslop: skip environment.d (${error.message})`);
+  }
+
+  for (const rc of [path.join(home, '.zshrc'), path.join(home, '.profile')]) {
+    if (!fs.existsSync(rc)) continue;
+    try {
+      upsertShellConfig(rc);
+    } catch (error) {
+      console.log(`reslop: skip ${rc} (${error.message})`);
+    }
   }
 }
 
-const check = spawnSync(dest, [], { encoding: 'utf8' });
+const check = spawnSync(
+  dest,
+  [],
+  spawnBase({ encoding: 'utf8', shell: IS_WIN }),
+);
 if (check.error) {
   console.error('reslop: enable finished but binary failed to run:');
   console.error(check.error.message);
   process.exit(1);
 }
 
-const ready = [
-  '',
-  'Ready. Apply in this terminal:',
-  '',
-  '  source ~/.bashrc.d/reslop.sh',
-  '',
-  'Then run reslop from any git repository.',
-  '',
-];
+const ready = IS_WIN
+  ? [
+      '',
+      'Ready. Add this directory to PATH if needed:',
+      '',
+      `  ${destDir}`,
+      '',
+      'Then run reslop from any git repository.',
+      '',
+    ]
+  : [
+      '',
+      'Ready. Apply in this terminal:',
+      '',
+      '  source ~/.bashrc.d/reslop.sh',
+      '',
+      'Then run reslop from any git repository.',
+      '',
+    ];
 console.log(ready.join('\n'));

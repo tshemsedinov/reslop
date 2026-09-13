@@ -3,6 +3,7 @@
 ## [Unreleased][unreleased]
 
 - Added `-r` read-only mode that blocks stage, unstage, revert, and npm apply
+- Ran on Windows: npm.cmd, clip, terminal resize, and a .cmd installer
 
 ## [0.1.3][] - 2026-09-12
 

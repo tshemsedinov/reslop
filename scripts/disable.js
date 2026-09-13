@@ -5,11 +5,14 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 
+const { IS_WIN } = require('../lib/sys.js');
+
 const home = os.homedir();
 const destDir = process.env.RESLOP_BIN_DIR
   ? path.resolve(process.env.RESLOP_BIN_DIR)
   : path.join(home, '.local', 'bin');
-const dest = path.join(destDir, 'reslop');
+const destName = IS_WIN ? 'reslop.cmd' : 'reslop';
+const dest = path.join(destDir, destName);
 
 const MARK_BEGIN = '# >>> reslop >>>';
 const MARK_END = '# <<< reslop <<<';
