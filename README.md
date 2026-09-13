@@ -34,7 +34,7 @@ Works on Linux, macOS, and Windows. On Windows use Windows Terminal.
 ## Usage
 
 - `reslop` uncommitted diffs in this repository
-- `reslop path/file` sjow only that path or file
+- `reslop path/file` show only that path or file
 - `reslop 7ac260c` show that commit (read-only)
 - `reslop https://github.com/metarhia/metacom/pull/555` GitHub/GitLab PR/MR
 - `reslop -n` start a new review even if the latest is still editing

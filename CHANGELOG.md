@@ -2,12 +2,13 @@
 
 ## [Unreleased][unreleased]
 
-- Open a GitLab merge request by URL and import review comments
-- Added `-r` read-only mode that blocks stage, unstage, revert, and npm apply
-- Ran on Windows: npm.cmd, clip, terminal resize, and a .cmd installer
+## [0.1.4][] - 2026-09-13
+
+- Support a GitLab MR by URL and import review comments
+- Support Windows: npm.cmd, clip, terminal resize, installer
+- Added `-r` read-only mode that blocks stage, unstage, revert, npm
 - Fixed `npm test` so it finds tests on Windows, macOS, and Node 18
-- Compare git cwd, slashes, and line endings on macOS and Windows
-- Support GitLab MR
+- Added Testing CI on Linux, macOS, and Windows
 
 ## [0.1.3][] - 2026-09-12
 
@@ -40,7 +41,8 @@
 - Feedback and todos that produce a repair plan for an agent
 - Intra-line highlighting in unified, mixed, and side-by-side layouts
 
-[unreleased]: https://github.com/tshemsedinov/reslop/compare/v0.1.3...HEAD
+[unreleased]: https://github.com/tshemsedinov/reslop/compare/v0.1.4...HEAD
+[0.1.4]: https://github.com/tshemsedinov/reslop/compare/v0.1.3...v0.1.4
 [0.1.3]: https://github.com/tshemsedinov/reslop/compare/v0.1.2...v0.1.3
 [0.1.2]: https://github.com/tshemsedinov/reslop/compare/v0.1.1...v0.1.2
 [0.1.1]: https://github.com/tshemsedinov/reslop/compare/v0.1.0...v0.1.1
