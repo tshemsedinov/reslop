@@ -8,6 +8,7 @@ const diff = require('../lib/diff.js');
 const git = require('../lib/git.js');
 const render = require('../lib/render.js');
 const { Session } = require('../lib/session.js');
+const { samePath } = require('../lib/sys.js');
 const { makeRepo, sink } = require('./helpers.js');
 const { stripAnsi, THEME, bg } = require('../lib/ansi.js');
 const { parseDiff, itemsFromFiles } = diff;
@@ -1125,7 +1126,7 @@ test('add on a proposed update writes package.json and runs npm i', () => {
       return { status: 0 };
     };
     addItem(loaded.top, item);
-    assert.equal(installed, repo.dir);
+    assert.equal(samePath(installed, repo.dir), true);
     const pkg = JSON.parse(repo.read('package.json'));
     assert.equal(pkg.dependencies.lodash, '^4.17.21');
     const lock = JSON.parse(repo.read('package-lock.json'));
@@ -1167,7 +1168,7 @@ test('add on an unused dependency runs npm uninstall', () => {
       return { status: 0 };
     };
     addItem(loaded.top, item);
-    assert.equal(removed, repo.dir);
+    assert.equal(samePath(removed, repo.dir), true);
     const pkg = JSON.parse(repo.read('package.json'));
     assert.equal(pkg.dependencies.leftpad, undefined);
     const lock = JSON.parse(repo.read('package-lock.json'));

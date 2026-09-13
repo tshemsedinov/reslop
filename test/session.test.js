@@ -2,12 +2,16 @@
 
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
+const path = require('node:path');
 
 const { Session } = require('../lib/session.js');
 const { hitAction } = require('../lib/keys.js');
 const { sink } = require('./helpers.js');
 const { createStore, addTodo, serializeReview } = require('../lib/review.js');
 const { stripAnsi } = require('../lib/ansi.js');
+const { REVIEW_DIR } = require('../lib/files.js');
+
+const reviewFile = (name) => path.join('/tmp', REVIEW_DIR, name);
 
 const sampleItem = (name, origin = 'unstaged') => ({
   origin,
@@ -1198,7 +1202,7 @@ test('quit continue keeps editing so the next run can resume', () => {
 });
 
 test('initReview resumes latest editing file', () => {
-  const draft = createStore('/tmp/.review/2026-09-07-00.md');
+  const draft = createStore(reviewFile('2026-09-07-00.md'));
   addTodo(draft, 'a.js', 'rewrite loop');
   const md = serializeReview(draft);
   const a = sampleItem('a.js');
@@ -1206,7 +1210,7 @@ test('initReview resumes latest editing file', () => {
     readdirSync: () => ['2026-09-07-00.md'],
     readFileSync: reviewReader(md),
   });
-  assert.equal(session.notes.reviewPath, '/tmp/.review/2026-09-07-00.md');
+  assert.equal(session.notes.reviewPath, reviewFile('2026-09-07-00.md'));
   assert.equal(session.notes.status, 'editing');
   assert.equal(session.notes.todos[0].text, 'rewrite loop');
   assert.equal(
@@ -1216,7 +1220,7 @@ test('initReview resumes latest editing file', () => {
 });
 
 test('initReview starts a new file when latest is ready', () => {
-  const draft = createStore('/tmp/.review/2026-09-07-00.md');
+  const draft = createStore(reviewFile('2026-09-07-00.md'));
   draft.status = 'ready';
   addTodo(draft, 'a.js', 'rewrite loop');
   const md = serializeReview(draft);
@@ -1224,12 +1228,12 @@ test('initReview starts a new file when latest is ready', () => {
     readdirSync: () => ['2026-09-07-00.md'],
     readFileSync: reviewReader(md),
   });
-  assert.equal(session.notes.reviewPath, '/tmp/.review/2026-09-07-01.md');
+  assert.equal(session.notes.reviewPath, reviewFile('2026-09-07-01.md'));
   assert.equal(session.notes.todos.length, 0);
 });
 
 test('newReview starts a new file even if latest is editing', () => {
-  const draft = createStore('/tmp/.review/2026-09-07-00.md');
+  const draft = createStore(reviewFile('2026-09-07-00.md'));
   addTodo(draft, 'a.js', 'rewrite loop');
   const md = serializeReview(draft);
   const { session } = openSession([sampleItem('a.js')], {
@@ -1237,7 +1241,7 @@ test('newReview starts a new file even if latest is editing', () => {
     readdirSync: () => ['2026-09-07-00.md'],
     readFileSync: reviewReader(md),
   });
-  assert.equal(session.notes.reviewPath, '/tmp/.review/2026-09-07-01.md');
+  assert.equal(session.notes.reviewPath, reviewFile('2026-09-07-01.md'));
   assert.equal(session.notes.todos.length, 0);
 });
 

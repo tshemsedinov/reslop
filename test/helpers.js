@@ -14,8 +14,7 @@ const gitEnv = {
 };
 
 const makeRepo = () => {
-  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'reslop-'));
-  const dir = fs.realpathSync(tmp); // macOS /var -> /private/var
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'reslop-'));
   const git = (args, input) => {
     const result = spawnSync('git', args, {
       cwd: dir,
@@ -32,6 +31,8 @@ const makeRepo = () => {
   git(['init', '-b', 'main']);
   git(['config', 'user.email', 'test@example.com']);
   git(['config', 'user.name', 'Test']);
+  git(['config', 'core.autocrlf', 'false']);
+  git(['config', 'core.eol', 'lf']);
   const write = (rel, content) => {
     const full = path.join(dir, rel);
     fs.mkdirSync(path.dirname(full), { recursive: true });
