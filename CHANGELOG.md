@@ -3,6 +3,7 @@
 ## [Unreleased][unreleased]
 
 - Added `c` to edit added lines in place as a code proposal
+- Hide inactive footer hotkeys on the file list and todo pages
 
 ## [0.1.4][] - 2026-09-13
 

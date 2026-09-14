@@ -102,8 +102,11 @@ test('layoutButtons hitboxes cover labels', () => {
   assert.equal(hitIds.includes('feedback'), false);
   assert.equal(hitIds.includes('code'), false);
   assert.equal(hitIds.includes('add'), true);
-  const mode = off.parts.find((part) => part.action.id === 'layout');
-  assert.equal(mode.disabled, true);
+  const ids = off.parts.map((part) => part.action.id);
+  assert.equal(ids.includes('layout'), false);
+  assert.equal(ids.includes('feedback'), false);
+  assert.equal(ids.includes('code'), false);
+  assert.equal(ids.includes('todo'), true);
 });
 
 test('buttonWord prefixes a hot mark when it is not in the label', () => {

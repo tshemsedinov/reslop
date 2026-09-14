@@ -627,8 +627,10 @@ test('AC10 footer words highlight the bound letter', () => {
   const row = frame.rows[frame.rows.length - 1];
   const plain = stripAnsi(row);
   assert.match(plain, /add {2}unstage {2}revert {2}←prev/);
-  assert.match(plain, /←prev {2}→next {2}mode {2}files/);
-  assert.match(plain, /feedback {2}todo {2}code {2}quit/);
+  assert.match(plain, /←prev {2}→next {2}files {2}todo {2}quit/);
+  assert.ok(!plain.includes('mode'));
+  assert.ok(!plain.includes('feedback'));
+  assert.ok(!plain.includes('code'));
   assert.ok(!plain.includes('['));
   assert.ok(row.includes(fg(THEME.buttonHotFg)));
   assert.ok(row.includes(fg(THEME.buttonFg)));
@@ -1272,6 +1274,12 @@ test('todo view paints file todo text not a diff hunk', () => {
   assert.ok(!stripAnsi(frame.rows[2]).startsWith('+'));
   assert.ok(!stripAnsi(frame.rows[2]).startsWith('-'));
   assert.match(body, /f\.js\s+todo 1\/1/);
+  const footer = frame.rows[frame.rows.length - 1];
+  assert.match(footer, /←prev {2}→next {2}files {2}todo {2}quit/);
+  assert.ok(!footer.includes('add'));
+  assert.ok(!footer.includes('mode'));
+  assert.ok(!footer.includes('feedback'));
+  assert.ok(!footer.includes('code'));
 });
 
 test('todo list stays visible while composing', () => {
