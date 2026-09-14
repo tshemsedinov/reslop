@@ -69,6 +69,7 @@ test('actionFromKey maps aliases and ignores unbound keys', () => {
   assert.equal(actionFromKey('ctrl-u'), 'halfUp');
   assert.equal(actionFromKey('ctrl-d'), 'halfDown');
   assert.equal(actionFromKey('enter'), 'open');
+  assert.equal(actionFromKey('c'), 'code');
   assert.equal(actionFromKey('backspace'), 'removeTodo');
   assert.equal(actionFromKey('delete'), 'removeTodo');
   assert.equal(actionFromKey('s'), null);
@@ -99,6 +100,7 @@ test('layoutButtons hitboxes cover labels', () => {
   const hitIds = off.hits.map((hit) => hit.id);
   assert.equal(hitIds.includes('layout'), false);
   assert.equal(hitIds.includes('feedback'), false);
+  assert.equal(hitIds.includes('code'), false);
   assert.equal(hitIds.includes('add'), true);
   const mode = off.parts.find((part) => part.action.id === 'layout');
   assert.equal(mode.disabled, true);

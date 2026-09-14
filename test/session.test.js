@@ -626,6 +626,9 @@ test('files pane disables mode and feedback', () => {
   session.dispatch('feedback');
   assert.equal(session.mode, 'review');
   assert.equal(session.pane, 'files');
+  session.dispatch('code');
+  assert.equal(session.mode, 'review');
+  assert.equal(session.notes.code.size, 0);
 });
 
 test('files pane add on a staged file still moves down', () => {
@@ -890,6 +893,42 @@ test('existing unique feedback hides the template list', () => {
   assert.ok(!body.includes('extract helper'));
   assert.ok(!body.includes('add tests'));
   assert.equal(session.lastFrame.templateHits.length, 0);
+});
+
+test('c edits added lines in place as a code proposal', () => {
+  const item = sampleItem('a.js');
+  const { session } = openSession([item]);
+  session.dispatch('code');
+  assert.equal(session.mode, 'compose');
+  assert.equal(session.composeKind, 'code');
+  assert.equal(session.editor.text, 'b');
+  assert.equal(session.view().compose, null);
+  session.draw();
+  const body = stripAnsi(session.lastFrame.rows.join('\n'));
+  assert.match(body, /\+ b/);
+  assert.ok(session.lastFrame.cursor);
+  assert.equal(session.lastFrame.cursor.x, 4);
+  session.pushInput('2');
+  session.handleEvent({ type: 'key', key: 'enter' });
+  assert.equal(session.mode, 'compose');
+  assert.equal(session.editor.text, 'b2\n');
+  session.handleEvent({ type: 'key', key: 'escape' });
+  assert.equal(session.mode, 'review');
+  const note = session.notes.code.get('a.js:1:1:0');
+  assert.equal(note.text, 'b2\n');
+  assert.equal(session.counts().code, 1);
+  session.draw();
+  const saved = stripAnsi(session.lastFrame.rows.join('\n'));
+  assert.match(saved, /\+ b2/);
+});
+
+test('code save equal to original drops the proposal', () => {
+  const item = sampleItem('a.js');
+  const { session } = openSession([item]);
+  session.dispatch('code');
+  session.handleEvent({ type: 'key', key: 'escape' });
+  assert.equal(session.notes.code.size, 0);
+  assert.equal(session.counts().code, 0);
 });
 
 test('todo edits in the list not the note line', () => {

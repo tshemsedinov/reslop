@@ -18,7 +18,7 @@ Review → Plan → Repair → Verify
 
 - Review uncommitted git diffs, a given commit, a GitHub PR, or a GitLab MR.
 - Stage, unstage, or revert each contiguous block of diff lines.
-- Leave feedback and todos that become a repair plan for the agent.
+- Leave feedback, todos, and in-place code proposals that become a repair plan.
 - Import GitHub PR and GitLab MR review comments into the local plan for AI.
 - Review each npm dependency once across `package.json` and the lockfile.
 - Propose unused removals, npm audit fixes, and outdated updates as diffs.
@@ -56,6 +56,7 @@ Reviews go in `.review/YYYY-MM-DD-NN.md` with frontmatter `status`:
 | `r`                 | Restore this block to the last commit    |
 | `f`                 | Feedback on this diff block              |
 | `t`                 | New todo for this file                   |
+| `c`                 | Edit added lines as a code proposal      |
 | `l`                 | File list (git status of this scope)     |
 | `m`                 | Cycle unified / mixed / side-by-side     |
 | `⏎`                 | Open the selected file                   |

@@ -126,3 +126,25 @@ test('itemsFromFiles staged index patch uses new-side context', () => {
   assert.match(unstaged[0].patchAdd, /^ BBB/m);
   assert.doesNotMatch(unstaged[0].patchAdd, /^\+bbb/m);
 });
+
+test('displayLines overlay replaces added lines', () => {
+  const hunk = {
+    oldStart: 1,
+    oldCount: 1,
+    newStart: 1,
+    newCount: 1,
+    header: '@@ -1,1 +1,1 @@',
+    lines: [
+      { type: 'del', text: 'OLD', noNl: false, blockId: 0 },
+      { type: 'add', text: 'NEW', noNl: false, blockId: 0 },
+    ],
+  };
+  const lines = displayLines(hunk, 0, 'unified', undefined, {
+    text: 'NEXT\nMORE',
+  });
+  const types = lines.map((line) => `${line.type}:${line.text}`);
+  assert.deepEqual(types, ['del:OLD', 'add:NEXT', 'add:MORE']);
+  const empty = displayLines(hunk, 0, 'unified', undefined, { text: '' });
+  const emptyTypes = empty.map((line) => `${line.type}:${line.text}`);
+  assert.deepEqual(emptyTypes, ['del:OLD']);
+});

@@ -2,6 +2,8 @@
 
 ## [Unreleased][unreleased]
 
+- Added `c` to edit added lines in place as a code proposal
+
 ## [0.1.4][] - 2026-09-13
 
 - Support a GitLab MR by URL and import review comments

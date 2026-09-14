@@ -9,7 +9,7 @@ const path = require('node:path');
 const review = require('../lib/review.js');
 const { allocateReviewPath, rankedTemplates } = review;
 const { prefixTemplates, upsertTemplate, createStore } = review;
-const { hasNotes, setFeedback, noteCounts, rememberTemplate } = review;
+const { hasNotes, setFeedback, setCode, noteCounts, rememberTemplate } = review;
 const { addTodo, removeTodo, setTodoText, serializeReview } = review;
 const { applyImportedNotes } = review;
 const { flushReview, mergeTodos, loadTemplates, parseReview } = review;
@@ -258,12 +258,12 @@ test('parseReview keeps checked todos and feedback', () => {
   assert.match(out, /- \[x\] extract helper - a\.js:1:1:0/);
 });
 
-test('noteCounts counts filled feedback and todos', () => {
+test('noteCounts counts filled feedback todos and code', () => {
   const store = createStore('/repo/.review/x.md');
-  assert.deepEqual(noteCounts(null), { feedback: 0, todo: 0 });
-  assert.deepEqual(noteCounts(store), { feedback: 0, todo: 0 });
+  assert.deepEqual(noteCounts(null), { feedback: 0, todo: 0, code: 0 });
+  assert.deepEqual(noteCounts(store), { feedback: 0, todo: 0, code: 0 });
   addTodo(store, 'a.js', '');
-  assert.deepEqual(noteCounts(store), { feedback: 0, todo: 0 });
+  assert.deepEqual(noteCounts(store), { feedback: 0, todo: 0, code: 0 });
   addTodo(store, 'a.js', 'rewrite loop');
   setFeedback(store, 'a.js:1:1:0', {
     file: 'a.js',
@@ -272,7 +272,15 @@ test('noteCounts counts filled feedback and todos', () => {
     blockId: 0,
     text: 'extract helper',
   });
-  assert.deepEqual(noteCounts(store), { feedback: 1, todo: 1 });
+  assert.deepEqual(noteCounts(store), { feedback: 1, todo: 1, code: 0 });
+  setCode(store, 'a.js:1:1:0', {
+    file: 'a.js',
+    oldStart: 1,
+    newStart: 1,
+    blockId: 0,
+    text: 'fixed',
+  });
+  assert.deepEqual(noteCounts(store), { feedback: 1, todo: 1, code: 1 });
   assert.equal(hasNotes(store), true);
 });
 
@@ -509,4 +517,55 @@ test('imported feedback serializes reviewer and location once', () => {
   assert.doesNotMatch(md, /source:/);
   assert.doesNotMatch(md, /reviewer:/);
   assert.doesNotMatch(md, /line:/);
+});
+
+test('serializeReview writes fenced code proposals', () => {
+  const store = createStore('/repo/.review/2026-09-07-00.md');
+  setCode(store, 'a.js:1:1:0', {
+    file: 'a.js',
+    oldStart: 1,
+    newStart: 1,
+    blockId: 0,
+    text: 'const x = 1;\nconst y = 2;',
+  });
+  const md = serializeReview(store);
+  assert.match(md, /^- \[ \] code `a\.js:1:1:0`$/m);
+  assert.match(md, /^```\nconst x = 1;\nconst y = 2;\n```$/m);
+  const loaded = parseReview(md, store.reviewPath);
+  const note = loaded.code.get('a.js:1:1:0');
+  assert.equal(note.text, 'const x = 1;\nconst y = 2;');
+  assert.equal(note.done, false);
+  assert.equal(hasNotes(loaded), true);
+});
+
+test('code proposal with fence markers uses a longer fence', () => {
+  const store = createStore('/repo/.review/2026-09-07-00.md');
+  setCode(store, 'a.js:1:1:0', {
+    file: 'a.js',
+    oldStart: 1,
+    newStart: 1,
+    blockId: 0,
+    text: '```\ninner\n```',
+  });
+  const md = serializeReview(store);
+  assert.match(md, /^````\n```\ninner\n```\n````$/m);
+  const loaded = parseReview(md, store.reviewPath);
+  assert.equal(loaded.code.get('a.js:1:1:0').text, '```\ninner\n```');
+});
+
+test('empty code proposal still counts as a note', () => {
+  const store = createStore('/repo/.review/2026-09-07-00.md');
+  setCode(store, 'a.js:1:1:0', {
+    file: 'a.js',
+    oldStart: 1,
+    newStart: 1,
+    blockId: 0,
+    text: '',
+  });
+  assert.equal(hasNotes(store), true);
+  assert.deepEqual(noteCounts(store), { feedback: 0, todo: 0, code: 1 });
+  const md = serializeReview(store);
+  assert.match(md, /^- \[ \] code `a\.js:1:1:0`$/m);
+  const loaded = parseReview(md, store.reviewPath);
+  assert.equal(loaded.code.get('a.js:1:1:0').text, '');
 });

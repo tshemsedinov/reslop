@@ -413,7 +413,7 @@ test('footer keeps last block on the counts line', () => {
   assert.equal(firstRow.endsWith(' '), true);
 });
 
-test('status line includes feedback and todo counts', () => {
+test('status line includes feedback todo and code counts', () => {
   const hunk = {
     oldStart: 1,
     oldCount: 1,
@@ -439,6 +439,7 @@ test('status line includes feedback and todo counts', () => {
       untracked: 0,
       feedback: 3,
       todo: 2,
+      code: 1,
     },
     repoName: 'demo',
   };
@@ -450,7 +451,7 @@ test('status line includes feedback and todo counts', () => {
   const statusRow = frame.rows[frame.rows.length - 2];
   assert.match(
     statusRow,
-    /staged 6 {2}unstaged 11 {2}untracked 0 {2}feedback 3 {2}todo 2/,
+    /staged 6 {2}unstaged 11 {2}untracked 0 {2}feedback 3 {2}todo 2 {2}code 1/,
   );
 });
 
@@ -627,7 +628,7 @@ test('AC10 footer words highlight the bound letter', () => {
   const plain = stripAnsi(row);
   assert.match(plain, /add {2}unstage {2}revert {2}←prev/);
   assert.match(plain, /←prev {2}→next {2}mode {2}files/);
-  assert.match(plain, /feedback {2}todo {2}quit/);
+  assert.match(plain, /feedback {2}todo {2}code {2}quit/);
   assert.ok(!plain.includes('['));
   assert.ok(row.includes(fg(THEME.buttonHotFg)));
   assert.ok(row.includes(fg(THEME.buttonFg)));
@@ -642,8 +643,10 @@ test('AC10 footer words highlight the bound letter', () => {
   assert.ok(!dimRow.includes('['));
   const mode = frame.buttons.find((hit) => hit.id === 'layout');
   const feedback = frame.buttons.find((hit) => hit.id === 'feedback');
+  const code = frame.buttons.find((hit) => hit.id === 'code');
   assert.equal(mode, undefined);
   assert.equal(feedback, undefined);
+  assert.equal(code, undefined);
   assert.ok(frame.buttons.find((hit) => hit.id === 'add'));
 });
 
@@ -913,7 +916,10 @@ test('commit review header and counts use short sha', () => {
     height: 16,
     color: false,
   });
-  assert.match(frame.text, /commit 7ac260c {2}1 {2}feedback 0 {2}todo 0/);
+  assert.match(
+    frame.text,
+    /commit 7ac260c {2}1 {2}feedback 0 {2}todo 0 {2}code 0/,
+  );
 });
 
 test('PR review header and counts use pull request label', () => {
@@ -947,7 +953,7 @@ test('PR review header and counts use pull request label', () => {
     height: 16,
     color: false,
   });
-  assert.match(frame.text, /pr #123 {2}1 {2}feedback 0 {2}todo 0/);
+  assert.match(frame.text, /pr #123 {2}1 {2}feedback 0 {2}todo 0 {2}code 0/);
 });
 
 test('MR review header and counts use merge request label', () => {
@@ -981,7 +987,7 @@ test('MR review header and counts use merge request label', () => {
     height: 16,
     color: false,
   });
-  assert.match(frame.text, /mr !123 {2}1 {2}feedback 0 {2}todo 0/);
+  assert.match(frame.text, /mr !123 {2}1 {2}feedback 0 {2}todo 0 {2}code 0/);
 });
 
 test('compose panel sits above status and buttons', () => {
@@ -1577,4 +1583,44 @@ test('compose and idle notes wrap on word boundaries', () => {
       (row) => row.includes('example') && !row.includes('outstanding'),
     ),
   );
+});
+
+test('code overlay paints proposed adds and an in-place cursor', () => {
+  const hunk = {
+    oldStart: 1,
+    oldCount: 1,
+    newStart: 1,
+    newCount: 1,
+    header: '@@ -1,1 +1,1 @@',
+    lines: [
+      { type: 'del', text: 'a', noNl: false, blockId: 0 },
+      { type: 'add', text: 'b', noNl: false, blockId: 0 },
+    ],
+  };
+  const view = {
+    pane: 'diff',
+    item: {
+      origin: 'unstaged',
+      file: { newPath: 'f.js', oldPath: 'f.js', isBinary: false },
+      hunk,
+      blockId: 0,
+    },
+    index: 0,
+    total: 1,
+    scroll: 0,
+    status: '',
+    counts: { staged: 0, unstaged: 1, untracked: 0 },
+    repoName: 'demo',
+    codeOverlay: { text: 'hello', keepEmpty: true, cursor: 0 },
+  };
+  const frame = render.renderFrame(view, {
+    width: 80,
+    height: 16,
+    color: false,
+  });
+  const body = stripAnsi(frame.rows.join('\n'));
+  assert.match(body, /\+ hello/);
+  assert.ok(!body.includes('+ b'));
+  assert.ok(frame.cursor);
+  assert.equal(frame.cursor.x, 3);
 });
