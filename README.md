@@ -39,6 +39,7 @@ Works on Linux, macOS, and Windows. On Windows use Windows Terminal.
 - `reslop https://github.com/metarhia/metacom/pull/555` GitHub/GitLab PR/MR
 - `reslop -n` start a new review even if the latest is still editing
 - `reslop -r` read-only: no stage, unstage, revert, or npm apply
+- `reslop -v` print the version and exit (also `--version`)
 
 Reviews go in `.review/YYYY-MM-DD-NN.md` with frontmatter `status`:
 

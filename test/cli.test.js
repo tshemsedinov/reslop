@@ -61,10 +61,63 @@ test('parseArgv accepts -n and -r', () => {
   assert.equal(parseArgv(['-n', 'lib']).newReview, true);
   assert.equal(parseArgv(['-n', '-r']).newReview, true);
   assert.equal(parseArgv(['-n', '-r']).readOnly, true);
-  const unknown = ['--new', '--help', '-h', '--version', '-v'];
+  const unknown = ['--new', '--help', '-h', '-V'];
   for (const flag of unknown) {
     const message = `unknown option ${flag}`;
     assert.throws(() => parseArgv([flag]), new RegExp(message));
+  }
+});
+
+test('parseArgv accepts -v and --version', () => {
+  assert.equal(parseArgv([]).version, false);
+  assert.equal(parseArgv(['-v']).version, true);
+  assert.equal(parseArgv(['--version']).version, true);
+  assert.equal(parseArgv(['-n', 'lib', '-v']).version, true);
+  assert.equal(parseArgv(['-v', '--nope']).version, true);
+  assert.throws(() => parseArgv(['--nope', '-v']), /unknown option --nope/);
+});
+
+test('-v prints the version and exits 0 outside a git repo', async () => {
+  const { version } = require('../package.json');
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'reslop-version-'));
+  try {
+    for (const flag of ['-v', '--version']) {
+      const proc = fakeProc(dir, { argv: ['node', 'reslop', flag] });
+      const code = await run(proc);
+      assert.equal(code, 0);
+      assert.equal(proc.stdoutText(), `${version}\n`);
+      assert.equal(proc.stderrText(), '');
+    }
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('-v wins over other valid arguments', async () => {
+  const { version } = require('../package.json');
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'reslop-version-'));
+  try {
+    const argv = ['node', 'reslop', '-n', '-r', 'lib', 'src', '-v'];
+    const proc = fakeProc(dir, { argv });
+    const code = await run(proc);
+    assert.equal(code, 0);
+    assert.equal(proc.stdoutText(), `${version}\n`);
+    assert.equal(proc.stderrText(), '');
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('-v stops parsing so later arguments are ignored', async () => {
+  const { version } = require('../package.json');
+  for (const flag of ['-v', '--version']) {
+    const proc = fakeProc(process.cwd(), {
+      argv: ['node', 'reslop', flag, '--nope', 'src'],
+    });
+    const code = await run(proc);
+    assert.equal(code, 0);
+    assert.equal(proc.stdoutText(), `${version}\n`);
+    assert.equal(proc.stderrText(), '');
   }
 });
 
@@ -77,7 +130,7 @@ test('unknown option exits 1', async () => {
   const err = proc.stderrText();
   assert.match(err, /unknown option/);
   const usage =
-    /Usage: reslop \[-n\] \[-r\] \[path \| commit \| pr-url \| mr-url\]/;
+    /Usage: reslop \[-n\] \[-r\] \[-v\] \[path \| commit \| pr-url \| mr-url\]/;
   assert.match(err, usage);
   assert.doesNotMatch(err, /--help/);
 });

@@ -2,6 +2,8 @@
 
 ## [Unreleased][unreleased]
 
+- Added `-v` and `--version` flags that print the version and exit
+
 ## [0.1.4][] - 2026-09-13
 
 - Support a GitLab MR by URL and import review comments
