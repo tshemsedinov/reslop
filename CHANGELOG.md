@@ -2,14 +2,13 @@
 
 ## [Unreleased][unreleased]
 
-- Added `r` to reload diffs from disk on the file list
-- Open the file list from a diff with Esc instead of `l`
-- Added `e` to edit added lines in place as a code proposal
-- Added `d` to drop a block back to the last commit
-- Shorten footer hints for prev, next, and quit to `←`, `→`, and `q`
+## [0.1.5][] - 2026-09-14
+
+- Added `r` to reload diffs from disk
+- Added `e` to edit added lines in place
 - Added `d` on quit to discard a new review file
 - Added `c` to commit, amend, or fixup staged changes
-- Hide inactive footer hotkeys on the file list and todo pages
+- Reassign hotkeys to free needed keys for new operations
 
 ## [0.1.4][] - 2026-09-13
 
@@ -50,7 +49,8 @@
 - Feedback and todos that produce a repair plan for an agent
 - Intra-line highlighting in unified, mixed, and side-by-side layouts
 
-[unreleased]: https://github.com/tshemsedinov/reslop/compare/v0.1.4...HEAD
+[unreleased]: https://github.com/tshemsedinov/reslop/compare/v0.1.5...HEAD
+[0.1.5]: https://github.com/tshemsedinov/reslop/compare/v0.1.4...v0.1.5
 [0.1.4]: https://github.com/tshemsedinov/reslop/compare/v0.1.3...v0.1.4
 [0.1.3]: https://github.com/tshemsedinov/reslop/compare/v0.1.2...v0.1.3
 [0.1.2]: https://github.com/tshemsedinov/reslop/compare/v0.1.1...v0.1.2

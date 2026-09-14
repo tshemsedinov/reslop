@@ -31,6 +31,7 @@ const makeRepo = () => {
   git(['init', '-b', 'main']);
   git(['config', 'user.email', 'test@example.com']);
   git(['config', 'user.name', 'Test']);
+  git(['config', 'commit.gpgsign', 'false']);
   git(['config', 'core.autocrlf', 'false']);
   git(['config', 'core.eol', 'lf']);
   const write = (rel, content) => {
