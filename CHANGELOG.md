@@ -7,6 +7,7 @@
 - Added `e` to edit added lines in place as a code proposal
 - Added `d` to drop a block back to the last commit
 - Shorten footer hints for prev, next, and quit to `←`, `→`, and `q`
+- Added `d` on quit to discard a new review file
 - Hide inactive footer hotkeys on the file list and todo pages
 
 ## [0.1.4][] - 2026-09-13

@@ -455,7 +455,7 @@ test('status line includes feedback todo and code counts', () => {
   );
 });
 
-test('quit prompt paints f and c yellow on grey copy', () => {
+test('quit prompt paints f c and d yellow on grey copy', () => {
   const hunk = {
     oldStart: 1,
     oldCount: 1,
@@ -489,6 +489,7 @@ test('quit prompt paints f and c yellow on grey copy', () => {
   assert.equal(plain.startsWith(render.QUIT_PROMPT), true);
   assert.ok(plain.includes('finish as ready'));
   assert.ok(plain.includes('continue next time'));
+  assert.ok(plain.includes('discard'));
   assert.ok(!plain.includes('Finish'));
   assert.ok(!plain.includes('Continue'));
   assert.ok(!plain.includes('pending'));
@@ -497,17 +498,8 @@ test('quit prompt paints f and c yellow on grey copy', () => {
   assert.ok(statusRow.includes(bg(THEME.chromeBg)));
   assert.ok(!statusRow.includes(bg(THEME.buttonBg)));
   assert.ok(statusRow.includes(BOLD));
-  const fAt = statusRow.indexOf(render.QUIT_FINISH);
-  const cAt = statusRow.lastIndexOf(render.QUIT_CONTINUE);
   const warn = fg(THEME.warnFg);
-  const muted = fg(THEME.mutedFg);
-  assert.ok(fAt >= 0 && cAt > fAt);
-  const warnF = statusRow.lastIndexOf(warn, fAt);
-  const mutedF = statusRow.lastIndexOf(muted, fAt);
-  const warnC = statusRow.lastIndexOf(warn, cAt);
-  const mutedC = statusRow.lastIndexOf(muted, cAt);
-  assert.ok(warnF > mutedF);
-  assert.ok(warnC > mutedC);
+  assert.equal(statusRow.split(warn).length - 1, 3);
 });
 
 test('header and file list keep a right-side gap', () => {

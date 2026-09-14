@@ -89,6 +89,7 @@ const reviewFs = {
   readFileSync: () => missingFile(),
   writeFileSync: () => {},
   mkdirSync: () => {},
+  unlinkSync: () => {},
   now: () => new Date(2026, 8, 7),
 };
 
@@ -1379,6 +1380,51 @@ test('newReview starts a new file even if latest is editing', () => {
   });
   assert.equal(session.notes.reviewPath, reviewFile('2026-09-07-01.md'));
   assert.equal(session.notes.todos.length, 0);
+});
+
+test('quit discard removes a new review file', () => {
+  const writes = [];
+  const removed = [];
+  const item = sampleItem('a.js');
+  const { session } = openSession([item], {
+    writeFileSync: (file, body) => writes.push({ file, body }),
+    unlinkSync: (file) => removed.push(file),
+    mkdirSync: () => {},
+  });
+  session.dispatch('feedback');
+  session.pushInput('nits');
+  session.handleEvent({ type: 'key', key: 'ctrl-s' });
+  assert.ok(writes.some((entry) => entry.file.endsWith('2026-09-07-00.md')));
+  session.dispatch('quit');
+  session.pushInput('d');
+  assert.equal(session.done, true);
+  assert.equal(session.notes.dirty, false);
+  assert.deepEqual(removed, [reviewFile('2026-09-07-00.md')]);
+});
+
+test('quit discard keeps a resumed review file', () => {
+  const draft = createStore(reviewFile('2026-09-07-00.md'));
+  addTodo(draft, 'a.js', 'rewrite loop');
+  const md = serializeReview(draft);
+  const removed = [];
+  const writes = [];
+  const { session } = openSession([sampleItem('a.js')], {
+    readdirSync: () => ['2026-09-07-00.md'],
+    readFileSync: reviewReader(md),
+    writeFileSync: (file, body) => writes.push({ file, body }),
+    unlinkSync: (file) => removed.push(file),
+    mkdirSync: () => {},
+  });
+  session.dispatch('feedback');
+  session.pushInput('nits');
+  session.handleEvent({ type: 'key', key: 'ctrl-s' });
+  const before = writes.length;
+  session.dispatch('quit');
+  session.pushInput('d');
+  assert.equal(session.done, true);
+  assert.equal(session.didResumeReview, true);
+  assert.equal(removed.length, 0);
+  assert.equal(writes.length, before);
 });
 
 test('quit without notes does not write a review file', () => {
