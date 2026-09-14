@@ -545,6 +545,38 @@ test('commit prompt paints c a and f yellow on grey copy', () => {
   assert.equal(statusRow.split(warn).length - 1, 3);
 });
 
+test('update prompt paints y and n on the status line', () => {
+  const view = {
+    pane: 'files',
+    files: [{ path: 'a.js', status: 'unstaged', remaining: 1, firstIndex: 0 }],
+    fileCursor: 0,
+    repoName: 'demo',
+    counts: { staged: 0, unstaged: 1, untracked: 0 },
+    status: '',
+    scroll: 0,
+    mode: 'confirmUpdate',
+    updateFrom: '0.1.5',
+    updateTo: '1.0.0',
+  };
+  const colored = render.renderFrame(view, {
+    width: 80,
+    height: 8,
+    color: true,
+  });
+  const statusRow = colored.rows[colored.rows.length - 2];
+  const buttons = colored.rows[colored.rows.length - 1];
+  const plain = stripAnsi(statusRow);
+  assert.equal(plain.startsWith(render.updatePrompt('0.1.5', '1.0.0')), true);
+  assert.match(plain, /update reslop 0\.1\.5 → 1\.0\.0\? y {2}n/);
+  assert.match(stripAnsi(colored.rows[2]), /a\.js/);
+  assert.match(stripAnsi(buttons), /add/i);
+  assert.ok(statusRow.includes(fg(THEME.warnFg)));
+  assert.ok(statusRow.includes(fg(THEME.mutedFg)));
+  assert.ok(statusRow.includes(bg(THEME.chromeBg)));
+  const warn = fg(THEME.warnFg);
+  assert.equal(statusRow.split(warn).length - 1, 2);
+});
+
 test('header and file list keep a right-side gap', () => {
   const view = {
     pane: 'files',

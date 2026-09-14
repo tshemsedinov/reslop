@@ -2,6 +2,8 @@
 
 ## [Unreleased][unreleased]
 
+- Check reslop updates on start (12h cache); auto patch/minor, y/n per new major
+
 ## [0.1.5][] - 2026-09-14
 
 - Added `r` to reload diffs from disk

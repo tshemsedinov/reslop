@@ -5,6 +5,7 @@ const assert = require('node:assert/strict');
 const path = require('node:path');
 
 const { Session } = require('../lib/session.js');
+const { CHECK_INTERVAL_MS } = require('../lib/update.js');
 const { hitAction } = require('../lib/keys.js');
 const { sink } = require('./helpers.js');
 const { createStore, addTodo, serializeReview } = require('../lib/review.js');
@@ -1668,4 +1669,241 @@ test('openLoad paints git items before npm extras arrive', async () => {
   await pending;
   assert.equal(session.items.length, 2);
   assert.equal(session.busy, '');
+});
+
+const memoryUpdateFs = () => {
+  const files = new Map();
+  return {
+    cacheFile: '/tmp/reslop-cache/update.json',
+    readFileSync: (file) => {
+      if (!files.has(file)) {
+        const error = new Error('ENOENT');
+        error.code = 'ENOENT';
+        throw error;
+      }
+      return files.get(file);
+    },
+    writeFileSync: (file, body) => {
+      files.set(file, body);
+    },
+    mkdirSync: () => {},
+    files,
+  };
+};
+
+const openUpdating = (extra = {}) => {
+  const cache = memoryUpdateFs();
+  const installed = [];
+  let fetchResolve;
+  const fetchGate = extra.gateFetch
+    ? new Promise((resolve) => {
+        fetchResolve = resolve;
+      })
+    : null;
+  const update = {
+    enabled: true,
+    current: extra.current ?? '0.1.5',
+    now: extra.now ?? 1000,
+    fetch:
+      extra.fetch ??
+      (async () => {
+        if (fetchGate) await fetchGate;
+        return {
+          ok: true,
+          json: async () => ({ version: extra.latest ?? '0.1.6' }),
+        };
+      }),
+    install:
+      extra.install ??
+      (async (version) => {
+        installed.push(version);
+      }),
+    ...cache,
+  };
+  const { session } = openSession([sampleItem('a.js'), sampleItem('b.js')], {
+    startPane: 'files',
+    update,
+    ...extra.session,
+  });
+  session.uiOpen = true;
+  return { session, installed, fetchResolve, cache, update };
+};
+
+test('update check does not block loading', async () => {
+  const { session, fetchResolve, installed } = openUpdating({
+    gateFetch: true,
+    latest: '0.1.6',
+  });
+  const updateP = session.openUpdate();
+  assert.equal(session.didLoad, true);
+  assert.equal(session.items.length, 2);
+  assert.equal(session.mode, 'review');
+  assert.deepEqual(installed, []);
+  fetchResolve();
+  await updateP;
+  assert.deepEqual(installed, ['0.1.6']);
+});
+
+test('patch update installs in the background', async () => {
+  const { session, installed } = openUpdating({ latest: '0.1.6' });
+  await session.openUpdate();
+  assert.deepEqual(installed, ['0.1.6']);
+  assert.equal(session.status, 'updated');
+  assert.equal(session.mode, 'review');
+});
+
+test('major update asks y or n on the loaded status line', async () => {
+  const { session, installed } = openUpdating({ latest: '1.0.0' });
+  await session.openUpdate();
+  session.draw();
+  assert.equal(session.mode, 'confirmUpdate');
+  assert.equal(session.updateFrom, '0.1.5');
+  assert.equal(session.updateTo, '1.0.0');
+  assert.deepEqual(installed, []);
+  const text = session.lastFrame.text;
+  assert.match(text, /update reslop 0\.1\.5 → 1\.0\.0\? y {2}n/);
+  session.handleEvent({ type: 'key', key: 'n' });
+  assert.equal(session.mode, 'review');
+  assert.deepEqual(installed, []);
+  session.handleEvent({ type: 'key', key: 'n' });
+  assert.equal(session.fileCursor, 1);
+});
+
+test('major prompt waits until the UI has loaded', async () => {
+  const cache = memoryUpdateFs();
+  const session = new Session({
+    cwd: '/tmp',
+    stdout: sink(),
+    color: false,
+    getSize: () => ({ width: 80, height: 16 }),
+    startPane: 'files',
+    ...reviewFs,
+    repo: mockRepo([sampleItem('a.js')]),
+    update: {
+      enabled: true,
+      current: '0.1.5',
+      now: 1000,
+      fetch: async () => ({
+        ok: true,
+        json: async () => ({ version: '1.0.0' }),
+      }),
+      install: async () => {},
+      ...cache,
+    },
+  });
+  session.uiOpen = true;
+  await session.openUpdate();
+  assert.equal(session.updateOffer, true);
+  assert.equal(session.didLoad, false);
+  assert.equal(session.mode, 'review');
+  session.didLoad = true;
+  session.draw();
+  assert.equal(session.mode, 'confirmUpdate');
+});
+
+test('major update y installs the new version', async () => {
+  const { session, installed } = openUpdating({ latest: '1.0.0' });
+  await session.openUpdate();
+  session.draw();
+  session.handleEvent({ type: 'key', key: 'y' });
+  await session.installPromise;
+  assert.deepEqual(installed, ['1.0.0']);
+  assert.equal(session.status, 'updated');
+  assert.equal(session.mode, 'review');
+});
+
+test('declined major update is not asked again from cache', async () => {
+  const { session, cache, update } = openUpdating({ latest: '1.0.0' });
+  await session.openUpdate();
+  session.draw();
+  session.handleEvent({ type: 'key', key: 'n' });
+  let fetched = 0;
+  const again = new Session({
+    cwd: '/tmp',
+    stdout: sink(),
+    color: false,
+    getSize: () => ({ width: 80, height: 16 }),
+    startPane: 'files',
+    ...reviewFs,
+    repo: mockRepo([sampleItem('a.js')]),
+    update: {
+      ...update,
+      fetch: async () => {
+        fetched += 1;
+        return { ok: true, json: async () => ({ version: '1.0.0' }) };
+      },
+    },
+  });
+  again.load();
+  again.uiOpen = true;
+  await again.openUpdate();
+  again.draw();
+  assert.equal(again.mode, 'review');
+  assert.equal(fetched, 0);
+  assert.ok(cache.files.has(cache.cacheFile));
+});
+
+test('declined major still auto-installs a later patch', async () => {
+  const { session, installed, update } = openUpdating({ latest: '1.0.0' });
+  await session.openUpdate();
+  session.draw();
+  session.handleEvent({ type: 'key', key: 'n' });
+  const next = new Session({
+    cwd: '/tmp',
+    stdout: sink(),
+    color: false,
+    getSize: () => ({ width: 80, height: 16 }),
+    startPane: 'files',
+    ...reviewFs,
+    repo: mockRepo([sampleItem('a.js')]),
+    update: {
+      ...update,
+      now: 1000 + CHECK_INTERVAL_MS,
+      fetch: async () => ({
+        ok: true,
+        json: async () => ({
+          versions: { '0.1.5': {}, '0.1.6': {}, '1.0.0': {} },
+        }),
+      }),
+    },
+  });
+  next.load();
+  next.uiOpen = true;
+  await next.openUpdate();
+  assert.deepEqual(installed, ['0.1.6']);
+  assert.equal(next.status, 'updated');
+  assert.equal(next.mode, 'review');
+});
+
+test('declined major asks again when 1.0.1 appears', async () => {
+  const { session, installed, update } = openUpdating({ latest: '1.0.0' });
+  await session.openUpdate();
+  session.draw();
+  session.handleEvent({ type: 'key', key: 'n' });
+  const next = new Session({
+    cwd: '/tmp',
+    stdout: sink(),
+    color: false,
+    getSize: () => ({ width: 80, height: 16 }),
+    startPane: 'files',
+    ...reviewFs,
+    repo: mockRepo([sampleItem('a.js')]),
+    update: {
+      ...update,
+      now: 1000 + CHECK_INTERVAL_MS,
+      fetch: async () => ({
+        ok: true,
+        json: async () => ({
+          versions: { '0.1.5': {}, '1.0.0': {}, '1.0.1': {} },
+        }),
+      }),
+    },
+  });
+  next.load();
+  next.uiOpen = true;
+  await next.openUpdate();
+  next.draw();
+  assert.deepEqual(installed, []);
+  assert.equal(next.mode, 'confirmUpdate');
+  assert.equal(next.updateTo, '1.0.1');
 });
