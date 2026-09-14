@@ -38,7 +38,7 @@ Works on Linux, macOS, and Windows. On Windows use Windows Terminal.
 - `reslop 7ac260c` show that commit (read-only)
 - `reslop https://github.com/metarhia/metacom/pull/555` GitHub/GitLab PR/MR
 - `reslop -n` start a new review even if the latest is still editing
-- `reslop -r` read-only: no stage, unstage, revert, or npm apply
+- `reslop -r` read-only mode
 
 Reviews go in `.review/YYYY-MM-DD-NN.md` with frontmatter `status`:
 
@@ -49,24 +49,25 @@ Reviews go in `.review/YYYY-MM-DD-NN.md` with frontmatter `status`:
 
 ## Hotkeys
 
-| Key                 | Action                                  |
-| ------------------- | --------------------------------------- |
-| `a`                 | Stage this diff (git add)               |
-| `u`                 | Unstage this diff                       |
-| `d`                 | Drop this diff to the last commit       |
-| `f`                 | Feedback on this diff                   |
-| `t`                 | New todo                                |
-| `e`                 | Edit added lines                        |
-| `r`                 | Reload diffs from disk                  |
-| `m`                 | Mode: unified / mixed / side-by-side    |
-| `⏎`                 | Open the selected file                  |
-| `→` / `j`           | Next remaining diff / next file         |
-| `←` / `k`           | Previous remaining diff / previous file |
-| `Ctrl-e` / `Ctrl-y` | Scroll one line down / up               |
-| `Ctrl-f` / `Ctrl-b` | Scroll page down / up                   |
-| `Ctrl-d` / `Ctrl-u` | Scroll half-page down / up              |
-| `⌫` / `Del`         | Remove the selected todo                |
-| `Esc` / `q`         | Quit                                    |
+| Key                 | Action                                          |
+| ------------------- | ----------------------------------------------- |
+| `a`                 | Stage this diff (git add)                       |
+| `u`                 | Unstage this diff                               |
+| `d`                 | Drop this diff to the last commit               |
+| `c`                 | Commit: then `c` commit / `a` amend / `f` fixup |
+| `f`                 | Feedback on this diff                           |
+| `t`                 | New todo                                        |
+| `e`                 | Edit added lines                                |
+| `r`                 | Reload diffs from disk                          |
+| `m`                 | Mode: unified / mixed / side-by-side            |
+| `⏎`                 | Open the selected file                          |
+| `→` / `j`           | Next remaining diff / next file                 |
+| `←` / `k`           | Previous remaining diff / previous file         |
+| `Ctrl-e` / `Ctrl-y` | Scroll one line down / up                       |
+| `Ctrl-f` / `Ctrl-b` | Scroll page down / up                           |
+| `Ctrl-d` / `Ctrl-u` | Scroll half-page down / up                      |
+| `⌫` / `Del`         | Remove the selected todo                        |
+| `Esc` / `q`         | Quit                                            |
 
 ## License
 

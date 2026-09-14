@@ -72,7 +72,7 @@ test('actionFromKey maps aliases and ignores unbound keys', () => {
   assert.equal(actionFromKey('enter'), 'open');
   assert.equal(actionFromKey('e'), 'code');
   assert.equal(actionFromKey('d'), 'revert');
-  assert.equal(actionFromKey('c'), null);
+  assert.equal(actionFromKey('c'), 'commit');
   assert.equal(actionFromKey('l'), null);
   assert.equal(actionFromKey('g'), null);
   assert.equal(actionFromKey('r'), 'reload');
@@ -95,8 +95,9 @@ test('layoutButtons hitboxes cover labels', () => {
   assert.equal(layout.parts[0].piece, '  add');
   assert.ok(!layout.parts[0].piece.includes('['));
   assert.equal(layout.parts[1].action.id, 'unstage');
-  assert.equal(layout.parts[3].action.id, 'prev');
-  assert.equal(layout.parts[4].action.id, 'next');
+  assert.equal(layout.parts[3].action.id, 'commit');
+  assert.equal(layout.parts[4].action.id, 'prev');
+  assert.equal(layout.parts[5].action.id, 'next');
   assert.equal(hitAction(layout.hits, layout.hits[0].x0), 'add');
   const diff80 = layoutButtons(80, false, DIFF_DISABLED);
   assert.equal(diff80.parts[0].label, 'add');

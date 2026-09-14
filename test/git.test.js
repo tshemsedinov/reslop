@@ -5,7 +5,7 @@ const assert = require('node:assert/strict');
 
 const git = require('../lib/git.js');
 const { load, addItem, unstageItem, revertItem } = git;
-const { createGitRepo } = git;
+const { commitChanges, lastMessage, createGitRepo } = git;
 const { Session } = require('../lib/session.js');
 const { makeRepo, sink } = require('./helpers.js');
 
@@ -392,6 +392,56 @@ test('load omits files under .review', () => {
       const rel = item.file.newPath || item.file.oldPath;
       assert.equal(rel.startsWith('.review'), false);
     }
+  } finally {
+    repo.cleanup();
+  }
+});
+
+test('commitChanges writes a commit from the message', () => {
+  const repo = makeRepo();
+  try {
+    repo.write('f.txt', 'a\n');
+    repo.git(['add', 'f.txt']);
+    repo.git(['commit', '-m', 'init']);
+    repo.write('f.txt', 'b\n');
+    repo.git(['add', 'f.txt']);
+    commitChanges(repo.dir, 'commit', 'second');
+    const subject = repo.git(['log', '-1', '--format=%s']).trim();
+    assert.equal(subject, 'second');
+  } finally {
+    repo.cleanup();
+  }
+});
+
+test('commitChanges amend replaces the last message', () => {
+  const repo = makeRepo();
+  try {
+    repo.write('f.txt', 'a\n');
+    repo.git(['add', 'f.txt']);
+    repo.git(['commit', '-m', 'init']);
+    repo.write('f.txt', 'b\n');
+    repo.git(['add', 'f.txt']);
+    commitChanges(repo.dir, 'amend', 'rewritten');
+    const log = repo.git(['log', '--format=%s']).trim().split('\n');
+    assert.equal(log.length, 1);
+    assert.equal(log[0], 'rewritten');
+    assert.equal(lastMessage(repo.dir), 'rewritten');
+  } finally {
+    repo.cleanup();
+  }
+});
+
+test('commitChanges fixup targets HEAD', () => {
+  const repo = makeRepo();
+  try {
+    repo.write('f.txt', 'a\n');
+    repo.git(['add', 'f.txt']);
+    repo.git(['commit', '-m', 'init']);
+    repo.write('f.txt', 'b\n');
+    repo.git(['add', 'f.txt']);
+    commitChanges(repo.dir, 'fixup', 'HEAD');
+    const subject = repo.git(['log', '-1', '--format=%s']).trim();
+    assert.equal(subject, 'fixup! init');
   } finally {
     repo.cleanup();
   }

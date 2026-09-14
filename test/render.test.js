@@ -502,6 +502,49 @@ test('quit prompt paints f c and d yellow on grey copy', () => {
   assert.equal(statusRow.split(warn).length - 1, 3);
 });
 
+test('commit prompt paints c a and f yellow on grey copy', () => {
+  const hunk = {
+    oldStart: 1,
+    oldCount: 1,
+    newStart: 1,
+    newCount: 1,
+    header: '@@ -1,1 +1,1 @@',
+    lines: [{ type: 'add', text: 'x', noNl: false, blockId: 0 }],
+  };
+  const view = {
+    item: {
+      origin: 'unstaged',
+      file: { newPath: 'f.js', oldPath: 'f.js', isBinary: false },
+      hunk,
+      blockId: 0,
+    },
+    index: 0,
+    total: 1,
+    scroll: 0,
+    status: '',
+    mode: 'confirmCommit',
+    counts: { staged: 0, unstaged: 1, untracked: 0 },
+    repoName: 'demo',
+  };
+  const colored = render.renderFrame(view, {
+    width: 80,
+    height: 16,
+    color: true,
+  });
+  const statusRow = colored.rows[colored.rows.length - 2];
+  const plain = stripAnsi(statusRow);
+  assert.equal(plain.startsWith(render.COMMIT_PROMPT), true);
+  assert.ok(plain.includes('commit'));
+  assert.ok(plain.includes('amend'));
+  assert.ok(plain.includes('fixup'));
+  assert.ok(statusRow.includes(fg(THEME.warnFg)));
+  assert.ok(statusRow.includes(fg(THEME.mutedFg)));
+  assert.ok(statusRow.includes(bg(THEME.chromeBg)));
+  assert.ok(statusRow.includes(BOLD));
+  const warn = fg(THEME.warnFg);
+  assert.equal(statusRow.split(warn).length - 1, 3);
+});
+
 test('header and file list keep a right-side gap', () => {
   const view = {
     pane: 'files',
@@ -618,7 +661,7 @@ test('AC10 footer words highlight the bound letter', () => {
   });
   const row = frame.rows[frame.rows.length - 1];
   const plain = stripAnsi(row);
-  assert.match(plain, /add {2}unstage {2}drop {2}←/);
+  assert.match(plain, /add {2}unstage {2}drop {2}commit {2}←/);
   assert.match(plain, /← {2}→ {2}todo {2}reload {2}q/);
   assert.ok(!plain.includes('prev'));
   assert.ok(!plain.includes('next'));
@@ -637,7 +680,7 @@ test('AC10 footer words highlight the bound letter', () => {
     color: false,
   });
   const dimRow = dim.rows[dim.rows.length - 1];
-  assert.match(dimRow, /add {2}unstage {2}drop {2}←/);
+  assert.match(dimRow, /add {2}unstage {2}drop {2}commit {2}←/);
   assert.ok(!dimRow.includes('['));
   const mode = frame.buttons.find((hit) => hit.id === 'layout');
   const feedback = frame.buttons.find((hit) => hit.id === 'feedback');

@@ -45,10 +45,12 @@ const mockRepo = (initial) => {
   const added = [];
   const reverted = [];
   const unstageCalls = [];
+  const commits = [];
   return {
     added,
     reverted,
     unstageCalls,
+    commits,
     load: () => ({ top: '/tmp', items: [...items] }),
     add: (top, item) => {
       added.push(item);
@@ -69,6 +71,10 @@ const mockRepo = (initial) => {
         items = items.filter((entry) => entry !== item);
       }
     },
+    commit: (top, kind, message) => {
+      commits.push({ top, kind, message });
+    },
+    lastMessage: () => 'previous message',
   };
 };
 
@@ -196,6 +202,9 @@ test('AC21 commit add and revert are read only', () => {
   session.dispatch('unstage');
   assert.equal(session.status, 'read only');
   assert.equal(repo.unstageCalls.length, 0);
+  session.dispatch('commit');
+  assert.equal(session.status, 'read only');
+  assert.equal(repo.commits.length, 0);
   const files = session.fileList();
   assert.equal(files[0].status, '7ac260c');
   session.dispatch('next');
@@ -224,6 +233,9 @@ test('PR add and revert are read only and feedback attaches', () => {
   assert.equal(repo.reverted.length, 0);
   session.dispatch('unstage');
   assert.equal(session.status, 'read only');
+  session.dispatch('commit');
+  assert.equal(session.status, 'read only');
+  assert.equal(repo.commits.length, 0);
   const files = session.fileList();
   assert.equal(files[0].status, '#12');
   session.dispatch('feedback');
@@ -281,6 +293,9 @@ test('-r blocks add unstage revert and still takes feedback', () => {
   session.dispatch('revert');
   assert.equal(session.status, 'read only');
   assert.equal(repo.reverted.length, 0);
+  session.dispatch('commit');
+  assert.equal(session.status, 'read only');
+  assert.equal(repo.commits.length, 0);
   session.pane = 'files';
   session.dispatch('add');
   assert.equal(session.status, 'read only');
@@ -1425,6 +1440,84 @@ test('quit discard keeps a resumed review file', () => {
   assert.equal(session.didResumeReview, true);
   assert.equal(removed.length, 0);
   assert.equal(writes.length, before);
+});
+
+test('c asks commit amend or fixup then commits the message', () => {
+  const { session, repo } = openSession([sampleItem('a.js')]);
+  session.pushInput('c');
+  assert.equal(session.mode, 'confirmCommit');
+  session.handleEvent({ type: 'key', key: 'escape' });
+  assert.equal(session.mode, 'review');
+  assert.equal(repo.commits.length, 0);
+  session.pushInput('c');
+  session.pushInput('c');
+  assert.equal(session.mode, 'compose');
+  assert.equal(session.composeKind, 'commit');
+  assert.equal(session.commitKind, 'commit');
+  session.handleEvent({ type: 'key', key: 'enter' });
+  assert.equal(session.mode, 'compose');
+  assert.equal(session.status, 'empty commit message');
+  assert.equal(repo.commits.length, 0);
+  session.pushInput('land the change');
+  session.handleEvent({ type: 'key', key: 'enter' });
+  assert.equal(session.mode, 'review');
+  assert.equal(session.status, 'committed');
+  assert.equal(repo.commits.length, 1);
+  assert.equal(repo.commits[0].kind, 'commit');
+  assert.equal(repo.commits[0].message, 'land the change');
+});
+
+test('c then a amends with the previous message', () => {
+  const { session, repo } = openSession([sampleItem('a.js')]);
+  session.pushInput('c');
+  session.pushInput('a');
+  assert.equal(session.composeKind, 'commit');
+  assert.equal(session.commitKind, 'amend');
+  assert.equal(session.editor.text, 'previous message');
+  session.handleEvent({ type: 'key', key: 'enter' });
+  assert.equal(session.status, 'amended');
+  assert.equal(repo.commits[0].kind, 'amend');
+  assert.equal(repo.commits[0].message, 'previous message');
+});
+
+test('c then f fixups HEAD', () => {
+  const { session, repo } = openSession([sampleItem('a.js')]);
+  session.pushInput('c');
+  session.pushInput('f');
+  assert.equal(session.editor.text, 'HEAD');
+  session.handleEvent({ type: 'key', key: 'enter' });
+  assert.equal(session.status, 'fixup');
+  assert.equal(repo.commits[0].kind, 'fixup');
+  assert.equal(repo.commits[0].message, 'HEAD');
+});
+
+test('escape from commit message does not run git', () => {
+  const { session, repo } = openSession([sampleItem('a.js')]);
+  session.pushInput('c');
+  session.pushInput('c');
+  session.pushInput('draft');
+  session.handleEvent({ type: 'key', key: 'escape' });
+  assert.equal(session.mode, 'review');
+  assert.equal(repo.commits.length, 0);
+});
+
+test('compose c inserts a letter and does not open commit', () => {
+  const { session, repo } = openSession([sampleItem('a.js')]);
+  session.dispatch('feedback');
+  session.pushInput('c');
+  assert.equal(session.mode, 'compose');
+  assert.equal(session.composeKind, 'feedback');
+  assert.equal(session.editor.text, 'c');
+  assert.equal(repo.commits.length, 0);
+});
+
+test('files pane c still opens commit', () => {
+  const { session } = openSession([sampleItem('a.js')], { startPane: 'files' });
+  session.pushInput('c');
+  assert.equal(session.mode, 'confirmCommit');
+  session.pushInput('c');
+  assert.equal(session.mode, 'compose');
+  assert.equal(session.composeKind, 'commit');
 });
 
 test('quit without notes does not write a review file', () => {
