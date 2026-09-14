@@ -316,6 +316,8 @@ test('AC9 hotkeys dispatch add revert next prev quit', () => {
   session.pushInput('m');
   assert.equal(session.layout, 'unified');
   session.pushInput('l');
+  assert.equal(session.pane, 'diff');
+  session.handleEvent({ type: 'key', key: 'escape' });
   assert.equal(session.pane, 'files');
   session.pushInput('q');
   assert.equal(session.done, true);
@@ -629,6 +631,75 @@ test('files pane disables mode and feedback', () => {
   session.dispatch('code');
   assert.equal(session.mode, 'review');
   assert.equal(session.notes.code.size, 0);
+});
+
+test('reload picks up disk changes and keeps the current hunk', () => {
+  const a = sampleItem('a.js');
+  const b = sampleItem('b.js');
+  const c = sampleItem('c.js');
+  const { session, repo } = openSession([a, b]);
+  session.dispatch('next');
+  assert.equal(session.current().file.newPath, 'b.js');
+  session.notes.feedback.set('b.js:1:1:0', {
+    file: 'b.js',
+    oldStart: 1,
+    newStart: 1,
+    blockId: 0,
+    text: 'keep me',
+  });
+  repo.load = () => ({ top: '/tmp', items: [a, b, c] });
+  session.dispatch('reload');
+  assert.equal(session.status, '');
+  assert.equal(session.items.length, 2);
+  session.handleEvent({ type: 'key', key: 'escape' });
+  session.dispatch('reload');
+  assert.equal(session.status, 'reloaded');
+  assert.equal(session.pane, 'files');
+  assert.equal(session.current().file.newPath, 'b.js');
+  assert.equal(session.items.length, 3);
+  assert.equal(session.notes.feedback.get('b.js:1:1:0').text, 'keep me');
+});
+
+test('reload brings back dismissed hunks', () => {
+  const a = sampleItem('a.js');
+  const b = sampleItem('b.js');
+  const { session } = openSession([a, b], { startPane: 'files' });
+  session.dismissed.add('unstaged:a.js:1:1:0');
+  session.items = session.items.filter((item) => item.file.newPath !== 'a.js');
+  session.index = 0;
+  assert.equal(session.current().file.newPath, 'b.js');
+  session.dispatch('reload');
+  assert.equal(session.status, 'reloaded');
+  assert.equal(session.dismissed.size, 0);
+  assert.equal(session.items.length, 2);
+  assert.equal(session.current().file.newPath, 'b.js');
+});
+
+test('reload from the file list still refreshes', () => {
+  const a = sampleItem('a.js');
+  const b = sampleItem('b.js');
+  const { session, repo } = openSession([a], { startPane: 'files' });
+  repo.load = () => ({ top: '/tmp', items: [a, b] });
+  session.handleEvent({ type: 'key', key: 'l' });
+  assert.equal(session.status, 'reloaded');
+  assert.equal(session.pane, 'files');
+  assert.equal(session.items.length, 2);
+});
+
+test('compose l inserts a letter and does not reload', () => {
+  const a = sampleItem('a.js');
+  const { session, repo } = openSession([a]);
+  let loads = 0;
+  const orig = repo.load;
+  repo.load = (...args) => {
+    loads += 1;
+    return orig(...args);
+  };
+  session.dispatch('feedback');
+  session.handleEvent({ type: 'key', key: 'l' });
+  assert.equal(session.mode, 'compose');
+  assert.equal(session.editor.text, 'l');
+  assert.equal(loads, 0);
 });
 
 test('files pane add on a staged file still moves down', () => {

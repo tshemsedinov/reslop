@@ -627,7 +627,8 @@ test('AC10 footer words highlight the bound letter', () => {
   const row = frame.rows[frame.rows.length - 1];
   const plain = stripAnsi(row);
   assert.match(plain, /add {2}unstage {2}revert {2}←prev/);
-  assert.match(plain, /←prev {2}→next {2}files {2}todo {2}quit/);
+  assert.match(plain, /←prev {2}→next {2}todo {2}reload {2}quit/);
+  assert.ok(!plain.includes('files'));
   assert.ok(!plain.includes('mode'));
   assert.ok(!plain.includes('feedback'));
   assert.ok(!plain.includes('code'));
@@ -650,6 +651,11 @@ test('AC10 footer words highlight the bound letter', () => {
   assert.equal(feedback, undefined);
   assert.equal(code, undefined);
   assert.ok(frame.buttons.find((hit) => hit.id === 'add'));
+  assert.ok(frame.buttons.find((hit) => hit.id === 'reload'));
+  assert.equal(
+    frame.buttons.find((hit) => hit.id === 'files'),
+    undefined,
+  );
 });
 
 test('AC26 file list status and counts are column-aligned', () => {
@@ -1027,6 +1033,8 @@ test('compose panel sits above status and buttons', () => {
   const buttonRow = frame.rows[frame.rows.length - 1];
   assert.match(statusRow, /unstaged 1/);
   assert.match(buttonRow, /feedback/);
+  assert.ok(!buttonRow.includes('reload'));
+  assert.ok(!buttonRow.includes('files'));
   const joined = frame.rows.join('\n');
   const noteAt = joined.indexOf('extract helper');
   const statusAt = joined.indexOf(statusRow);
@@ -1275,7 +1283,9 @@ test('todo view paints file todo text not a diff hunk', () => {
   assert.ok(!stripAnsi(frame.rows[2]).startsWith('-'));
   assert.match(body, /f\.js\s+todo 1\/1/);
   const footer = frame.rows[frame.rows.length - 1];
-  assert.match(footer, /←prev {2}→next {2}files {2}todo {2}quit/);
+  assert.match(footer, /←prev {2}→next {2}todo {2}quit/);
+  assert.ok(!footer.includes('files'));
+  assert.ok(!footer.includes('reload'));
   assert.ok(!footer.includes('add'));
   assert.ok(!footer.includes('mode'));
   assert.ok(!footer.includes('feedback'));

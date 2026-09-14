@@ -4,7 +4,8 @@ const { test } = require('node:test');
 const assert = require('node:assert/strict');
 
 const keys = require('../lib/keys.js');
-const { ACTIONS, FILES_DISABLED, decodeChunk, actionFromKey, hitAction } = keys;
+const { ACTIONS, FILES_DISABLED, DIFF_DISABLED } = keys;
+const { decodeChunk, actionFromKey, hitAction } = keys;
 const { actionLetter, buttonWord } = keys;
 const { layoutButtons } = require('../lib/render.js');
 
@@ -70,6 +71,8 @@ test('actionFromKey maps aliases and ignores unbound keys', () => {
   assert.equal(actionFromKey('ctrl-d'), 'halfDown');
   assert.equal(actionFromKey('enter'), 'open');
   assert.equal(actionFromKey('c'), 'code');
+  assert.equal(actionFromKey('l'), 'reload');
+  assert.equal(actionFromKey('g'), null);
   assert.equal(actionFromKey('backspace'), 'removeTodo');
   assert.equal(actionFromKey('delete'), 'removeTodo');
   assert.equal(actionFromKey('s'), null);
@@ -82,6 +85,8 @@ test('actionFromKey maps aliases and ignores unbound keys', () => {
 test('layoutButtons hitboxes cover labels', () => {
   const layout = layoutButtons(160, false);
   assert.equal(layout.hits[0].id, 'add');
+  assert.ok(layout.parts.some((part) => part.action.id === 'reload'));
+  assert.ok(!layout.parts.some((part) => part.action.id === 'files'));
   assert.equal(layout.parts[0].label, 'add');
   assert.equal(layout.parts[0].letter, 'a');
   assert.equal(layout.parts[0].piece, '  add');
@@ -90,6 +95,9 @@ test('layoutButtons hitboxes cover labels', () => {
   assert.equal(layout.parts[3].action.id, 'prev');
   assert.equal(layout.parts[4].action.id, 'next');
   assert.equal(hitAction(layout.hits, layout.hits[0].x0), 'add');
+  const diff80 = layoutButtons(80, false, DIFF_DISABLED);
+  assert.equal(diff80.parts[0].label, 'add');
+  assert.ok(!diff80.parts.some((part) => part.action.id === 'reload'));
   const letters = layoutButtons(20, true);
   assert.equal(letters.parts[0].label, 'a');
   assert.equal(letters.parts[0].piece, '  a');
@@ -102,6 +110,7 @@ test('layoutButtons hitboxes cover labels', () => {
   assert.equal(hitIds.includes('feedback'), false);
   assert.equal(hitIds.includes('code'), false);
   assert.equal(hitIds.includes('add'), true);
+  assert.equal(hitIds.includes('reload'), true);
   const ids = off.parts.map((part) => part.action.id);
   assert.equal(ids.includes('layout'), false);
   assert.equal(ids.includes('feedback'), false);

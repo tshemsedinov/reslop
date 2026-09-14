@@ -2,6 +2,8 @@
 
 ## [Unreleased][unreleased]
 
+- Added `l` to reload diffs from disk on the file list
+- Open the file list from a diff with Esc instead of `l`
 - Added `c` to edit added lines in place as a code proposal
 - Hide inactive footer hotkeys on the file list and todo pages
 

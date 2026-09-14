@@ -57,10 +57,10 @@ Reviews go in `.review/YYYY-MM-DD-NN.md` with frontmatter `status`:
 | `f`                 | Feedback on this diff block              |
 | `t`                 | New todo for this file                   |
 | `c`                 | Edit added lines as a code proposal      |
-| `l`                 | File list (git status of this scope)     |
+| `l`                 | Reload diffs from disk (file list)       |
 | `m`                 | Cycle unified / mixed / side-by-side     |
 | `⏎`                 | Open the selected file                   |
-| `Esc`               | Quit file list or a tool                 |
+| `Esc`               | Quit screen or a tool                    |
 | `→` / `j`           | Next remaining block / next file         |
 | `←` / `k`           | Previous remaining block / previous file |
 | `Ctrl-e` / `Ctrl-y` | Scroll one line down / up                |
