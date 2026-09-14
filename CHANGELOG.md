@@ -2,9 +2,11 @@
 
 ## [Unreleased][unreleased]
 
-- Added `l` to reload diffs from disk on the file list
+- Added `r` to reload diffs from disk on the file list
 - Open the file list from a diff with Esc instead of `l`
-- Added `c` to edit added lines in place as a code proposal
+- Added `e` to edit added lines in place as a code proposal
+- Added `d` to drop a block back to the last commit
+- Shorten footer hints for prev, next, and quit to `←`, `→`, and `q`
 - Hide inactive footer hotkeys on the file list and todo pages
 
 ## [0.1.4][] - 2026-09-13

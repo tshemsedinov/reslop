@@ -49,25 +49,24 @@ Reviews go in `.review/YYYY-MM-DD-NN.md` with frontmatter `status`:
 
 ## Hotkeys
 
-| Key                 | Action                                   |
-| ------------------- | ---------------------------------------- |
-| `a`                 | Stage this block (`git add`)             |
-| `u`                 | Unstage this block (keep worktree)       |
-| `r`                 | Restore this block to the last commit    |
-| `f`                 | Feedback on this diff block              |
-| `t`                 | New todo for this file                   |
-| `c`                 | Edit added lines as a code proposal      |
-| `l`                 | Reload diffs from disk (file list)       |
-| `m`                 | Cycle unified / mixed / side-by-side     |
-| `⏎`                 | Open the selected file                   |
-| `Esc`               | Quit screen or a tool                    |
-| `→` / `j`           | Next remaining block / next file         |
-| `←` / `k`           | Previous remaining block / previous file |
-| `Ctrl-e` / `Ctrl-y` | Scroll one line down / up                |
-| `Ctrl-f` / `Ctrl-b` | Scroll page down / up                    |
-| `Ctrl-d` / `Ctrl-u` | Scroll half-page down / up               |
-| `⌫` / `Del`         | Remove the selected todo                 |
-| `q`                 | Quit                                     |
+| Key                 | Action                                  |
+| ------------------- | --------------------------------------- |
+| `a`                 | Stage this diff (git add)               |
+| `u`                 | Unstage this diff                       |
+| `d`                 | Drop this diff to the last commit       |
+| `f`                 | Feedback on this diff                   |
+| `t`                 | New todo                                |
+| `e`                 | Edit added lines                        |
+| `r`                 | Reload diffs from disk                  |
+| `m`                 | Mode: unified / mixed / side-by-side    |
+| `⏎`                 | Open the selected file                  |
+| `→` / `j`           | Next remaining diff / next file         |
+| `←` / `k`           | Previous remaining diff / previous file |
+| `Ctrl-e` / `Ctrl-y` | Scroll one line down / up               |
+| `Ctrl-f` / `Ctrl-b` | Scroll page down / up                   |
+| `Ctrl-d` / `Ctrl-u` | Scroll half-page down / up              |
+| `⌫` / `Del`         | Remove the selected todo                |
+| `Esc` / `q`         | Quit                                    |
 
 ## License
 

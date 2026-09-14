@@ -626,8 +626,11 @@ test('AC10 footer words highlight the bound letter', () => {
   });
   const row = frame.rows[frame.rows.length - 1];
   const plain = stripAnsi(row);
-  assert.match(plain, /add {2}unstage {2}revert {2}←prev/);
-  assert.match(plain, /←prev {2}→next {2}todo {2}reload {2}quit/);
+  assert.match(plain, /add {2}unstage {2}drop {2}←/);
+  assert.match(plain, /← {2}→ {2}todo {2}reload {2}q/);
+  assert.ok(!plain.includes('prev'));
+  assert.ok(!plain.includes('next'));
+  assert.ok(!plain.includes('quit'));
   assert.ok(!plain.includes('files'));
   assert.ok(!plain.includes('mode'));
   assert.ok(!plain.includes('feedback'));
@@ -642,7 +645,7 @@ test('AC10 footer words highlight the bound letter', () => {
     color: false,
   });
   const dimRow = dim.rows[dim.rows.length - 1];
-  assert.match(dimRow, /add {2}unstage {2}revert {2}←prev/);
+  assert.match(dimRow, /add {2}unstage {2}drop {2}←/);
   assert.ok(!dimRow.includes('['));
   const mode = frame.buttons.find((hit) => hit.id === 'layout');
   const feedback = frame.buttons.find((hit) => hit.id === 'feedback');
@@ -1033,6 +1036,8 @@ test('compose panel sits above status and buttons', () => {
   const buttonRow = frame.rows[frame.rows.length - 1];
   assert.match(statusRow, /unstaged 1/);
   assert.match(buttonRow, /feedback/);
+  assert.match(buttonRow, /edit/);
+  assert.ok(!buttonRow.includes('code'));
   assert.ok(!buttonRow.includes('reload'));
   assert.ok(!buttonRow.includes('files'));
   const joined = frame.rows.join('\n');
@@ -1283,10 +1288,14 @@ test('todo view paints file todo text not a diff hunk', () => {
   assert.ok(!stripAnsi(frame.rows[2]).startsWith('-'));
   assert.match(body, /f\.js\s+todo 1\/1/);
   const footer = frame.rows[frame.rows.length - 1];
-  assert.match(footer, /←prev {2}→next {2}todo {2}quit/);
+  assert.match(footer, /← {2}→ {2}todo {2}q/);
+  assert.ok(!footer.includes('prev'));
+  assert.ok(!footer.includes('next'));
+  assert.ok(!footer.includes('quit'));
   assert.ok(!footer.includes('files'));
   assert.ok(!footer.includes('reload'));
   assert.ok(!footer.includes('add'));
+  assert.ok(!footer.includes('drop'));
   assert.ok(!footer.includes('mode'));
   assert.ok(!footer.includes('feedback'));
   assert.ok(!footer.includes('code'));

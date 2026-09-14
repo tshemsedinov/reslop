@@ -305,7 +305,7 @@ test('AC9 hotkeys dispatch add revert next prev quit', () => {
   session.pushInput('a');
   assert.equal(repo.added.length, 1);
   assert.equal(repo.added[0].file.newPath, 'a.js');
-  session.pushInput('r');
+  session.pushInput('d');
   assert.equal(repo.reverted.length, 1);
   session.pushInput('m');
   assert.equal(session.layout, 'mixed');
@@ -315,7 +315,7 @@ test('AC9 hotkeys dispatch add revert next prev quit', () => {
   assert.equal(session.status, 'side-by-side');
   session.pushInput('m');
   assert.equal(session.layout, 'unified');
-  session.pushInput('l');
+  session.pushInput('r');
   assert.equal(session.pane, 'diff');
   session.handleEvent({ type: 'key', key: 'escape' });
   assert.equal(session.pane, 'files');
@@ -680,13 +680,13 @@ test('reload from the file list still refreshes', () => {
   const b = sampleItem('b.js');
   const { session, repo } = openSession([a], { startPane: 'files' });
   repo.load = () => ({ top: '/tmp', items: [a, b] });
-  session.handleEvent({ type: 'key', key: 'l' });
+  session.handleEvent({ type: 'key', key: 'r' });
   assert.equal(session.status, 'reloaded');
   assert.equal(session.pane, 'files');
   assert.equal(session.items.length, 2);
 });
 
-test('compose l inserts a letter and does not reload', () => {
+test('compose r inserts a letter and does not reload', () => {
   const a = sampleItem('a.js');
   const { session, repo } = openSession([a]);
   let loads = 0;
@@ -696,9 +696,9 @@ test('compose l inserts a letter and does not reload', () => {
     return orig(...args);
   };
   session.dispatch('feedback');
-  session.handleEvent({ type: 'key', key: 'l' });
+  session.handleEvent({ type: 'key', key: 'r' });
   assert.equal(session.mode, 'compose');
-  assert.equal(session.editor.text, 'l');
+  assert.equal(session.editor.text, 'r');
   assert.equal(loads, 0);
 });
 
@@ -966,10 +966,10 @@ test('existing unique feedback hides the template list', () => {
   assert.equal(session.lastFrame.templateHits.length, 0);
 });
 
-test('c edits added lines in place as a code proposal', () => {
+test('e edits added lines in place as a code proposal', () => {
   const item = sampleItem('a.js');
   const { session } = openSession([item]);
-  session.dispatch('code');
+  session.pushInput('e');
   assert.equal(session.mode, 'compose');
   assert.equal(session.composeKind, 'code');
   assert.equal(session.editor.text, 'b');

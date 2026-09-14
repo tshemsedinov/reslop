@@ -70,9 +70,12 @@ test('actionFromKey maps aliases and ignores unbound keys', () => {
   assert.equal(actionFromKey('ctrl-u'), 'halfUp');
   assert.equal(actionFromKey('ctrl-d'), 'halfDown');
   assert.equal(actionFromKey('enter'), 'open');
-  assert.equal(actionFromKey('c'), 'code');
-  assert.equal(actionFromKey('l'), 'reload');
+  assert.equal(actionFromKey('e'), 'code');
+  assert.equal(actionFromKey('d'), 'revert');
+  assert.equal(actionFromKey('c'), null);
+  assert.equal(actionFromKey('l'), null);
   assert.equal(actionFromKey('g'), null);
+  assert.equal(actionFromKey('r'), 'reload');
   assert.equal(actionFromKey('backspace'), 'removeTodo');
   assert.equal(actionFromKey('delete'), 'removeTodo');
   assert.equal(actionFromKey('s'), null);
@@ -118,9 +121,10 @@ test('layoutButtons hitboxes cover labels', () => {
   assert.equal(ids.includes('todo'), true);
 });
 
-test('buttonWord prefixes a hot mark when it is not in the label', () => {
+test('buttonWord is the footer hint including the bound mark', () => {
   assert.equal(actionLetter(ACTIONS.next), '→');
   assert.equal(actionLetter(ACTIONS.prev), '←');
-  assert.equal(buttonWord(ACTIONS.next), '→next');
-  assert.equal(buttonWord(ACTIONS.prev), '←prev');
+  assert.equal(buttonWord(ACTIONS.next), '→');
+  assert.equal(buttonWord(ACTIONS.prev), '←');
+  assert.equal(buttonWord(ACTIONS.quit), 'q');
 });
