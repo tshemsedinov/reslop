@@ -51,13 +51,11 @@ Reviews go in `.review/YYYY-MM-DD-NN.md` with frontmatter `status`:
 
 | Key                 | Action                                          |
 | ------------------- | ----------------------------------------------- |
-| `a`                 | Stage this diff (git add)                       |
-| `u`                 | Unstage this diff                               |
-| `d`                 | Drop this diff to the last commit               |
+| `a` / `u` / `d`     | Stage / unstage / drop this diff                |
 | `c`                 | Commit: then `c` commit / `a` amend / `f` fixup |
-| `f`                 | Feedback on this diff                           |
-| `t`                 | New todo                                        |
-| `e`                 | Edit added lines                                |
+| `b`                 | List branches; `p, n` new branch                |
+| `p` / `s`           | git pull/push                                   |
+| `f` / `t` / `t`     | Add feedback / todo / edit diff text            |
 | `r`                 | Reload diffs from disk                          |
 | `m`                 | Mode: unified / mixed / side-by-side            |
 | `⏎`                 | Open the selected file                          |

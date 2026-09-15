@@ -47,12 +47,20 @@ const mockRepo = (initial) => {
   const reverted = [];
   const unstageCalls = [];
   const commits = [];
+  const pulls = [];
+  const pushes = [];
+  const checkouts = [];
+  const created = [];
   return {
     added,
     reverted,
     unstageCalls,
     commits,
-    load: () => ({ top: '/tmp', items: [...items] }),
+    pulls,
+    pushes,
+    checkouts,
+    created,
+    load: () => ({ top: '/tmp', items: [...items], branch: 'main' }),
     add: (top, item) => {
       added.push(item);
       items = items.filter((entry) => entry !== item);
@@ -76,6 +84,14 @@ const mockRepo = (initial) => {
       commits.push({ top, kind, message });
     },
     lastMessage: () => 'previous message',
+    listBranches: () => [
+      { name: 'main', current: true },
+      { name: 'feat', current: false },
+    ],
+    checkout: (top, name) => checkouts.push(name),
+    createBranch: (top, name) => created.push(name),
+    pull: () => pulls.push(true),
+    push: () => pushes.push(true),
   };
 };
 
@@ -124,13 +140,12 @@ test('prev at first block stays and next reaches last', () => {
   const { session } = openSession([a, b, c]);
   session.dispatch('prev');
   assert.equal(session.current().file.newPath, 'a.js');
-  assert.equal(session.status, 'first block');
   session.dispatch('next');
   assert.equal(session.current().file.newPath, 'b.js');
   session.dispatch('next');
   assert.equal(session.current().file.newPath, 'c.js');
   session.dispatch('next');
-  assert.equal(session.status, 'last block');
+  assert.equal(session.current().file.newPath, 'c.js');
 });
 
 test('AC8 add on staged is a no-op with status', () => {
@@ -209,7 +224,7 @@ test('AC21 commit add and revert are read only', () => {
   const files = session.fileList();
   assert.equal(files[0].status, '7ac260c');
   session.dispatch('next');
-  assert.equal(session.status, 'last block');
+  assert.equal(session.status, 'read only');
   assert.equal(repo.added.length, 0);
 });
 
@@ -247,7 +262,7 @@ test('PR add and revert are read only and feedback attaches', () => {
   assert.equal(session.counts().pr, 1);
   assert.equal(session.counts().feedback, 1);
   session.dispatch('next');
-  assert.equal(session.status, 'last block');
+  assert.equal(session.status, 'saved');
   session.dispatch('prev');
   assert.equal(session.current().file.newPath, 'lib/a.js');
   const view = session.view();
@@ -1906,4 +1921,106 @@ test('declined major asks again when 1.0.1 appears', async () => {
   assert.deepEqual(installed, []);
   assert.equal(next.mode, 'confirmUpdate');
   assert.equal(next.updateTo, '1.0.1');
+});
+
+test('click status branch opens the branch list', () => {
+  const { session } = openSession([sampleItem('a.js')], { startPane: 'files' });
+  session.draw();
+  const hit = session.lastFrame.statusHits[0];
+  assert.ok(hit);
+  session.handleEvent({
+    type: 'mouse',
+    button: 0,
+    btn: 0,
+    kind: 'press',
+    x: hit.x0 + 1,
+    y: hit.y,
+    press: true,
+  });
+  session.handleEvent({
+    type: 'mouse',
+    button: 0,
+    btn: 0,
+    kind: 'release',
+    x: hit.x0 + 1,
+    y: hit.y,
+    press: false,
+  });
+  assert.equal(session.pane, 'branches');
+});
+
+test('files pane b lists branches and enter checks out', () => {
+  const a = sampleItem('a.js');
+  const b = sampleItem('b.js');
+  const { session, repo } = openSession([a, b], { startPane: 'files' });
+  assert.equal(session.branch, 'main');
+  session.pushInput('b');
+  assert.equal(session.pane, 'branches');
+  assert.equal(session.branchCursor, 0);
+  session.pushInput('j');
+  assert.equal(session.branchCursor, 1);
+  session.handleEvent({ type: 'key', key: 'enter' });
+  assert.deepEqual(repo.checkouts, ['feat']);
+  assert.equal(session.pane, 'files');
+  assert.match(session.status, /checked out feat/);
+});
+
+test('files pane p pulls and s pushes', () => {
+  const a = sampleItem('a.js');
+  const b = sampleItem('b.js');
+  const { session, repo } = openSession([a, b], { startPane: 'files' });
+  session.pushInput('p');
+  assert.equal(repo.pulls.length, 1);
+  assert.equal(session.status, 'pulled');
+  assert.equal(session.fileCursor, 0);
+  session.pushInput('s');
+  assert.equal(repo.pushes.length, 1);
+  assert.equal(session.status, 'pushed');
+});
+
+test('files pane u unstages', () => {
+  const item = sampleItem('a.js', 'staged');
+  const { session, repo } = openSession([item], { startPane: 'files' });
+  session.pushInput('u');
+  assert.equal(repo.unstageCalls.length, 1);
+  assert.equal(session.status, 'unstaged');
+});
+
+test('branch list n creates a new branch', () => {
+  const { session, repo } = openSession([sampleItem('a.js')], {
+    startPane: 'files',
+  });
+  session.pushInput('b');
+  session.pushInput('n');
+  assert.equal(session.pane, 'branches');
+  assert.equal(session.mode, 'compose');
+  assert.equal(session.composeKind, 'branch');
+  session.pushInput('topic');
+  session.handleEvent({ type: 'key', key: 'enter' });
+  assert.deepEqual(repo.created, ['topic']);
+  assert.equal(session.pane, 'files');
+  assert.equal(session.mode, 'review');
+  assert.match(session.status, /created topic/);
+});
+
+test('escape from branch list returns to files', () => {
+  const { session } = openSession([sampleItem('a.js')], { startPane: 'files' });
+  session.pushInput('b');
+  assert.equal(session.pane, 'branches');
+  session.handleEvent({ type: 'key', key: 'escape' });
+  assert.equal(session.pane, 'files');
+});
+
+test('read only blocks branch pull and push', () => {
+  const { session, repo } = openSession([sampleItem('a.js')], {
+    startPane: 'files',
+    readOnly: true,
+  });
+  session.pushInput('b');
+  assert.equal(session.pane, 'files');
+  assert.equal(session.status, 'read only');
+  session.pushInput('p');
+  assert.equal(repo.pulls.length, 0);
+  session.pushInput('s');
+  assert.equal(repo.pushes.length, 0);
 });

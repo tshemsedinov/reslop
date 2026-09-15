@@ -4,7 +4,7 @@ const { test } = require('node:test');
 const assert = require('node:assert/strict');
 
 const keys = require('../lib/keys.js');
-const { ACTIONS, FILES_DISABLED, DIFF_DISABLED } = keys;
+const { FILES_DISABLED, DIFF_DISABLED } = keys;
 const { decodeChunk, actionFromKey, hitAction } = keys;
 const { actionLetter, buttonWord } = keys;
 const { layoutButtons } = require('../lib/render.js');
@@ -82,6 +82,15 @@ test('actionFromKey maps aliases and ignores unbound keys', () => {
   assert.equal(actionFromKey('h'), null);
   assert.equal(actionFromKey('?'), null);
   assert.equal(actionFromKey('v'), null);
+  assert.equal(actionFromKey('p'), 'prev');
+  assert.equal(actionFromKey('u'), 'unstage');
+  assert.equal(actionFromKey('b'), null);
+  assert.equal(actionFromKey('b', 'files'), 'branch');
+  assert.equal(actionFromKey('p', 'files'), 'pull');
+  assert.equal(actionFromKey('u', 'files'), 'unstage');
+  assert.equal(actionFromKey('s', 'files'), 'push');
+  assert.equal(actionFromKey('n'), 'next');
+  assert.equal(actionFromKey('n', 'branches'), 'newBranch');
   assert.equal(actionFromKey('escape'), null);
 });
 
@@ -89,6 +98,7 @@ test('layoutButtons hitboxes cover labels', () => {
   const layout = layoutButtons(160, false);
   assert.equal(layout.hits[0].id, 'add');
   assert.ok(layout.parts.some((part) => part.action.id === 'reload'));
+  assert.ok(!layout.parts.some((part) => part.action.id === 'newBranch'));
   assert.ok(!layout.parts.some((part) => part.action.id === 'files'));
   assert.equal(layout.parts[0].label, 'add');
   assert.equal(layout.parts[0].letter, 'a');
@@ -115,6 +125,10 @@ test('layoutButtons hitboxes cover labels', () => {
   assert.equal(hitIds.includes('code'), false);
   assert.equal(hitIds.includes('add'), true);
   assert.equal(hitIds.includes('reload'), true);
+  assert.equal(hitIds.includes('branch'), true);
+  assert.equal(hitIds.includes('pull'), true);
+  assert.equal(hitIds.includes('push'), true);
+  assert.equal(hitIds.includes('newBranch'), false);
   const ids = off.parts.map((part) => part.action.id);
   assert.equal(ids.includes('layout'), false);
   assert.equal(ids.includes('feedback'), false);
@@ -123,9 +137,9 @@ test('layoutButtons hitboxes cover labels', () => {
 });
 
 test('buttonWord is the footer hint including the bound mark', () => {
-  assert.equal(actionLetter(ACTIONS.next), '→');
-  assert.equal(actionLetter(ACTIONS.prev), '←');
-  assert.equal(buttonWord(ACTIONS.next), '→');
-  assert.equal(buttonWord(ACTIONS.prev), '←');
-  assert.equal(buttonWord(ACTIONS.quit), 'q');
+  assert.equal(actionLetter('next'), '→');
+  assert.equal(actionLetter('prev'), '←');
+  assert.equal(buttonWord('next'), '→');
+  assert.equal(buttonWord('prev'), '←');
+  assert.equal(buttonWord('quit'), 'q');
 });

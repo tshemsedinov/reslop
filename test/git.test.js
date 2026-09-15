@@ -2,10 +2,16 @@
 
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const os = require('node:os');
+const path = require('node:path');
+const { spawnSync } = require('node:child_process');
 
 const git = require('../lib/git.js');
 const { load, addItem, unstageItem, revertItem } = git;
 const { commitChanges, lastMessage, createGitRepo } = git;
+const { currentBranch, listBranches, checkoutBranch } = git;
+const { createBranch, pullChanges, pushChanges } = git;
 const { Session } = require('../lib/session.js');
 const { makeRepo, sink } = require('./helpers.js');
 
@@ -444,5 +450,195 @@ test('commitChanges fixup targets HEAD', () => {
     assert.equal(subject, 'fixup! init');
   } finally {
     repo.cleanup();
+  }
+});
+
+const makeBare = () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'reslop-bare-'));
+  const result = spawnSync('git', ['init', '--bare', '-b', 'main'], {
+    cwd: dir,
+    encoding: 'utf8',
+  });
+  if (result.status !== 0) {
+    const msg = result.stderr || result.stdout || 'git init failed';
+    throw new Error(msg.trim());
+  }
+  const cleanup = () => fs.rmSync(dir, { recursive: true, force: true });
+  return { dir, cleanup };
+};
+
+test('load includes the current branch', () => {
+  const repo = makeRepo();
+  try {
+    repo.write('f.txt', 'a\n');
+    repo.git(['add', 'f.txt']);
+    repo.git(['commit', '-m', 'init']);
+    const loaded = load(repo.dir);
+    assert.equal(loaded.branch, 'main');
+    assert.equal(currentBranch(repo.dir), 'main');
+  } finally {
+    repo.cleanup();
+  }
+});
+
+test('listBranches createBranch and checkoutBranch', () => {
+  const repo = makeRepo();
+  try {
+    repo.write('f.txt', 'a\n');
+    repo.git(['add', 'f.txt']);
+    repo.git(['commit', '-m', 'init']);
+    const before = listBranches(repo.dir);
+    assert.equal(before.length, 1);
+    assert.equal(before[0].name, 'main');
+    assert.equal(before[0].current, true);
+    assert.equal(before[0].isDefault, true);
+    assert.equal(before[0].subject, 'init');
+    assert.equal(before[0].ahead, 0);
+    assert.equal(before[0].behind, 0);
+    assert.equal(before[0].gone, false);
+    assert.match(before[0].sha, /^[0-9a-f]{7,}$/);
+    assert.ok(before[0].date);
+    createBranch(repo.dir, 'feat');
+    assert.equal(currentBranch(repo.dir), 'feat');
+    const onFeat = listBranches(repo.dir);
+    const featNow = onFeat.find((entry) => entry.name === 'feat');
+    const mainNow = onFeat.find((entry) => entry.name === 'main');
+    assert.equal(featNow.current, true);
+    assert.equal(featNow.isDefault, false);
+    assert.equal(mainNow.current, false);
+    assert.equal(mainNow.isDefault, true);
+    checkoutBranch(repo.dir, 'main');
+    assert.equal(currentBranch(repo.dir), 'main');
+    const after = listBranches(repo.dir);
+    const names = after.map((entry) => entry.name);
+    assert.ok(names.includes('main'));
+    assert.ok(names.includes('feat'));
+    const feat = after.find((entry) => entry.name === 'feat');
+    const main = after.find((entry) => entry.name === 'main');
+    assert.equal(feat.current, false);
+    assert.equal(feat.isDefault, false);
+    assert.equal(main.isDefault, true);
+    assert.equal(feat.subject, 'init');
+    assert.match(feat.sha, /^[0-9a-f]{7,}$/);
+  } finally {
+    repo.cleanup();
+  }
+});
+
+test('listBranches reports ahead and behind vs upstream', () => {
+  const repo = makeRepo();
+  const bare = makeBare();
+  try {
+    repo.write('f.txt', 'a\n');
+    repo.git(['add', 'f.txt']);
+    repo.git(['commit', '-m', 'init']);
+    repo.git(['remote', 'add', 'origin', bare.dir]);
+    repo.git(['push', '-u', 'origin', 'HEAD']);
+    const synced = listBranches(repo.dir).find((entry) => entry.current);
+    assert.equal(synced.ahead, 0);
+    assert.equal(synced.behind, 0);
+    assert.equal(synced.gone, false);
+    repo.write('f.txt', 'b\n');
+    repo.git(['add', 'f.txt']);
+    repo.git(['commit', '-m', 'next']);
+    const ahead = listBranches(repo.dir).find((entry) => entry.current);
+    assert.equal(ahead.ahead, 1);
+    assert.equal(ahead.behind, 0);
+    assert.equal(ahead.subject, 'next');
+  } finally {
+    repo.cleanup();
+    bare.cleanup();
+  }
+});
+
+test('listBranches prefers origin HEAD then master', () => {
+  const repo = makeRepo();
+  const bare = makeBare();
+  try {
+    repo.write('f.txt', 'a\n');
+    repo.git(['add', 'f.txt']);
+    repo.git(['commit', '-m', 'init']);
+    repo.git(['branch', '-m', 'master']);
+    const renamed = listBranches(repo.dir);
+    assert.equal(renamed[0].name, 'master');
+    assert.equal(renamed[0].isDefault, true);
+    repo.git(['branch', 'main']);
+    repo.git(['remote', 'add', 'origin', bare.dir]);
+    repo.git(['push', 'origin', 'main', 'master']);
+    repo.git(['remote', 'set-head', 'origin', 'master']);
+    const listed = listBranches(repo.dir);
+    const main = listed.find((entry) => entry.name === 'main');
+    const master = listed.find((entry) => entry.name === 'master');
+    assert.equal(master.isDefault, true);
+    assert.equal(main.isDefault, false);
+  } finally {
+    repo.cleanup();
+    bare.cleanup();
+  }
+});
+
+test('createBranch rejects an empty name', () => {
+  const repo = makeRepo();
+  try {
+    repo.write('f.txt', 'a\n');
+    repo.git(['add', 'f.txt']);
+    repo.git(['commit', '-m', 'init']);
+    assert.throws(() => createBranch(repo.dir, '  '), /empty branch name/);
+  } finally {
+    repo.cleanup();
+  }
+});
+
+test('pushChanges sets upstream then push and pull update', () => {
+  const repo = makeRepo();
+  const bare = makeBare();
+  let cloneDir = '';
+  try {
+    repo.write('f.txt', 'a\n');
+    repo.git(['add', 'f.txt']);
+    repo.git(['commit', '-m', 'init']);
+    repo.git(['remote', 'add', 'origin', bare.dir]);
+    pushChanges(repo.dir);
+    const remoteLog = spawnSync('git', ['log', '-1', '--format=%s'], {
+      cwd: bare.dir,
+      encoding: 'utf8',
+    });
+    assert.equal(remoteLog.stdout.trim(), 'init');
+    cloneDir = fs.mkdtempSync(path.join(os.tmpdir(), 'reslop-cl-'));
+    const cloned = spawnSync('git', ['clone', bare.dir, cloneDir], {
+      encoding: 'utf8',
+    });
+    assert.equal(cloned.status, 0, cloned.stderr);
+    const cloneGit = (args) => {
+      const result = spawnSync('git', args, {
+        cwd: cloneDir,
+        encoding: 'utf8',
+        env: {
+          ...process.env,
+          GIT_AUTHOR_NAME: 'Test',
+          GIT_AUTHOR_EMAIL: 'test@example.com',
+          GIT_COMMITTER_NAME: 'Test',
+          GIT_COMMITTER_EMAIL: 'test@example.com',
+        },
+      });
+      if (result.status !== 0) {
+        const msg = result.stderr || result.stdout || 'git failed';
+        throw new Error(msg.trim());
+      }
+      return result.stdout;
+    };
+    cloneGit(['config', 'user.email', 'test@example.com']);
+    cloneGit(['config', 'user.name', 'Test']);
+    cloneGit(['config', 'commit.gpgsign', 'false']);
+    fs.writeFileSync(path.join(cloneDir, 'f.txt'), 'b\n');
+    cloneGit(['add', 'f.txt']);
+    cloneGit(['commit', '-m', 'from clone']);
+    cloneGit(['push']);
+    pullChanges(repo.dir);
+    assert.equal(repo.read('f.txt'), 'b\n');
+  } finally {
+    repo.cleanup();
+    bare.cleanup();
+    if (cloneDir) fs.rmSync(cloneDir, { recursive: true, force: true });
   }
 });

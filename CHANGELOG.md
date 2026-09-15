@@ -3,6 +3,7 @@
 ## [Unreleased][unreleased]
 
 - Check reslop updates on start (12h cache); auto patch/minor, y/n per new major
+- Lists branches `b` (`b, n` new branch), `p` pull, `s` push
 
 ## [0.1.5][] - 2026-09-14
 

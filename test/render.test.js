@@ -371,7 +371,7 @@ test('AC23 staged lines are grey with plus and minus marks', () => {
   assert.match(plain.text, /^\+/m);
 });
 
-test('footer keeps last block on the counts line', () => {
+test('footer keeps info status on the counts line', () => {
   const hunk = {
     oldStart: 1,
     oldCount: 1,
@@ -390,7 +390,7 @@ test('footer keeps last block on the counts line', () => {
     index: 0,
     total: 1,
     scroll: 0,
-    status: 'last block',
+    status: 'copied',
     counts: { staged: 0, unstaged: 1, untracked: 0 },
     repoName: 'demo',
   };
@@ -402,15 +402,15 @@ test('footer keeps last block on the counts line', () => {
   assert.equal(frame.rows.length, 16);
   const statusRow = frame.rows[frame.rows.length - 2];
   assert.match(statusRow, /unstaged 1/);
-  assert.match(statusRow, /last block /);
+  assert.match(statusRow, /copied /);
   assert.equal(statusRow.endsWith(' '), true);
-  const first = render.renderFrame(
-    { ...view, status: 'first block' },
+  const saved = render.renderFrame(
+    { ...view, status: 'saved' },
     { width: 80, height: 16, color: false },
   );
-  const firstRow = first.rows[first.rows.length - 2];
-  assert.match(firstRow, /first block /);
-  assert.equal(firstRow.endsWith(' '), true);
+  const savedRow = saved.rows[saved.rows.length - 2];
+  assert.match(savedRow, /saved /);
+  assert.equal(savedRow.endsWith(' '), true);
 });
 
 test('status line includes feedback todo and code counts', () => {
@@ -442,6 +442,7 @@ test('status line includes feedback todo and code counts', () => {
       code: 1,
     },
     repoName: 'demo',
+    branch: 'main',
   };
   const frame = render.renderFrame(view, {
     width: 80,
@@ -449,10 +450,28 @@ test('status line includes feedback todo and code counts', () => {
     color: false,
   });
   const statusRow = frame.rows[frame.rows.length - 2];
-  assert.match(
-    statusRow,
-    /staged 6 {2}unstaged 11 {2}untracked 0 {2}feedback 3 {2}todo 2 {2}code 1/,
-  );
+  assert.match(statusRow, /\[main\] {2}staged 6 {2}unstaged 11 {2}untracked 0/);
+  assert.match(statusRow, /feedback 3 {2}todo 2 {2}code 1/);
+  const colored = render.renderFrame(view, {
+    width: 80,
+    height: 16,
+    color: true,
+  });
+  const painted = colored.rows[colored.rows.length - 2];
+  const chromeBg = bg(THEME.chromeBg);
+  const white = `${fg(THEME.buttonHotFg)}${chromeBg}`;
+  const muted = `${fg(THEME.mutedFg)}${chromeBg}`;
+  const brackets = `${BOLD}${muted}`;
+  assert.ok(painted.includes(`${white}main`));
+  assert.ok(painted.includes(`${brackets}[`));
+  assert.ok(painted.includes(`${brackets}]`));
+  assert.ok(!painted.includes(`${white}[`));
+  assert.ok(!painted.includes(`${white}]`));
+  assert.equal(frame.statusHits.length, 1);
+  assert.equal(frame.statusHits[0].id, 'branch');
+  assert.equal(frame.statusHits[0].y, frame.rows.length - 1);
+  assert.equal(frame.statusHits[0].x0, 1);
+  assert.equal(frame.statusHits[0].x1, 7);
 });
 
 test('quit prompt paints f c and d yellow on grey copy', () => {
@@ -694,7 +713,7 @@ test('AC10 footer words highlight the bound letter', () => {
   const row = frame.rows[frame.rows.length - 1];
   const plain = stripAnsi(row);
   assert.match(plain, /add {2}unstage {2}drop {2}commit {2}←/);
-  assert.match(plain, /← {2}→ {2}todo {2}reload {2}q/);
+  assert.match(plain, /todo {2}reload {2}branch {2}pull {2}push {2}q/);
   assert.ok(!plain.includes('prev'));
   assert.ok(!plain.includes('next'));
   assert.ok(!plain.includes('quit'));
@@ -726,6 +745,144 @@ test('AC10 footer words highlight the bound letter', () => {
     frame.buttons.find((hit) => hit.id === 'files'),
     undefined,
   );
+});
+
+test('branch pane lists names and marks the default branch', () => {
+  const view = {
+    pane: 'branches',
+    branches: [
+      {
+        name: 'main',
+        current: false,
+        isDefault: true,
+        sha: 'aaa1111',
+        date: '2 days ago',
+        subject: 'init',
+        ahead: 1,
+        behind: 0,
+        gone: false,
+      },
+      {
+        name: 'feat',
+        current: true,
+        isDefault: false,
+        sha: 'bbb2222',
+        date: '3 weeks ago',
+        subject: 'wip',
+        ahead: 0,
+        behind: 2,
+        gone: false,
+      },
+    ],
+    branchCursor: 1,
+    repoName: 'demo',
+    counts: { staged: 0, unstaged: 0, untracked: 0 },
+    branch: 'main',
+    status: '',
+    scroll: 0,
+  };
+  const frame = render.renderFrame(view, {
+    width: 80,
+    height: 12,
+    color: false,
+  });
+  const text = frame.rows.join('\n');
+  assert.match(text, /\[main\]/);
+  assert.match(text, /\[feat\]/);
+  assert.ok(!text.includes('* main'));
+  assert.match(text, /aaa1111/);
+  assert.match(text, /bbb2222/);
+  assert.match(text, /⇡1/);
+  assert.match(text, /⇣2/);
+  assert.match(text, /2 days ago/);
+  assert.match(text, /3 weeks ago/);
+  assert.match(text, /init/);
+  assert.match(text, /wip/);
+  assert.match(render.headerText(view), /feat current 2\/2/);
+  const footer = frame.rows[frame.rows.length - 1];
+  assert.match(footer, /new/);
+  assert.ok(!footer.includes('add'));
+  assert.ok(frame.buttons.find((hit) => hit.id === 'newBranch'));
+  const rows = frame.rows.map((row) => stripAnsi(row));
+  const mainRow = rows.find((row) => row.includes('aaa1111'));
+  const featRow = rows.find((row) => row.includes('bbb2222'));
+  assert.ok(mainRow);
+  assert.ok(featRow);
+  assert.equal(mainRow.indexOf('aaa1111'), featRow.indexOf('bbb2222'));
+  assert.equal(mainRow.indexOf('2 days ago'), featRow.indexOf('3 weeks ago'));
+  const colored = render.renderFrame(view, {
+    width: 80,
+    height: 12,
+    color: true,
+  });
+  const mainPainted = colored.rows.find((row) => row.includes('aaa1111'));
+  const featPainted = colored.rows.find((row) => row.includes('bbb2222'));
+  const selBg = bg(THEME.buttonBg);
+  const chipBg = bg(THEME.buttonHotFg);
+  const white = `${fg(THEME.buttonHotFg)}${selBg}`;
+  const mutedSel = `${BOLD}${fg(THEME.mutedFg)}${selBg}`;
+  const mutedChip = `${BOLD}${fg(THEME.mutedFg)}${chipBg}`;
+  const nameChip = `${fg(THEME.headerFg)}${chipBg}`;
+  assert.ok(mainPainted.includes(`${mutedChip}[`));
+  assert.ok(mainPainted.includes(`${nameChip}main`));
+  assert.ok(mainPainted.includes(`${mutedChip}]`));
+  assert.ok(featPainted.includes(`${white}feat`));
+  assert.ok(featPainted.includes(`${mutedSel}[`));
+  assert.ok(featPainted.includes(`${mutedSel}]`));
+  assert.ok(!featPainted.includes(`${white}[`));
+  assert.ok(!featPainted.includes(`${white}]`));
+});
+
+test('branch pane types a new name on a row under the list', () => {
+  const view = {
+    pane: 'branches',
+    branches: [
+      {
+        name: 'main',
+        current: true,
+        isDefault: true,
+        sha: 'aaa1111',
+        date: '2 days ago',
+        subject: 'init',
+        ahead: 0,
+        behind: 0,
+        gone: false,
+      },
+      {
+        name: 'feat',
+        current: false,
+        isDefault: false,
+        sha: 'bbb2222',
+        date: '3 weeks ago',
+        subject: 'wip',
+        ahead: 0,
+        behind: 0,
+        gone: false,
+      },
+    ],
+    branchCursor: 0,
+    compose: { kind: 'branch', text: 'topic', cursor: 5 },
+    repoName: 'demo',
+    counts: { staged: 0, unstaged: 0, untracked: 0 },
+    branch: 'main',
+    status: '',
+    scroll: 0,
+  };
+  const frame = render.renderFrame(view, {
+    width: 80,
+    height: 12,
+    color: false,
+  });
+  const rows = frame.rows.map((row) => stripAnsi(row));
+  const featAt = rows.findIndex((row) => row.includes('bbb2222'));
+  const topicAt = rows.findIndex(
+    (row, i) => i > featAt && row.includes('topic'),
+  );
+  assert.ok(featAt >= 0);
+  assert.ok(topicAt > featAt);
+  assert.ok(topicAt < rows.length - 2);
+  assert.equal(frame.cursor.y, topicAt + 1);
+  assert.match(render.headerText(view), /topic new 3\/3/);
 });
 
 test('AC26 file list status and counts are column-aligned', () => {
@@ -1257,7 +1414,7 @@ test('idle feedback note sits above the footer', () => {
     index: 0,
     total: 1,
     scroll: 0,
-    status: 'last block',
+    status: 'copied',
     counts: { staged: 0, unstaged: 1, untracked: 0 },
     repoName: 'demo',
     noteText: '[ ] extract helper',
@@ -1268,7 +1425,7 @@ test('idle feedback note sits above the footer', () => {
     color: false,
   });
   const statusRow = frame.rows[frame.rows.length - 2];
-  assert.match(statusRow, /last block /);
+  assert.match(statusRow, /copied /);
   const joined = frame.rows.join('\n');
   assert.match(joined, /feedback: \[ \] extract helper/);
   const noteAt = joined.indexOf('feedback: [ ] extract helper');
