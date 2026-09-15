@@ -27,6 +27,7 @@ test('fileEntries groups blocks by path', () => {
   assert.equal(entries[0].unstaged, 2);
   assert.equal(entries[0].staged, 0);
   assert.equal(entries[0].firstIndex, 0);
+  assert.equal(entries[0].openIndex, 0);
   assert.equal(entries[1].path, 'b.js');
   assert.equal(entries[1].status, 'staged');
   assert.equal(entries[1].staged, 1);
@@ -65,4 +66,15 @@ test('fileEntries counts lines and mixed staged blocks', () => {
   assert.equal(entries[0].added, 2);
   assert.equal(entries[0].removed, 3);
   assert.equal(entries[0].remaining, 2);
+});
+
+test('fileEntries opens a partial file on the first unstaged block', () => {
+  const entries = fileEntries([
+    item('mix.js', 'staged', 0),
+    item('mix.js', 'unstaged', 1),
+    item('mix.js', 'unstaged', 2),
+  ]);
+  assert.equal(entries[0].status, 'partial');
+  assert.equal(entries[0].firstIndex, 0);
+  assert.equal(entries[0].openIndex, 1);
 });

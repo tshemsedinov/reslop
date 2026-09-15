@@ -579,6 +579,17 @@ test('AC14 files pane lists paths and enter opens', () => {
   assert.equal(session.fileCursor, 1);
 });
 
+test('enter on a partial file opens the first unstaged hunk', () => {
+  const staged = sampleItem('a.js', 'staged');
+  const unstaged = sampleItem('a.js');
+  unstaged.blockId = 1;
+  const { session } = openSession([staged, unstaged], { startPane: 'files' });
+  session.dispatch('open');
+  assert.equal(session.pane, 'diff');
+  assert.equal(session.current().origin, 'unstaged');
+  assert.equal(session.index, 1);
+});
+
 test('files pane add moves to the next file', () => {
   const { session } = openSession(
     [sampleItem('a.js'), sampleItem('b.js'), sampleItem('c.js')],
