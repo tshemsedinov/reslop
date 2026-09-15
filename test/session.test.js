@@ -52,6 +52,7 @@ const mockRepo = (initial) => {
   const checkouts = [];
   const created = [];
   const rebases = [];
+  const drops = [];
   return {
     added,
     reverted,
@@ -62,6 +63,7 @@ const mockRepo = (initial) => {
     checkouts,
     created,
     rebases,
+    drops,
     load: () => ({ top: '/tmp', items: [...items], branch: 'main' }),
     add: (top, item) => {
       added.push(item);
@@ -93,6 +95,7 @@ const mockRepo = (initial) => {
     checkout: (top, name) => checkouts.push(name),
     createBranch: (top, name) => created.push(name),
     rebase: (top, onto) => rebases.push(onto),
+    drop: (top, name) => drops.push(name),
     pull: () => pulls.push(true),
     push: () => pushes.push(true),
   };
@@ -2402,6 +2405,32 @@ test('branch list r rebases current onto selected', () => {
   session.pushInput('r');
   assert.deepEqual(repo.rebases, ['feat']);
   assert.match(session.status, /rebased onto feat/);
+  assert.equal(session.pane, 'branches');
+});
+
+test('branch list d asks to drop the selected branch', () => {
+  const { session, repo } = openSession([sampleItem('a.js')], {
+    startPane: 'files',
+  });
+  session.pushInput('b');
+  session.pushInput('d');
+  assert.equal(session.mode, 'review');
+  assert.equal(repo.drops.length, 0);
+  session.dispatch('next');
+  session.pushInput('d');
+  assert.equal(session.mode, 'confirmDrop');
+  assert.equal(session.dropName, 'feat');
+  session.pushInput('n');
+  assert.equal(session.mode, 'review');
+  assert.equal(repo.drops.length, 0);
+  session.pushInput('d');
+  session.handleEvent({ type: 'key', key: 'escape' });
+  assert.equal(session.mode, 'review');
+  assert.equal(repo.drops.length, 0);
+  session.pushInput('d');
+  session.pushInput('y');
+  assert.deepEqual(repo.drops, ['feat']);
+  assert.match(session.status, /dropped feat/);
   assert.equal(session.pane, 'branches');
 });
 

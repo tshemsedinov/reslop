@@ -11,7 +11,8 @@ const git = require('../lib/git.js');
 const { load, addItem, unstageItem, revertItem } = git;
 const { commitChanges, hasStaged, lastMessage, createGitRepo } = git;
 const { currentBranch, listBranches, checkoutBranch } = git;
-const { createBranch, rebaseBranch, pullChanges, pushChanges } = git;
+const { createBranch, rebaseBranch, dropBranch, pullChanges } = git;
+const { pushChanges } = git;
 const { Session } = require('../lib/session.js');
 const { makeRepo, sink } = require('./helpers.js');
 
@@ -586,6 +587,23 @@ test('rebaseBranch aborts when the replay conflicts', () => {
     assert.throws(() => rebaseBranch(repo.dir, 'main'));
     assert.equal(currentBranch(repo.dir), 'feat');
     assert.equal(repo.read('f.txt'), 'feat\n');
+  } finally {
+    repo.cleanup();
+  }
+});
+
+test('dropBranch deletes a branch that is not current', () => {
+  const repo = makeRepo();
+  try {
+    repo.write('f.txt', 'a\n');
+    repo.git(['add', 'f.txt']);
+    repo.git(['commit', '-m', 'init']);
+    createBranch(repo.dir, 'feat');
+    checkoutBranch(repo.dir, 'main');
+    dropBranch(repo.dir, 'feat');
+    const names = listBranches(repo.dir).map((entry) => entry.name);
+    assert.equal(names.includes('feat'), false);
+    assert.equal(currentBranch(repo.dir), 'main');
   } finally {
     repo.cleanup();
   }

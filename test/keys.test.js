@@ -93,6 +93,8 @@ test('actionFromKey maps aliases and ignores unbound keys', () => {
   assert.equal(actionFromKey('n'), 'next');
   assert.equal(actionFromKey('n', 'branches'), 'newBranch');
   assert.equal(actionFromKey('r', 'branches'), 'rebase');
+  assert.equal(actionFromKey('d', 'branches'), 'drop');
+  assert.equal(actionFromKey('d'), 'revert');
   assert.equal(actionFromKey('r'), 'reload');
   assert.equal(actionFromKey('r', 'files'), 'reload');
   assert.equal(actionFromKey('escape'), null);
@@ -177,18 +179,20 @@ test('disabledActions hides add unstage drop on files todos', () => {
   assert.equal(unstaged.includes('commit'), true);
   const current = disabledActions('branches', { name: 'feat', current: true });
   assert.equal(current.includes('rebase'), true);
+  assert.equal(current.includes('drop'), true);
   const onto = disabledActions('branches', { name: 'main', current: false });
   assert.equal(onto.includes('rebase'), false);
+  assert.equal(onto.includes('drop'), false);
   const branchLayout = layoutButtons(
     160,
     false,
     BRANCHES_DISABLED,
-    ['newBranch', 'rebase'],
-    ['rebase'],
+    ['newBranch', 'rebase', 'drop'],
+    ['rebase', 'drop'],
   );
-  assert.ok(branchLayout.parts.some((part) => part.action.id === 'rebase'));
+  assert.ok(branchLayout.parts.some((part) => part.action.id === 'drop'));
   assert.equal(
-    branchLayout.hits.find((hit) => hit.id === 'rebase'),
+    branchLayout.hits.find((hit) => hit.id === 'drop'),
     undefined,
   );
 });

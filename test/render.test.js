@@ -498,6 +498,7 @@ test('long operations paint an infinite progress bar', () => {
     /^creating branch {2}/,
   );
   assert.match(render.formatBusyStatus('rebasing', 0), /^rebasing {2}▰/);
+  assert.match(render.formatBusyStatus('dropping', 1), /^dropping {2}/);
   assert.match(render.formatBusyStatus('committing', 2), /^committing {2}/);
   assert.match(
     render.formatBusyStatus('force pushing', 0),
@@ -640,6 +641,35 @@ test('update prompt paints y and n on the status line', () => {
   assert.ok(statusRow.includes(fg(THEME.warnFg)));
   assert.ok(statusRow.includes(fg(THEME.mutedFg)));
   assert.ok(statusRow.includes(bg(THEME.chromeBg)));
+  const warn = fg(THEME.warnFg);
+  assert.equal(statusRow.split(warn).length - 1, 2);
+});
+
+test('drop branch prompt paints y and n on the status line', () => {
+  const view = {
+    pane: 'branches',
+    branches: [
+      { name: 'main', current: true, isDefault: true },
+      { name: 'feat', current: false, isDefault: false },
+    ],
+    branchCursor: 1,
+    repoName: 'demo',
+    counts: { staged: 0, unstaged: 0, untracked: 0 },
+    branch: 'main',
+    status: '',
+    scroll: 0,
+    mode: 'confirmDrop',
+    dropName: 'feat',
+  };
+  const colored = render.renderFrame(view, {
+    width: 80,
+    height: 8,
+    color: true,
+  });
+  const statusRow = colored.rows[colored.rows.length - 2];
+  const plain = stripAnsi(statusRow);
+  assert.equal(plain.startsWith(render.dropPrompt('feat')), true);
+  assert.match(plain, /drop feat\? y {2}n/);
   const warn = fg(THEME.warnFg);
   assert.equal(statusRow.split(warn).length - 1, 2);
 });
@@ -1064,10 +1094,15 @@ test('branch pane lists names and marks the default branch', () => {
   const footer = frame.rows[frame.rows.length - 1];
   assert.match(footer, /new/);
   assert.match(footer, /rebase/);
+  assert.match(footer, /drop/);
   assert.ok(!footer.includes('add'));
   assert.ok(frame.buttons.find((hit) => hit.id === 'newBranch'));
   assert.equal(
     frame.buttons.find((hit) => hit.id === 'rebase'),
+    undefined,
+  );
+  assert.equal(
+    frame.buttons.find((hit) => hit.id === 'drop'),
     undefined,
   );
   assert.equal(mainRow.indexOf('aaa1111'), featRow.indexOf('bbb2222'));
@@ -1095,7 +1130,9 @@ test('branch pane lists names and marks the default branch', () => {
   const hot = seq(THEME.buttonHotFg, THEME.buttonBg);
   const currentFooter = colored.rows[colored.rows.length - 1];
   assert.ok(currentFooter.includes(`${rest}rebase`));
+  assert.ok(currentFooter.includes(`${rest}drop`));
   assert.ok(!currentFooter.includes(`${BOLD}${hot}r`));
+  assert.ok(!currentFooter.includes(`${BOLD}${hot}d`));
   view.branchCursor = 0;
   const onto = render.renderFrame(view, {
     width: 80,
@@ -1104,7 +1141,9 @@ test('branch pane lists names and marks the default branch', () => {
   });
   const ontoFooter = onto.rows[onto.rows.length - 1];
   assert.ok(onto.buttons.find((hit) => hit.id === 'rebase'));
+  assert.ok(onto.buttons.find((hit) => hit.id === 'drop'));
   assert.ok(ontoFooter.includes(`${BOLD}${hot}r`));
+  assert.ok(ontoFooter.includes(`${BOLD}${hot}d`));
 });
 
 test('branch pane types a new name on a row under the list', () => {
