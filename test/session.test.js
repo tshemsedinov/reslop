@@ -1978,6 +1978,34 @@ test('files pane p pulls and s pushes', () => {
   assert.equal(session.status, 'pushed');
 });
 
+test('rejected push asks f to force or escape to cancel', () => {
+  const { session, repo } = openSession([sampleItem('a.js')], {
+    startPane: 'files',
+  });
+  session.repo.push = (top, force) => {
+    if (force) {
+      repo.pushes.push(true);
+      return;
+    }
+    const error = new Error('non-fast-forward');
+    error.rejected = true;
+    throw error;
+  };
+  session.pushInput('s');
+  assert.equal(session.mode, 'confirmPush');
+  assert.equal(repo.pushes.length, 0);
+  session.pushInput('x');
+  assert.equal(session.mode, 'confirmPush');
+  session.handleEvent({ type: 'key', key: 'escape' });
+  assert.equal(session.mode, 'review');
+  assert.equal(repo.pushes.length, 0);
+  session.pushInput('s');
+  session.pushInput('f');
+  assert.deepEqual(repo.pushes, [true]);
+  assert.equal(session.mode, 'review');
+  assert.equal(session.status, 'force pushed');
+});
+
 test('pull shows progress until git finishes', async () => {
   let finish;
   const pending = new Promise((resolve) => {

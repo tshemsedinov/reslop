@@ -498,6 +498,10 @@ test('long operations paint an infinite progress bar', () => {
     /^creating branch {2}/,
   );
   assert.match(render.formatBusyStatus('committing', 2), /^committing {2}/);
+  assert.match(
+    render.formatBusyStatus('force pushing', 0),
+    /^force pushing {2}▰/,
+  );
   const view = {
     pane: 'files',
     files: [],
@@ -637,6 +641,34 @@ test('update prompt paints y and n on the status line', () => {
   assert.ok(statusRow.includes(bg(THEME.chromeBg)));
   const warn = fg(THEME.warnFg);
   assert.equal(statusRow.split(warn).length - 1, 2);
+});
+
+test('rejected push prompt paints f for force push', () => {
+  const view = {
+    pane: 'files',
+    files: [{ path: 'a.js', status: 'unstaged', remaining: 1, firstIndex: 0 }],
+    fileCursor: 0,
+    repoName: 'demo',
+    counts: { staged: 0, unstaged: 1, untracked: 0 },
+    status: '',
+    scroll: 0,
+    mode: 'confirmPush',
+  };
+  const colored = render.renderFrame(view, {
+    width: 80,
+    height: 8,
+    color: true,
+  });
+  const statusRow = colored.rows[colored.rows.length - 2];
+  const plain = stripAnsi(statusRow);
+  assert.equal(plain.startsWith(render.PUSH_PROMPT), true);
+  assert.ok(plain.includes('Need force-push?'));
+  assert.ok(plain.includes('force push'));
+  assert.ok(statusRow.includes(fg(THEME.warnFg)));
+  assert.ok(statusRow.includes(fg(THEME.mutedFg)));
+  assert.ok(statusRow.includes(bg(THEME.chromeBg)));
+  const warn = fg(THEME.warnFg);
+  assert.equal(statusRow.split(warn).length - 1, 1);
 });
 
 test('header and file list keep a right-side gap', () => {

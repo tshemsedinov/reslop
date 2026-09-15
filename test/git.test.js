@@ -642,3 +642,35 @@ test('pushChanges sets upstream then push and pull update', () => {
     if (cloneDir) fs.rmSync(cloneDir, { recursive: true, force: true });
   }
 });
+
+test('pushChanges force-with-lease after a rewritten commit', () => {
+  const repo = makeRepo();
+  const bare = makeBare();
+  try {
+    repo.write('f.txt', 'a\n');
+    repo.git(['add', 'f.txt']);
+    repo.git(['commit', '-m', 'init']);
+    repo.git(['remote', 'add', 'origin', bare.dir]);
+    pushChanges(repo.dir);
+    repo.write('f.txt', 'b\n');
+    repo.git(['add', 'f.txt']);
+    repo.git(['commit', '--amend', '-m', 'amended']);
+    assert.throws(
+      () => pushChanges(repo.dir),
+      (error) => {
+        assert.equal(error.rejected, true);
+        assert.match(error.message, /push rejected/);
+        return true;
+      },
+    );
+    pushChanges(repo.dir, true);
+    const remoteLog = spawnSync('git', ['log', '-1', '--format=%s'], {
+      cwd: bare.dir,
+      encoding: 'utf8',
+    });
+    assert.equal(remoteLog.stdout.trim(), 'amended');
+  } finally {
+    repo.cleanup();
+    bare.cleanup();
+  }
+});
