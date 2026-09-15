@@ -521,7 +521,7 @@ test('long operations paint an infinite progress bar', () => {
   assert.match(row, /pulling {2}▰/);
 });
 
-test('quit prompt paints f c and d yellow on grey copy', () => {
+test('quit prompt paints f and c yellow on grey copy', () => {
   const hunk = {
     oldStart: 1,
     oldCount: 1,
@@ -555,7 +555,7 @@ test('quit prompt paints f c and d yellow on grey copy', () => {
   assert.equal(plain.startsWith(render.QUIT_PROMPT), true);
   assert.ok(plain.includes('finish as ready'));
   assert.ok(plain.includes('continue next time'));
-  assert.ok(plain.includes('discard'));
+  assert.ok(!plain.includes('discard'));
   assert.ok(!plain.includes('Finish'));
   assert.ok(!plain.includes('Continue'));
   assert.ok(!plain.includes('pending'));
@@ -565,7 +565,7 @@ test('quit prompt paints f c and d yellow on grey copy', () => {
   assert.ok(!statusRow.includes(bg(THEME.buttonBg)));
   assert.ok(statusRow.includes(BOLD));
   const warn = fg(THEME.warnFg);
-  assert.equal(statusRow.split(warn).length - 1, 3);
+  assert.equal(statusRow.split(warn).length - 1, 2);
 });
 
 test('commit prompt paints c a and f yellow on grey copy', () => {
@@ -1043,8 +1043,13 @@ test('branch pane lists names and marks the default branch', () => {
     color: false,
   });
   const text = frame.rows.join('\n');
-  assert.match(text, /\[main\]/);
-  assert.match(text, /\[feat\]/);
+  const rows = frame.rows.map((row) => stripAnsi(row));
+  const mainRow = rows.find((row) => row.includes('aaa1111'));
+  const featRow = rows.find((row) => row.includes('bbb2222'));
+  assert.ok(mainRow);
+  assert.ok(featRow);
+  assert.ok(mainRow.includes('[main]'));
+  assert.match(featRow, /\[feat\]/);
   assert.ok(!text.includes('* main'));
   assert.match(text, /aaa1111/);
   assert.match(text, /bbb2222/);
@@ -1059,11 +1064,6 @@ test('branch pane lists names and marks the default branch', () => {
   assert.match(footer, /new/);
   assert.ok(!footer.includes('add'));
   assert.ok(frame.buttons.find((hit) => hit.id === 'newBranch'));
-  const rows = frame.rows.map((row) => stripAnsi(row));
-  const mainRow = rows.find((row) => row.includes('aaa1111'));
-  const featRow = rows.find((row) => row.includes('bbb2222'));
-  assert.ok(mainRow);
-  assert.ok(featRow);
   assert.equal(mainRow.indexOf('aaa1111'), featRow.indexOf('bbb2222'));
   assert.equal(mainRow.indexOf('2 days ago'), featRow.indexOf('3 weeks ago'));
   const colored = render.renderFrame(view, {
@@ -1073,20 +1073,18 @@ test('branch pane lists names and marks the default branch', () => {
   });
   const mainPainted = colored.rows.find((row) => row.includes('aaa1111'));
   const featPainted = colored.rows.find((row) => row.includes('bbb2222'));
-  const selBg = bg(THEME.buttonBg);
-  const chipBg = bg(THEME.buttonHotFg);
-  const white = `${fg(THEME.buttonHotFg)}${selBg}`;
-  const mutedSel = `${BOLD}${fg(THEME.mutedFg)}${selBg}`;
-  const mutedChip = `${BOLD}${fg(THEME.mutedFg)}${chipBg}`;
-  const nameChip = `${fg(THEME.headerFg)}${chipBg}`;
-  assert.ok(mainPainted.includes(`${mutedChip}[`));
-  assert.ok(mainPainted.includes(`${nameChip}main`));
-  assert.ok(mainPainted.includes(`${mutedChip}]`));
-  assert.ok(featPainted.includes(`${white}feat`));
-  assert.ok(featPainted.includes(`${mutedSel}[`));
-  assert.ok(featPainted.includes(`${mutedSel}]`));
-  assert.ok(!featPainted.includes(`${white}[`));
-  assert.ok(!featPainted.includes(`${white}]`));
+  const whiteBg = bg(THEME.buttonHotFg);
+  const greenBg = bg(THEME.checkDoneBg);
+  const mainWrap = `${BOLD}${fg(THEME.mutedFg)}${greenBg}`;
+  const mainName = `${fg(THEME.checkDoneFg)}${greenBg}`;
+  const currentName = `${fg(THEME.headerFg)}${whiteBg}`;
+  const currentWrap = `${BOLD}${fg(THEME.mutedFg)}${whiteBg}`;
+  assert.ok(mainPainted.includes(`${mainWrap}[`));
+  assert.ok(mainPainted.includes(`${mainName}main`));
+  assert.ok(mainPainted.includes(`${mainWrap}]`));
+  assert.ok(featPainted.includes(`${currentWrap}[`));
+  assert.ok(featPainted.includes(`${currentName}feat`));
+  assert.ok(featPainted.includes(`${currentWrap}]`));
 });
 
 test('branch pane types a new name on a row under the list', () => {
@@ -1137,6 +1135,8 @@ test('branch pane types a new name on a row under the list', () => {
   assert.ok(featAt >= 0);
   assert.ok(topicAt > featAt);
   assert.ok(topicAt < rows.length - 2);
+  const mainRow = rows.find((row) => row.includes('aaa1111'));
+  assert.match(mainRow, /\[main\]/);
   assert.equal(frame.cursor.y, topicAt + 1);
   assert.match(render.headerText(view), /topic new 3\/3/);
 });
