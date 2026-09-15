@@ -2,14 +2,14 @@
 
 ## [Unreleased][unreleased]
 
-- Check reslop updates on start (12h cache); auto patch/minor, y/n per new major
-- Lists branches `b` (`b, n` new branch), `p` pull, `s` push
-- Show TUI progress for long background operations in the status line
-- Skip empty commits with a hint instead of asking for a message
-- Open a partially staged file on its first unstaged hunk
+## [0.1.6][] - 2026-09-15
+
+- Auto updates for patch/minor, y/n per new major
+- Lists branches, new branch, git pull, git push
+- Show TUI progress for long background operations
 - Fix Windows spawn EINVAL when running `npm.cmd`
-- Highlight Dart diffs
-- Improve syntax highlighting
+- Highlight Dart diffs; refactor syntax highlighting
+- Multiple TUI/TUX improvements and fixes
 
 ## [0.1.5][] - 2026-09-14
 

@@ -53,9 +53,9 @@ Reviews go in `.review/YYYY-MM-DD-NN.md` with frontmatter `status`:
 | ------------------- | ----------------------------------------------- |
 | `a` / `u` / `d`     | Stage / unstage / drop this diff                |
 | `c`                 | Commit: then `c` commit / `a` amend / `f` fixup |
-| `b`                 | List branches; `p, n` new branch                |
+| `b`                 | List branches; `b, n` new branch                |
 | `p` / `s`           | git pull/push                                   |
-| `f` / `t` / `t`     | Add feedback / todo / edit diff text            |
+| `f` / `t` / `e`     | Add feedback / todo / edit diff text            |
 | `r`                 | Reload diffs from disk                          |
 | `m`                 | Mode: unified / mixed / side-by-side            |
 | `⏎`                 | Open the selected file                          |
