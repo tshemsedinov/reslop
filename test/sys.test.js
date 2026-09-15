@@ -8,7 +8,7 @@ const path = require('node:path');
 const { EventEmitter } = require('node:events');
 
 const sys = require('../lib/sys.js');
-const { npmBin, spawnBase, clipTools, watchResize, samePath } = sys;
+const { npmBin, spawnBase, npmOpts, clipTools, watchResize, samePath } = sys;
 
 test('npmBin uses npm.cmd on Windows', () => {
   assert.equal(npmBin('win32'), 'npm.cmd');
@@ -20,6 +20,17 @@ test('spawnBase hides console windows', () => {
   const opts = spawnBase({ cwd: '/tmp' });
   assert.equal(opts.windowsHide, true);
   assert.equal(opts.cwd, '/tmp');
+  assert.equal(opts.shell, undefined);
+});
+
+test('npmOpts uses a shell only on Windows', () => {
+  const win = npmOpts({ cwd: 'C:\\repo' }, 'win32');
+  assert.equal(win.shell, true);
+  assert.equal(win.windowsHide, true);
+  assert.equal(win.cwd, 'C:\\repo');
+  const unix = npmOpts({ cwd: '/tmp' }, 'linux');
+  assert.equal(unix.shell, false);
+  assert.equal(unix.windowsHide, true);
 });
 
 test('clipTools picks clip pbcopy and xclip by platform', () => {

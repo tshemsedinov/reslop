@@ -7,6 +7,7 @@
 - Show TUI progress for long background operations in the status line
 - Skip empty commits with a hint instead of asking for a message
 - Open a partially staged file on its first unstaged hunk
+- Fix Windows spawn EINVAL when running `npm.cmd`
 
 ## [0.1.5][] - 2026-09-14
 
