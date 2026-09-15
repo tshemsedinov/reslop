@@ -14,6 +14,7 @@ test('AC24 detectLang prefers .d.ts and dotfile rules', () => {
   assert.equal(detectLang('src/a.ts'), 'ts');
   assert.equal(detectLang('src/a.jsx'), 'jsx');
   assert.equal(detectLang('src/a.tsx'), 'tsx');
+  assert.equal(detectLang('lib/main.dart'), 'dart');
   assert.equal(detectLang('.env'), 'dot');
 });
 
@@ -85,6 +86,28 @@ test('tsx does not treat generics as jsx', () => {
   assert.equal(tokensText(tokens), src);
   assert.equal(stylesOf(tokens, 'number')[0], 'type');
   assert.equal(stylesOf(tokens, '<')[0], 'operator');
+});
+
+test('dart highlights keywords types and interpolation', () => {
+  const interp = '$name';
+  const src = `final n = 1;\nString hi = 'Hello ${interp}';`;
+  const tokens = tokenize('dart', src);
+  assert.equal(tokensText(tokens), src);
+  assert.equal(stylesOf(tokens, 'final')[0], 'storage');
+  assert.equal(stylesOf(tokens, 'n')[0], 'variable');
+  assert.ok(stylesOf(tokens, '1').includes('number'));
+  assert.equal(stylesOf(tokens, 'String')[0], 'className');
+  assert.equal(stylesOf(tokens, '$name')[0], 'interpolation');
+});
+
+test('dart highlights class names comments and annotations', () => {
+  const src = '@override\nclass Foo {}\n// note';
+  const tokens = tokenize('dart', src);
+  assert.equal(tokensText(tokens), src);
+  assert.equal(stylesOf(tokens, '@override')[0], 'decorator');
+  assert.equal(stylesOf(tokens, 'class')[0], 'storage');
+  assert.equal(stylesOf(tokens, 'Foo')[0], 'className');
+  assert.equal(stylesOf(tokens, '// note')[0], 'comment');
 });
 
 test('toString identifier does not crash tokenize', () => {
