@@ -5,7 +5,7 @@ const assert = require('node:assert/strict');
 
 const keys = require('../lib/keys.js');
 const { FILES_DISABLED, FILES_TODO_DISABLED, FILES_GIT_DISABLED } = keys;
-const { DIFF_DISABLED, TODO_DISABLED } = keys;
+const { DIFF_DISABLED, TODO_DISABLED, BRANCHES_DISABLED } = keys;
 const { decodeChunk, actionFromKey, hitAction, disabledActions } = keys;
 const { actionLetter, buttonWord } = keys;
 const { layoutButtons } = require('../lib/render.js');
@@ -92,6 +92,9 @@ test('actionFromKey maps aliases and ignores unbound keys', () => {
   assert.equal(actionFromKey('s', 'files'), 'push');
   assert.equal(actionFromKey('n'), 'next');
   assert.equal(actionFromKey('n', 'branches'), 'newBranch');
+  assert.equal(actionFromKey('r', 'branches'), 'rebase');
+  assert.equal(actionFromKey('r'), 'reload');
+  assert.equal(actionFromKey('r', 'files'), 'reload');
   assert.equal(actionFromKey('escape'), null);
 });
 
@@ -172,6 +175,22 @@ test('disabledActions hides add unstage drop on files todos', () => {
   assert.equal(unstaged.includes('add'), false);
   assert.equal(unstaged.includes('unstage'), true);
   assert.equal(unstaged.includes('commit'), true);
+  const current = disabledActions('branches', { name: 'feat', current: true });
+  assert.equal(current.includes('rebase'), true);
+  const onto = disabledActions('branches', { name: 'main', current: false });
+  assert.equal(onto.includes('rebase'), false);
+  const branchLayout = layoutButtons(
+    160,
+    false,
+    BRANCHES_DISABLED,
+    ['newBranch', 'rebase'],
+    ['rebase'],
+  );
+  assert.ok(branchLayout.parts.some((part) => part.action.id === 'rebase'));
+  assert.equal(
+    branchLayout.hits.find((hit) => hit.id === 'rebase'),
+    undefined,
+  );
 });
 
 test('buttonWord is the footer hint including the bound mark', () => {

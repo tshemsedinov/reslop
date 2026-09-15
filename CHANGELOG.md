@@ -4,6 +4,7 @@
 
 - Make TODOs repo-wide, not per-file todos
 - Improve TODO screen and files screen TUI/TUX including hotkeys
+- Implemant branch rebase
 - Fix TODOs autosave bug with todo duplication
 
 ## [0.1.6][] - 2026-09-15

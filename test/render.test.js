@@ -497,6 +497,7 @@ test('long operations paint an infinite progress bar', () => {
     render.formatBusyStatus('creating branch', 1),
     /^creating branch {2}/,
   );
+  assert.match(render.formatBusyStatus('rebasing', 0), /^rebasing {2}▰/);
   assert.match(render.formatBusyStatus('committing', 2), /^committing {2}/);
   assert.match(
     render.formatBusyStatus('force pushing', 0),
@@ -1062,8 +1063,13 @@ test('branch pane lists names and marks the default branch', () => {
   assert.match(render.headerText(view), /feat current 2\/2/);
   const footer = frame.rows[frame.rows.length - 1];
   assert.match(footer, /new/);
+  assert.match(footer, /rebase/);
   assert.ok(!footer.includes('add'));
   assert.ok(frame.buttons.find((hit) => hit.id === 'newBranch'));
+  assert.equal(
+    frame.buttons.find((hit) => hit.id === 'rebase'),
+    undefined,
+  );
   assert.equal(mainRow.indexOf('aaa1111'), featRow.indexOf('bbb2222'));
   assert.equal(mainRow.indexOf('2 days ago'), featRow.indexOf('3 weeks ago'));
   const colored = render.renderFrame(view, {
@@ -1085,6 +1091,20 @@ test('branch pane lists names and marks the default branch', () => {
   assert.ok(featPainted.includes(`${currentWrap}[`));
   assert.ok(featPainted.includes(`${currentName}feat`));
   assert.ok(featPainted.includes(`${currentWrap}]`));
+  const rest = seq(THEME.buttonFg, THEME.buttonBg);
+  const hot = seq(THEME.buttonHotFg, THEME.buttonBg);
+  const currentFooter = colored.rows[colored.rows.length - 1];
+  assert.ok(currentFooter.includes(`${rest}rebase`));
+  assert.ok(!currentFooter.includes(`${BOLD}${hot}r`));
+  view.branchCursor = 0;
+  const onto = render.renderFrame(view, {
+    width: 80,
+    height: 12,
+    color: true,
+  });
+  const ontoFooter = onto.rows[onto.rows.length - 1];
+  assert.ok(onto.buttons.find((hit) => hit.id === 'rebase'));
+  assert.ok(ontoFooter.includes(`${BOLD}${hot}r`));
 });
 
 test('branch pane types a new name on a row under the list', () => {

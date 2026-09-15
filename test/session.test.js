@@ -51,6 +51,7 @@ const mockRepo = (initial) => {
   const pushes = [];
   const checkouts = [];
   const created = [];
+  const rebases = [];
   return {
     added,
     reverted,
@@ -60,6 +61,7 @@ const mockRepo = (initial) => {
     pushes,
     checkouts,
     created,
+    rebases,
     load: () => ({ top: '/tmp', items: [...items], branch: 'main' }),
     add: (top, item) => {
       added.push(item);
@@ -90,6 +92,7 @@ const mockRepo = (initial) => {
     ],
     checkout: (top, name) => checkouts.push(name),
     createBranch: (top, name) => created.push(name),
+    rebase: (top, onto) => rebases.push(onto),
     pull: () => pulls.push(true),
     push: () => pushes.push(true),
   };
@@ -2386,6 +2389,20 @@ test('branch list n creates a new branch', () => {
   assert.equal(session.pane, 'files');
   assert.equal(session.mode, 'review');
   assert.match(session.status, /created topic/);
+});
+
+test('branch list r rebases current onto selected', () => {
+  const { session, repo } = openSession([sampleItem('a.js')], {
+    startPane: 'files',
+  });
+  session.pushInput('b');
+  session.pushInput('r');
+  assert.equal(repo.rebases.length, 0);
+  session.dispatch('next');
+  session.pushInput('r');
+  assert.deepEqual(repo.rebases, ['feat']);
+  assert.match(session.status, /rebased onto feat/);
+  assert.equal(session.pane, 'branches');
 });
 
 test('escape from branch list returns to files', () => {

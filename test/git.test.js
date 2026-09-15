@@ -11,7 +11,7 @@ const git = require('../lib/git.js');
 const { load, addItem, unstageItem, revertItem } = git;
 const { commitChanges, hasStaged, lastMessage, createGitRepo } = git;
 const { currentBranch, listBranches, checkoutBranch } = git;
-const { createBranch, pullChanges, pushChanges } = git;
+const { createBranch, rebaseBranch, pullChanges, pushChanges } = git;
 const { Session } = require('../lib/session.js');
 const { makeRepo, sink } = require('./helpers.js');
 
@@ -536,6 +536,56 @@ test('listBranches createBranch and checkoutBranch', () => {
     assert.equal(main.isDefault, true);
     assert.equal(feat.subject, 'init');
     assert.match(feat.sha, /^[0-9a-f]{7,}$/);
+  } finally {
+    repo.cleanup();
+  }
+});
+
+test('rebaseBranch replays the current branch onto the selected one', () => {
+  const repo = makeRepo();
+  try {
+    repo.write('f.txt', 'base\n');
+    repo.git(['add', 'f.txt']);
+    repo.git(['commit', '-m', 'init']);
+    createBranch(repo.dir, 'feat');
+    repo.write('f.txt', 'feat\n');
+    repo.git(['add', 'f.txt']);
+    repo.git(['commit', '-m', 'feat']);
+    checkoutBranch(repo.dir, 'main');
+    repo.write('g.txt', 'main\n');
+    repo.git(['add', 'g.txt']);
+    repo.git(['commit', '-m', 'on-main']);
+    checkoutBranch(repo.dir, 'feat');
+    rebaseBranch(repo.dir, 'main');
+    assert.equal(currentBranch(repo.dir), 'feat');
+    assert.equal(repo.read('g.txt'), 'main\n');
+    assert.equal(repo.read('f.txt'), 'feat\n');
+    const log = repo.git(['log', '--oneline']);
+    assert.match(log, /on-main/);
+    assert.match(log, /feat/);
+  } finally {
+    repo.cleanup();
+  }
+});
+
+test('rebaseBranch aborts when the replay conflicts', () => {
+  const repo = makeRepo();
+  try {
+    repo.write('f.txt', 'base\n');
+    repo.git(['add', 'f.txt']);
+    repo.git(['commit', '-m', 'init']);
+    createBranch(repo.dir, 'feat');
+    repo.write('f.txt', 'feat\n');
+    repo.git(['add', 'f.txt']);
+    repo.git(['commit', '-m', 'feat']);
+    checkoutBranch(repo.dir, 'main');
+    repo.write('f.txt', 'main\n');
+    repo.git(['add', 'f.txt']);
+    repo.git(['commit', '-m', 'on-main']);
+    checkoutBranch(repo.dir, 'feat');
+    assert.throws(() => rebaseBranch(repo.dir, 'main'));
+    assert.equal(currentBranch(repo.dir), 'feat');
+    assert.equal(repo.read('f.txt'), 'feat\n');
   } finally {
     repo.cleanup();
   }
