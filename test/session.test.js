@@ -1459,7 +1459,7 @@ test('quit discard keeps a resumed review file', () => {
 });
 
 test('c asks commit amend or fixup then commits the message', () => {
-  const { session, repo } = openSession([sampleItem('a.js')]);
+  const { session, repo } = openSession([sampleItem('a.js', 'staged')]);
   session.pushInput('c');
   assert.equal(session.mode, 'confirmCommit');
   session.handleEvent({ type: 'key', key: 'escape' });
@@ -1497,7 +1497,7 @@ test('c then a amends with the previous message', () => {
 });
 
 test('c then f fixups HEAD', () => {
-  const { session, repo } = openSession([sampleItem('a.js')]);
+  const { session, repo } = openSession([sampleItem('a.js', 'staged')]);
   session.pushInput('c');
   session.pushInput('f');
   assert.equal(session.editor.text, 'HEAD');
@@ -1508,7 +1508,7 @@ test('c then f fixups HEAD', () => {
 });
 
 test('escape from commit message does not run git', () => {
-  const { session, repo } = openSession([sampleItem('a.js')]);
+  const { session, repo } = openSession([sampleItem('a.js', 'staged')]);
   session.pushInput('c');
   session.pushInput('c');
   session.pushInput('draft');
@@ -1528,12 +1528,29 @@ test('compose c inserts a letter and does not open commit', () => {
 });
 
 test('files pane c still opens commit', () => {
-  const { session } = openSession([sampleItem('a.js')], { startPane: 'files' });
+  const { session } = openSession([sampleItem('a.js', 'staged')], {
+    startPane: 'files',
+  });
   session.pushInput('c');
   assert.equal(session.mode, 'confirmCommit');
   session.pushInput('c');
   assert.equal(session.mode, 'compose');
   assert.equal(session.composeKind, 'commit');
+});
+
+test('c skips commit when nothing is staged', () => {
+  const { session, repo } = openSession([sampleItem('a.js')]);
+  session.pushInput('c');
+  assert.equal(session.mode, 'confirmCommit');
+  session.pushInput('c');
+  assert.equal(session.mode, 'review');
+  assert.equal(session.status, 'nothing to commit');
+  assert.equal(repo.commits.length, 0);
+  session.pushInput('c');
+  session.pushInput('f');
+  assert.equal(session.mode, 'review');
+  assert.equal(session.status, 'nothing to commit');
+  assert.equal(repo.commits.length, 0);
 });
 
 test('quit without notes does not write a review file', () => {
@@ -2158,7 +2175,7 @@ test('commit shows progress until git finishes', async () => {
     finish = resolve;
   });
   const ticks = [];
-  const { session, repo } = openSession([sampleItem('a.js')], {
+  const { session, repo } = openSession([sampleItem('a.js', 'staged')], {
     startPane: 'diff',
     setInterval: (fn) => {
       ticks.push(fn);

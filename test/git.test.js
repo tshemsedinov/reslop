@@ -9,7 +9,7 @@ const { spawnSync } = require('node:child_process');
 
 const git = require('../lib/git.js');
 const { load, addItem, unstageItem, revertItem } = git;
-const { commitChanges, lastMessage, createGitRepo } = git;
+const { commitChanges, hasStaged, lastMessage, createGitRepo } = git;
 const { currentBranch, listBranches, checkoutBranch } = git;
 const { createBranch, pullChanges, pushChanges } = git;
 const { Session } = require('../lib/session.js');
@@ -432,6 +432,21 @@ test('commitChanges amend replaces the last message', () => {
     assert.equal(log.length, 1);
     assert.equal(log[0], 'rewritten');
     assert.equal(lastMessage(repo.dir), 'rewritten');
+  } finally {
+    repo.cleanup();
+  }
+});
+
+test('hasStaged is false until files are added', () => {
+  const repo = makeRepo();
+  try {
+    repo.write('f.txt', 'a\n');
+    repo.git(['add', 'f.txt']);
+    repo.git(['commit', '-m', 'init']);
+    assert.equal(hasStaged(repo.dir), false);
+    repo.write('f.txt', 'b\n');
+    repo.git(['add', 'f.txt']);
+    assert.equal(hasStaged(repo.dir), true);
   } finally {
     repo.cleanup();
   }
