@@ -4,8 +4,9 @@ const { test } = require('node:test');
 const assert = require('node:assert/strict');
 
 const keys = require('../lib/keys.js');
-const { FILES_DISABLED, DIFF_DISABLED } = keys;
-const { decodeChunk, actionFromKey, hitAction } = keys;
+const { FILES_DISABLED, FILES_TODO_DISABLED, FILES_GIT_DISABLED } = keys;
+const { DIFF_DISABLED, TODO_DISABLED } = keys;
+const { decodeChunk, actionFromKey, hitAction, disabledActions } = keys;
 const { actionLetter, buttonWord } = keys;
 const { layoutButtons } = require('../lib/render.js');
 
@@ -112,6 +113,7 @@ test('layoutButtons hitboxes cover labels', () => {
   const diff80 = layoutButtons(80, false, DIFF_DISABLED);
   assert.equal(diff80.parts[0].label, 'add');
   assert.ok(!diff80.parts.some((part) => part.action.id === 'reload'));
+  assert.ok(!diff80.parts.some((part) => part.action.id === 'commit'));
   const letters = layoutButtons(20, true);
   assert.equal(letters.parts[0].label, 'a');
   assert.equal(letters.parts[0].piece, '  a');
@@ -134,6 +136,42 @@ test('layoutButtons hitboxes cover labels', () => {
   assert.equal(ids.includes('feedback'), false);
   assert.equal(ids.includes('code'), false);
   assert.equal(ids.includes('todo'), true);
+  const todo = layoutButtons(160, false, TODO_DISABLED);
+  const todoIds = todo.parts.map((part) => part.action.id);
+  assert.equal(todoIds.includes('commit'), false);
+  assert.equal(todoIds.includes('todo'), false);
+  assert.equal(todoIds.includes('open'), false);
+  const dim = layoutButtons(160, false, FILES_DISABLED, [], FILES_GIT_DISABLED);
+  const dimAdd = dim.parts.find((part) => part.action.id === 'add');
+  assert.equal(dimAdd.disabled, true);
+  assert.equal(
+    dim.hits.find((hit) => hit.id === 'add'),
+    undefined,
+  );
+  assert.ok(dim.parts.some((part) => part.action.id === 'commit'));
+  assert.ok(dim.hits.some((hit) => hit.id === 'commit'));
+});
+
+test('disabledActions hides add unstage drop on files todos', () => {
+  const file = disabledActions('files', { path: 'a.js' });
+  assert.equal(file.includes('add'), false);
+  assert.equal(file.includes('unstage'), false);
+  assert.equal(file.includes('revert'), false);
+  const todos = disabledActions('files', { kind: 'todos' });
+  assert.deepEqual(todos, FILES_TODO_DISABLED);
+  assert.equal(todos.includes('add'), true);
+  assert.equal(todos.includes('commit'), false);
+  const page = disabledActions('diff', { origin: 'todo' });
+  assert.equal(page.includes('add'), true);
+  assert.equal(page.includes('commit'), true);
+  assert.equal(page.includes('todo'), true);
+  const staged = disabledActions('diff', { origin: 'staged' });
+  assert.equal(staged.includes('add'), true);
+  assert.equal(staged.includes('unstage'), false);
+  const unstaged = disabledActions('diff', { origin: 'unstaged' });
+  assert.equal(unstaged.includes('add'), false);
+  assert.equal(unstaged.includes('unstage'), true);
+  assert.equal(unstaged.includes('commit'), true);
 });
 
 test('buttonWord is the footer hint including the bound mark', () => {

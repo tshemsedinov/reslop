@@ -5,6 +5,7 @@ const assert = require('node:assert/strict');
 
 const files = require('../lib/files.js');
 const { fileEntries, fileStatus, itemPath } = files;
+const { TODO_FILE, repoTodosLabel, isTodosEntry, isTodoItem } = files;
 
 const item = (name, origin, indexHint) => ({
   origin,
@@ -39,8 +40,27 @@ test('fileEntries groups blocks by path', () => {
 test('fileStatus joins mixed origins', () => {
   assert.equal(fileStatus(['unstaged', 'staged']), 'partial');
   assert.equal(fileStatus(['staged', 'unstaged']), 'partial');
-  assert.equal(fileStatus(['todo']), 'todo');
+  assert.equal(fileStatus(['todo']), '');
   assert.equal(fileStatus(['todo', 'unstaged']), 'unstaged');
+});
+
+test('fileEntries skips todo items', () => {
+  const items = [
+    { origin: 'todo', file: { newPath: TODO_FILE, oldPath: TODO_FILE } },
+    item('a.js', 'unstaged', 0),
+  ];
+  const entries = fileEntries(items);
+  assert.equal(entries.length, 1);
+  assert.equal(entries[0].path, 'a.js');
+  assert.equal(isTodoItem(items[0]), true);
+  assert.equal(isTodoItem(items[1]), false);
+});
+
+test('repoTodosLabel names the global todos row', () => {
+  assert.equal(repoTodosLabel(), 'Repository TODOs and Issues');
+  assert.equal(repoTodosLabel('reslop'), 'Repository TODOs and Issues');
+  assert.equal(isTodosEntry({ kind: 'todos' }), true);
+  assert.equal(isTodosEntry({ path: 'a.js' }), false);
 });
 
 test('fileEntries counts lines and mixed staged blocks', () => {

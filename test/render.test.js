@@ -7,7 +7,7 @@ const { displayLines } = require('../lib/diff.js');
 const render = require('../lib/render.js');
 const wrap = require('../lib/wrap.js');
 const ansi = require('../lib/ansi.js');
-const { THEME, CODE_FG, fg, bg, stripAnsi, BOLD } = ansi;
+const { THEME, CODE_FG, fg, bg, stripAnsi, BOLD, seq } = ansi;
 const { ESC, RESET, EL, visibleWidth } = ansi;
 
 test('AC2 muted line color differs from strong char color', () => {
@@ -747,6 +747,61 @@ test('header last column uses the light grey bar background', () => {
   assert.ok(!body.includes(`${ESC}[2J`));
 });
 
+test('file list leads with repository TODOs and a count', () => {
+  const files = [
+    {
+      path: 'Repository TODOs and Issues',
+      kind: 'todos',
+      status: 'todos',
+      remaining: 3,
+      staged: 1,
+      firstIndex: 0,
+    },
+    { path: 'a.js', status: 'unstaged', remaining: 1, firstIndex: 0 },
+  ];
+  const frame = render.renderFrame(
+    {
+      pane: 'files',
+      files,
+      fileCursor: 0,
+      repoName: 'demo',
+      counts: { staged: 0, unstaged: 1, untracked: 0, todo: 3 },
+      status: '',
+      scroll: 0,
+    },
+    { width: 64, height: 8, color: false },
+  );
+  const lead = stripAnsi(frame.rows[2]);
+  const file = stripAnsi(frame.rows[3]);
+  assert.match(lead, /▶ Repository TODOs and Issues/);
+  assert.match(lead, /1\/3\s*$/);
+  assert.match(file, /a\.js/);
+  assert.ok(!file.includes('Repository'));
+  assert.ok(!lead.includes('demo'));
+  assert.equal(frame.fileHits[0].y, 3);
+  const header = render.headerText({
+    pane: 'files',
+    files,
+    fileCursor: 0,
+  });
+  assert.match(header, /TODOs todo 1\/2/);
+  const colored = render.renderFrame(
+    {
+      pane: 'files',
+      files,
+      fileCursor: 0,
+      repoName: 'demo',
+      counts: { staged: 0, unstaged: 1, untracked: 0, todo: 3 },
+      status: '',
+      scroll: 0,
+    },
+    { width: 64, height: 8, color: true },
+  );
+  const title = colored.rows[2];
+  assert.ok(title.includes(BOLD));
+  assert.ok(title.includes(fg(THEME.buttonHotFg)));
+});
+
 test('file list marks only the cursor row', () => {
   const files = [
     { path: 'a.js', status: 'unstaged', remaining: 1, firstIndex: 0 },
@@ -818,6 +873,132 @@ test('AC10 footer words highlight the bound letter', () => {
   assert.ok(frame.buttons.find((hit) => hit.id === 'reload'));
   assert.equal(
     frame.buttons.find((hit) => hit.id === 'files'),
+    undefined,
+  );
+});
+
+test('files pane todos row dims add unstage drop', () => {
+  const view = {
+    pane: 'files',
+    files: [
+      {
+        path: 'Repository TODOs and Issues',
+        kind: 'todos',
+        status: 'todos',
+        remaining: 1,
+        staged: 0,
+        firstIndex: 0,
+      },
+      { path: 'a.js', status: 'unstaged', remaining: 1, firstIndex: 0 },
+    ],
+    fileCursor: 0,
+    repoName: 'demo',
+    counts: { staged: 0, unstaged: 1, untracked: 0, todo: 1 },
+    status: '',
+    scroll: 0,
+  };
+  const frame = render.renderFrame(view, {
+    width: 80,
+    height: 8,
+    color: false,
+  });
+  const footer = frame.rows[frame.rows.length - 1];
+  assert.match(footer, /add {2}unstage {2}drop {2}commit {2}←/);
+  assert.equal(
+    frame.buttons.find((hit) => hit.id === 'add'),
+    undefined,
+  );
+  assert.equal(
+    frame.buttons.find((hit) => hit.id === 'unstage'),
+    undefined,
+  );
+  assert.equal(
+    frame.buttons.find((hit) => hit.id === 'revert'),
+    undefined,
+  );
+  assert.ok(frame.buttons.find((hit) => hit.id === 'commit'));
+  const colored = render.renderFrame(view, {
+    width: 80,
+    height: 8,
+    color: true,
+  });
+  const row = colored.rows[colored.rows.length - 1];
+  const rest = seq(THEME.buttonFg, THEME.buttonBg);
+  const hot = seq(THEME.buttonHotFg, THEME.buttonBg);
+  assert.ok(row.includes(`${rest}add`));
+  assert.ok(!row.includes(`${BOLD}${hot}a`));
+  assert.ok(row.includes(`${BOLD}${hot}c`));
+  view.fileCursor = 1;
+  const file = render.renderFrame(view, {
+    width: 80,
+    height: 8,
+    color: false,
+  });
+  const fileFooter = file.rows[file.rows.length - 1];
+  assert.match(fileFooter, /add {2}unstage {2}drop/);
+  assert.ok(file.buttons.find((hit) => hit.id === 'add'));
+});
+
+test('diff pane dims add on staged and unstage on unstaged', () => {
+  const hunk = {
+    oldStart: 1,
+    oldCount: 1,
+    newStart: 1,
+    newCount: 1,
+    header: '@@ -1,1 +1,1 @@',
+    lines: [{ type: 'add', text: 'x', noNl: false, blockId: 0 }],
+  };
+  const item = {
+    origin: 'staged',
+    file: { newPath: 'f.js', oldPath: 'f.js', isBinary: false },
+    hunk,
+    blockId: 0,
+  };
+  const view = {
+    pane: 'diff',
+    item,
+    index: 0,
+    total: 1,
+    scroll: 0,
+    status: '',
+    counts: { staged: 1, unstaged: 0, untracked: 0 },
+    repoName: 'demo',
+  };
+  const staged = render.renderFrame(view, {
+    width: 80,
+    height: 8,
+    color: true,
+  });
+  const stagedRow = staged.rows[staged.rows.length - 1];
+  const rest = seq(THEME.buttonFg, THEME.buttonBg);
+  const hot = seq(THEME.buttonHotFg, THEME.buttonBg);
+  assert.match(stripAnsi(stagedRow), /add {2}unstage {2}drop/);
+  assert.equal(
+    staged.buttons.find((hit) => hit.id === 'add'),
+    undefined,
+  );
+  assert.ok(staged.buttons.find((hit) => hit.id === 'unstage'));
+  assert.ok(stagedRow.includes(`${rest}add`));
+  assert.ok(!stagedRow.includes(`${BOLD}${hot}a`));
+  assert.ok(stagedRow.includes(`${BOLD}${hot}u`));
+  view.item = { ...item, origin: 'unstaged' };
+  view.counts = { staged: 0, unstaged: 1, untracked: 0 };
+  const unstaged = render.renderFrame(view, {
+    width: 80,
+    height: 8,
+    color: true,
+  });
+  const unstagedRow = unstaged.rows[unstaged.rows.length - 1];
+  assert.ok(unstaged.buttons.find((hit) => hit.id === 'add'));
+  assert.equal(
+    unstaged.buttons.find((hit) => hit.id === 'unstage'),
+    undefined,
+  );
+  assert.ok(unstagedRow.includes(`${BOLD}${hot}a`));
+  assert.ok(unstagedRow.includes(`${rest}unstage`));
+  assert.ok(!stripAnsi(unstagedRow).includes('commit'));
+  assert.equal(
+    unstaged.buttons.find((hit) => hit.id === 'commit'),
     undefined,
   );
 });
@@ -1041,6 +1222,45 @@ test('AC26 file list status and counts are column-aligned', () => {
   });
   const first = stripAnsi(slim.rows[2]);
   assert.match(first, /unstaged {2}0\/4 {2}$/);
+});
+
+test('file list TODOs n/m aligns with file staged/remaining', () => {
+  const files = [
+    {
+      path: 'Repository TODOs and Issues',
+      kind: 'todos',
+      status: 'todos',
+      remaining: 5,
+      staged: 2,
+      firstIndex: 0,
+    },
+    {
+      path: 'a.js',
+      status: 'unstaged',
+      remaining: 4,
+      staged: 0,
+      added: 12,
+      removed: 5,
+      firstIndex: 0,
+    },
+  ];
+  const frame = render.renderFrame(
+    {
+      pane: 'files',
+      files,
+      fileCursor: 0,
+      repoName: 'demo',
+      counts: { staged: 0, unstaged: 1, untracked: 0, todo: 5 },
+      status: '',
+      scroll: 0,
+    },
+    { width: 48, height: 8, color: false },
+  );
+  const todoRow = stripAnsi(frame.rows[2]);
+  const fileRow = stripAnsi(frame.rows[3]);
+  assert.match(todoRow, /2\/5\s*$/);
+  assert.match(fileRow, /0\/4\s*$/);
+  assert.equal(todoRow.lastIndexOf('/'), fileRow.lastIndexOf('/'));
 });
 
 test('file list paints git status colors', () => {
@@ -1578,16 +1798,16 @@ test('todo view paints file todo text not a diff hunk', () => {
     color: false,
   });
   const body = stripAnsi(frame.rows.join('\n'));
-  const captionAt = body.indexOf('TODO:');
+  const captionAt = body.indexOf('Repository TODOs and Issues');
   const firstAt = body.indexOf('[ ] rewrite this');
   assert.ok(captionAt >= 0 && captionAt < firstAt);
   assert.match(body, /\[ \] rewrite this/);
   assert.match(body, /\[x\] already done/);
   assert.ok(!stripAnsi(frame.rows[2]).startsWith('+'));
   assert.ok(!stripAnsi(frame.rows[2]).startsWith('-'));
-  assert.match(body, /f\.js\s+todo 1\/1/);
+  assert.match(body, /TODOs\s+todo 1\/1/);
   const footer = frame.rows[frame.rows.length - 1];
-  assert.match(footer, /← {2}→ {2}todo {2}q/);
+  assert.match(footer, /← {2}→ {2}q/);
   assert.ok(!footer.includes('prev'));
   assert.ok(!footer.includes('next'));
   assert.ok(!footer.includes('quit'));
@@ -1598,6 +1818,21 @@ test('todo view paints file todo text not a diff hunk', () => {
   assert.ok(!footer.includes('mode'));
   assert.ok(!footer.includes('feedback'));
   assert.ok(!footer.includes('code'));
+  assert.ok(!footer.includes('todo'));
+  assert.ok(!footer.includes('commit'));
+  assert.ok(!footer.includes('del'));
+  assert.ok(!footer.includes('edit'));
+  assert.ok(!footer.includes('⏎'));
+  const colored = render.renderFrame(view, {
+    width: 80,
+    height: 16,
+    color: true,
+  });
+  const caption = colored.rows[2];
+  assert.match(stripAnsi(caption), /Repository TODOs and Issues/);
+  assert.ok(!stripAnsi(caption).includes('demo'));
+  assert.ok(caption.includes(BOLD));
+  assert.ok(caption.includes(fg(THEME.buttonHotFg)));
 });
 
 test('todo list stays visible while composing', () => {

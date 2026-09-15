@@ -99,7 +99,7 @@ test('AC8 revert staged restores HEAD', () => {
     const session = sessionFor(repo.dir);
     assert.equal(session.items[0].origin, 'staged');
     session.dispatch('add');
-    assert.equal(session.status, 'already staged');
+    assert.equal(session.status, '');
     session.dispatch('revert');
     assert.equal(repo.read('f.txt'), 'one\n');
     const cached = repo.git(['diff', '--cached']);
@@ -311,8 +311,9 @@ test('AC15 file argv loads only that file', () => {
     session.load();
     assert.equal(session.pane, 'diff');
     const files = session.fileList();
-    assert.equal(files.length, 1);
-    assert.equal(files[0].path, 'keep.txt');
+    assert.equal(files.length, 2);
+    assert.equal(files[0].kind, 'todos');
+    assert.equal(files[1].path, 'keep.txt');
   } finally {
     repo.cleanup();
   }

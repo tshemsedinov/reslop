@@ -12,7 +12,7 @@ const { prefixTemplates, upsertTemplate, createStore } = review;
 const { hasNotes, setFeedback, setCode, noteCounts, rememberTemplate } = review;
 const { addTodo, removeTodo, setTodoText, serializeReview } = review;
 const { applyImportedNotes } = review;
-const { flushReview, mergeTodos, loadTemplates, parseReview } = review;
+const { flushReview, loadTemplates, parseReview } = review;
 const { resolveReviewPath, latestReviewName } = review;
 const { parseFrontmatterStatus } = review;
 
@@ -150,6 +150,7 @@ test('serializeReview groups todos then feedback with position', () => {
   assert.match(md, /status: editing/);
   assert.match(md, /# reslop review 2026-09-07-00/);
   assert.match(md, /## Agent instructions/);
+  assert.match(md, /^## TODOs$/m);
   assert.match(md, /^## lib\/session\.js$/m);
   assert.ok(!md.includes('> lib/session.js'));
   assert.ok(!md.includes('### Todo'));
@@ -196,7 +197,7 @@ test('parseReview restores todos and feedback keys', () => {
   const loaded = parseReview(md, store.reviewPath);
   assert.equal(loaded.status, 'editing');
   assert.equal(loaded.todos.length, 1);
-  assert.equal(loaded.todos[0].file, 'lib/session.js');
+  assert.equal(loaded.todos[0].file, 'TODOs');
   assert.equal(loaded.todos[0].text, 'rewrite the retry loop');
   assert.equal(loaded.todos[0].done, false);
   assert.equal(loaded.feedback.get(key).text, 'extract a helper');
@@ -259,11 +260,12 @@ test('parseReview keeps checked todos and feedback', () => {
 });
 
 test('noteCounts counts filled feedback todos and code', () => {
+  const empty = { feedback: 0, todo: 0, todoDone: 0, code: 0 };
   const store = createStore('/repo/.review/x.md');
-  assert.deepEqual(noteCounts(null), { feedback: 0, todo: 0, code: 0 });
-  assert.deepEqual(noteCounts(store), { feedback: 0, todo: 0, code: 0 });
+  assert.deepEqual(noteCounts(null), empty);
+  assert.deepEqual(noteCounts(store), empty);
   addTodo(store, 'a.js', '');
-  assert.deepEqual(noteCounts(store), { feedback: 0, todo: 0, code: 0 });
+  assert.deepEqual(noteCounts(store), empty);
   addTodo(store, 'a.js', 'rewrite loop');
   setFeedback(store, 'a.js:1:1:0', {
     file: 'a.js',
@@ -272,7 +274,14 @@ test('noteCounts counts filled feedback todos and code', () => {
     blockId: 0,
     text: 'extract helper',
   });
-  assert.deepEqual(noteCounts(store), { feedback: 1, todo: 1, code: 0 });
+  assert.deepEqual(noteCounts(store), {
+    feedback: 1,
+    todo: 1,
+    todoDone: 0,
+    code: 0,
+  });
+  store.todos[1].done = true;
+  assert.equal(noteCounts(store).todoDone, 1);
   setCode(store, 'a.js:1:1:0', {
     file: 'a.js',
     oldStart: 1,
@@ -280,7 +289,12 @@ test('noteCounts counts filled feedback todos and code', () => {
     blockId: 0,
     text: 'fixed',
   });
-  assert.deepEqual(noteCounts(store), { feedback: 1, todo: 1, code: 1 });
+  assert.deepEqual(noteCounts(store), {
+    feedback: 1,
+    todo: 1,
+    todoDone: 1,
+    code: 1,
+  });
   assert.equal(hasNotes(store), true);
 });
 
@@ -387,46 +401,29 @@ test('flushReview skips write when there are no notes', () => {
   assert.equal(store.dirty, false);
 });
 
-test('mergeTodos puts one assigned todo page first per file', () => {
-  const hunk = {
-    origin: 'unstaged',
-    file: { newPath: 'a.js', oldPath: 'a.js' },
-    hunk: { oldStart: 1, newStart: 1 },
+test('serializeReview collects todos under TODOs not file headings', () => {
+  const store = createStore('/tmp/x.md');
+  addTodo(store, 'a.js', 'todo a');
+  addTodo(store, 'b.js', 'todo b');
+  setFeedback(store, 'k', {
+    file: 'a.js',
+    oldStart: 1,
+    newStart: 1,
     blockId: 0,
-  };
-  const more = {
-    origin: 'unstaged',
-    file: { newPath: 'a.js', oldPath: 'a.js' },
-    hunk: { oldStart: 4, newStart: 4 },
-    blockId: 1,
-  };
-  const other = {
-    origin: 'unstaged',
-    file: { newPath: 'b.js', oldPath: 'b.js' },
-    hunk: { oldStart: 1, newStart: 1 },
-    blockId: 0,
-  };
-  const merged = mergeTodos(
-    [hunk, more, other],
-    [
-      { id: 1, file: 'a.js', text: 'todo a' },
-      { id: 2, file: 'a.js', text: 'todo a2' },
-      { id: 3, file: 'a.js', text: '' },
-    ],
-  );
-  assert.equal(merged[0].origin, 'todo');
-  assert.equal(merged[0].file.newPath, 'a.js');
-  assert.equal(merged[1], hunk);
-  assert.equal(merged[2], more);
-  assert.equal(merged[3], other);
-  assert.equal(merged.filter((item) => item.origin === 'todo').length, 1);
-  const empty = mergeTodos([hunk], [{ id: 1, file: 'a.js', text: '' }]);
-  assert.equal(empty[0].origin, 'todo');
-  assert.equal(empty[1], hunk);
-  const draft = mergeTodos([hunk], [], ['a.js']);
-  assert.equal(draft[0].origin, 'todo');
-  assert.equal(draft[0].file.newPath, 'a.js');
-  assert.equal(draft[1], hunk);
+    text: 'nit',
+  });
+  const md = serializeReview(store);
+  assert.match(md, /^## TODOs$/m);
+  assert.match(md, /- \[ \] todo a/);
+  assert.match(md, /- \[ \] todo b/);
+  const fileAt = md.indexOf('## a.js');
+  const todosAt = md.indexOf('## TODOs');
+  assert.ok(todosAt >= 0 && todosAt < fileAt);
+  assert.ok(!md.slice(fileAt).includes('todo a'));
+  const loaded = parseReview(md, store.reviewPath);
+  assert.equal(loaded.todos.length, 2);
+  assert.equal(loaded.todos[0].file, 'TODOs');
+  assert.equal(loaded.todos[1].file, 'TODOs');
 });
 
 test('applyImportedNotes maps comments onto feedback and todos', () => {
@@ -563,7 +560,12 @@ test('empty code proposal still counts as a note', () => {
     text: '',
   });
   assert.equal(hasNotes(store), true);
-  assert.deepEqual(noteCounts(store), { feedback: 0, todo: 0, code: 1 });
+  assert.deepEqual(noteCounts(store), {
+    feedback: 0,
+    todo: 0,
+    todoDone: 0,
+    code: 1,
+  });
   const md = serializeReview(store);
   assert.match(md, /^- \[ \] code `a\.js:1:1:0`$/m);
   const loaded = parseReview(md, store.reviewPath);

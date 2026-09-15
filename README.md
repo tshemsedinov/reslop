@@ -1,4 +1,4 @@
-# 👁️ reslop — Review diff and plan changes
+# 👁️ reslop — Review AI generated code and plan changes
 
 [![ci status](https://github.com/tshemsedinov/reslop/workflows/Testing%20CI/badge.svg)](https://github.com/tshemsedinov/reslop/actions?query=workflow%3A%22Testing+CI%22+branch%3Amain)
 [![snyk](https://snyk.io/test/github/tshemsedinov/reslop/badge.svg)](https://snyk.io/test/github/tshemsedinov/reslop)
@@ -59,8 +59,8 @@ Reviews go in `.review/YYYY-MM-DD-NN.md` with frontmatter `status`:
 | `r`                 | Reload diffs from disk                          |
 | `m`                 | Mode: unified / mixed / side-by-side            |
 | `⏎`                 | Open the selected file                          |
-| `→` / `j`           | Next remaining diff / next file                 |
-| `←` / `k`           | Previous remaining diff / previous file         |
+| `→` / `j`           | Next remaining diff / file                      |
+| `←` / `k`           | Previous remaining diff / file                  |
 | `Ctrl-e` / `Ctrl-y` | Scroll one line down / up                       |
 | `Ctrl-f` / `Ctrl-b` | Scroll page down / up                           |
 | `Ctrl-d` / `Ctrl-u` | Scroll half-page down / up                      |
