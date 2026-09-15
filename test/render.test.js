@@ -474,6 +474,31 @@ test('status line includes feedback todo and code counts', () => {
   assert.equal(frame.statusHits[0].x1, 7);
 });
 
+test('pull and push status paints an infinite progress bar', () => {
+  assert.equal(render.formatBusyStatus('pulled', 0), 'pulled');
+  const first = render.formatBusyStatus('pulling', 0);
+  const next = render.formatBusyStatus('pulling', 1);
+  assert.match(first, /^pulling {2}▰/);
+  assert.notEqual(first, next);
+  const view = {
+    pane: 'files',
+    files: [],
+    counts: { staged: 0, unstaged: 0, untracked: 0 },
+    branch: 'main',
+    status: 'pulling',
+    progressFrame: 0,
+    repoName: 'demo',
+    scroll: 0,
+  };
+  const frame = render.renderFrame(view, {
+    width: 80,
+    height: 12,
+    color: false,
+  });
+  const row = frame.rows[frame.rows.length - 2];
+  assert.match(row, /pulling {2}▰/);
+});
+
 test('quit prompt paints f c and d yellow on grey copy', () => {
   const hunk = {
     oldStart: 1,

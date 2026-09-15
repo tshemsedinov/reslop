@@ -1978,6 +1978,37 @@ test('files pane p pulls and s pushes', () => {
   assert.equal(session.status, 'pushed');
 });
 
+test('pull shows progress until git finishes', async () => {
+  let finish;
+  const pending = new Promise((resolve) => {
+    finish = resolve;
+  });
+  const ticks = [];
+  const { session, repo } = openSession([sampleItem('a.js')], {
+    startPane: 'files',
+    setInterval: (fn) => {
+      ticks.push(fn);
+      return ticks.length;
+    },
+    clearInterval: () => {},
+  });
+  session.repo.pullAsync = () => pending;
+  session.pushInput('p');
+  assert.equal(repo.pulls.length, 0);
+  assert.equal(session.busy, 'pulling');
+  assert.equal(session.viewStatus(), 'pulling');
+  assert.equal(session.progressFrame, 0);
+  ticks[0]();
+  assert.equal(session.progressFrame, 1);
+  session.pushInput('p');
+  finish();
+  await pending;
+  await Promise.resolve();
+  assert.equal(session.status, 'pulled');
+  assert.equal(session.busy, '');
+  assert.equal(session.gitBusy, false);
+});
+
 test('files pane u unstages', () => {
   const item = sampleItem('a.js', 'staged');
   const { session, repo } = openSession([item], { startPane: 'files' });
