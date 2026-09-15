@@ -9,6 +9,7 @@
 - Open a partially staged file on its first unstaged hunk
 - Fix Windows spawn EINVAL when running `npm.cmd`
 - Highlight Dart diffs
+- Improve syntax highlighting
 
 ## [0.1.5][] - 2026-09-14
 
