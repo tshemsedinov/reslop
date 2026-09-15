@@ -2009,6 +2009,156 @@ test('pull shows progress until git finishes', async () => {
   assert.equal(session.gitBusy, false);
 });
 
+test('npm i shows progress until install finishes', async () => {
+  let finish;
+  const pending = new Promise((resolve) => {
+    finish = resolve;
+  });
+  const ticks = [];
+  const { session } = openSession([sampleItem('a.js')], {
+    startPane: 'diff',
+    setInterval: (fn) => {
+      ticks.push(fn);
+      return ticks.length;
+    },
+    clearInterval: () => {},
+  });
+  session.uiOpen = true;
+  const item = session.current();
+  item.reload = true;
+  item.dep = {
+    change: { propose: true, name: 'lodash' },
+    files: ['package.json'],
+  };
+  session.repo.addAsync = () => pending;
+  session.dispatch('add');
+  assert.equal(session.busy, 'npm i');
+  ticks[0]();
+  assert.equal(session.progressFrame, 1);
+  finish();
+  await pending;
+  await Promise.resolve();
+  assert.equal(session.status, 'staged');
+  assert.equal(session.busy, '');
+});
+
+test('openLoad shows progress while a remote change loads', async () => {
+  let finish;
+  const pending = new Promise((resolve) => {
+    finish = resolve;
+  });
+  const ticks = [];
+  const item = sampleItem('lib/a.js', 'pr');
+  const session = new Session({
+    cwd: '/tmp',
+    stdout: sink(),
+    color: false,
+    getSize: () => ({ width: 80, height: 16 }),
+    startPane: 'files',
+    ...reviewFs,
+    setInterval: (fn) => {
+      ticks.push(fn);
+      return ticks.length;
+    },
+    clearInterval: () => {},
+    repo: {
+      load: () => ({ items: [] }),
+      loadAsync: async () => {
+        await pending;
+        return {
+          items: [item],
+          sourceLabel: '#123',
+          change: {
+            source: 'github-pr',
+            repository: 'acme/app',
+            number: 123,
+          },
+        };
+      },
+    },
+  });
+  session.uiOpen = true;
+  const ready = session.openLoad();
+  assert.equal(session.busy, 'loading');
+  ticks[0]();
+  assert.equal(session.progressFrame, 1);
+  finish();
+  await ready;
+  assert.equal(session.busy, '');
+  assert.equal(session.items.length, 1);
+  assert.equal(session.sourceLabel, '#123');
+  assert.equal(session.repoName, 'acme/app');
+});
+
+test('checkout shows progress until git finishes', async () => {
+  let finish;
+  const pending = new Promise((resolve) => {
+    finish = resolve;
+  });
+  const ticks = [];
+  const { session, repo } = openSession([sampleItem('a.js')], {
+    startPane: 'files',
+    setInterval: (fn) => {
+      ticks.push(fn);
+      return ticks.length;
+    },
+    clearInterval: () => {},
+  });
+  session.uiOpen = true;
+  session.repo.checkoutAsync = async (top, name) => {
+    await pending;
+    repo.checkouts.push(name);
+  };
+  session.pushInput('b');
+  session.pushInput('j');
+  session.handleEvent({ type: 'key', key: 'enter' });
+  assert.equal(repo.checkouts.length, 0);
+  assert.equal(session.busy, 'checking out');
+  ticks[0]();
+  assert.equal(session.progressFrame, 1);
+  finish();
+  await pending;
+  await Promise.resolve();
+  assert.deepEqual(repo.checkouts, ['feat']);
+  assert.match(session.status, /checked out feat/);
+  assert.equal(session.busy, '');
+});
+
+test('commit shows progress until git finishes', async () => {
+  let finish;
+  const pending = new Promise((resolve) => {
+    finish = resolve;
+  });
+  const ticks = [];
+  const { session, repo } = openSession([sampleItem('a.js')], {
+    startPane: 'diff',
+    setInterval: (fn) => {
+      ticks.push(fn);
+      return ticks.length;
+    },
+    clearInterval: () => {},
+  });
+  session.uiOpen = true;
+  session.repo.commitAsync = async (top, kind, message) => {
+    await pending;
+    repo.commits.push({ top, kind, message });
+  };
+  session.pushInput('c');
+  session.pushInput('c');
+  session.pushInput('land the change');
+  session.handleEvent({ type: 'key', key: 'enter' });
+  assert.equal(repo.commits.length, 0);
+  assert.equal(session.busy, 'committing');
+  ticks[0]();
+  assert.equal(session.progressFrame, 1);
+  finish();
+  await pending;
+  await Promise.resolve();
+  assert.equal(repo.commits.length, 1);
+  assert.equal(session.status, 'committed');
+  assert.equal(session.busy, '');
+});
+
 test('files pane u unstages', () => {
   const item = sampleItem('a.js', 'staged');
   const { session, repo } = openSession([item], { startPane: 'files' });

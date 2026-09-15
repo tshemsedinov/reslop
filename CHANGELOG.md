@@ -4,6 +4,7 @@
 
 - Check reslop updates on start (12h cache); auto patch/minor, y/n per new major
 - Lists branches `b` (`b, n` new branch), `p` pull, `s` push
+- Show TUI progress for long background operations in the status line
 
 ## [0.1.5][] - 2026-09-14
 

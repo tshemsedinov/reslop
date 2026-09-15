@@ -474,12 +474,30 @@ test('status line includes feedback todo and code counts', () => {
   assert.equal(frame.statusHits[0].x1, 7);
 });
 
-test('pull and push status paints an infinite progress bar', () => {
+test('long operations paint an infinite progress bar', () => {
   assert.equal(render.formatBusyStatus('pulled', 0), 'pulled');
   const first = render.formatBusyStatus('pulling', 0);
   const next = render.formatBusyStatus('pulling', 1);
   assert.match(first, /^pulling {2}▰/);
   assert.notEqual(first, next);
+  assert.match(render.formatBusyStatus('loading', 0), /^loading {2}▰/);
+  assert.match(render.formatBusyStatus('checking npm', 2), /^checking npm {2}/);
+  assert.match(
+    render.formatBusyStatus('updating reslop', 0),
+    /^updating reslop {2}▰/,
+  );
+  assert.match(render.formatBusyStatus('npm i', 0), /^npm i {2}▰/);
+  assert.match(render.formatBusyStatus('npm uninstall', 1), /^npm uninstall /);
+  assert.match(render.formatBusyStatus('npm audit fix', 2), /^npm audit fix /);
+  assert.match(
+    render.formatBusyStatus('checking out', 0),
+    /^checking out {2}▰/,
+  );
+  assert.match(
+    render.formatBusyStatus('creating branch', 1),
+    /^creating branch {2}/,
+  );
+  assert.match(render.formatBusyStatus('committing', 2), /^committing {2}/);
   const view = {
     pane: 'files',
     files: [],
