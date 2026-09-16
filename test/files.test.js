@@ -6,6 +6,7 @@ const assert = require('node:assert/strict');
 const files = require('../lib/files.js');
 const { fileEntries, fileStatus, itemPath } = files;
 const { TODO_FILE, repoTodosLabel, isTodosEntry, isTodoItem } = files;
+const { fileTotals, isTotalEntry, TOTAL_LABEL } = files;
 
 const item = (name, origin, indexHint) => ({
   origin,
@@ -86,6 +87,60 @@ test('fileEntries counts lines and mixed staged blocks', () => {
   assert.equal(entries[0].added, 2);
   assert.equal(entries[0].removed, 3);
   assert.equal(entries[0].remaining, 2);
+});
+
+test('fileTotals sums line and origin counts across files', () => {
+  const todos = {
+    path: repoTodosLabel(),
+    kind: 'todos',
+    status: 'todos',
+    remaining: 5,
+    staged: 2,
+    added: 0,
+    removed: 0,
+    unstaged: 0,
+  };
+  const entries = [
+    todos,
+    {
+      path: 'a.js',
+      status: 'unstaged',
+      remaining: 4,
+      staged: 0,
+      unstaged: 4,
+      added: 12,
+      removed: 5,
+    },
+    {
+      path: 'b.js',
+      status: 'staged',
+      remaining: 1,
+      staged: 1,
+      unstaged: 0,
+      added: 3,
+      removed: 1,
+    },
+    {
+      path: 'c.js',
+      status: 'untracked',
+      remaining: 2,
+      staged: 0,
+      unstaged: 0,
+      added: 20,
+      removed: 0,
+    },
+  ];
+  const total = fileTotals(entries);
+  assert.equal(total.kind, 'total');
+  assert.equal(total.path, TOTAL_LABEL);
+  assert.equal(total.added, 35);
+  assert.equal(total.removed, 6);
+  assert.equal(total.staged, 1);
+  assert.equal(total.unstaged, 6);
+  assert.equal(total.remaining, 7);
+  assert.equal(isTodosEntry(total), false);
+  assert.equal(isTotalEntry(total), true);
+  assert.equal(isTotalEntry(todos), false);
 });
 
 test('fileEntries opens a partial file on the first unstaged block', () => {

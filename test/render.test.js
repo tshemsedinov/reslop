@@ -401,7 +401,7 @@ test('footer keeps info status on the counts line', () => {
   });
   assert.equal(frame.rows.length, 16);
   const statusRow = frame.rows[frame.rows.length - 2];
-  assert.match(statusRow, /unstaged 1/);
+  assert.match(statusRow, /0\/1/);
   assert.match(statusRow, /copied /);
   assert.equal(statusRow.endsWith(' '), true);
   const saved = render.renderFrame(
@@ -450,8 +450,12 @@ test('status line includes feedback todo and code counts', () => {
     color: false,
   });
   const statusRow = frame.rows[frame.rows.length - 2];
-  assert.match(statusRow, /\[main\] {2}staged 6 {2}unstaged 11 {2}untracked 0/);
-  assert.match(statusRow, /feedback 3 {2}todo 2 {2}code 1/);
+  assert.match(statusRow, /\[main\] {2}feedback 3 {2}todo 2 {2}code 1/);
+  assert.match(statusRow, /6\/17\s*$/);
+  assert.ok(!statusRow.includes('untracked'));
+  const notesAt = statusRow.indexOf('feedback 3');
+  const ratioAt = statusRow.indexOf('6/17');
+  assert.ok(notesAt < ratioAt);
   const colored = render.renderFrame(view, {
     width: 80,
     height: 16,
@@ -472,6 +476,65 @@ test('status line includes feedback todo and code counts', () => {
   assert.equal(frame.statusHits[0].y, frame.rows.length - 1);
   assert.equal(frame.statusHits[0].x0, 1);
   assert.equal(frame.statusHits[0].x1, 7);
+});
+
+test('status line includes repo +/- totals', () => {
+  const files = [
+    {
+      path: 'a.js',
+      status: 'unstaged',
+      remaining: 4,
+      staged: 0,
+      added: 12,
+      removed: 5,
+    },
+    {
+      path: 'b.js',
+      status: 'staged',
+      remaining: 1,
+      staged: 1,
+      added: 3,
+      removed: 1,
+    },
+    {
+      path: 'README.md',
+      status: 'untracked',
+      remaining: 12,
+      staged: 0,
+      added: 20,
+      removed: 0,
+    },
+  ];
+  const view = {
+    pane: 'files',
+    files,
+    fileCursor: 0,
+    repoName: 'demo',
+    branch: 'main',
+    counts: { staged: 1, unstaged: 1, untracked: 1 },
+    status: '',
+    scroll: 0,
+  };
+  const frame = render.renderFrame(view, {
+    width: 80,
+    height: 10,
+    color: false,
+  });
+  const statusRow = stripAnsi(frame.rows[frame.rows.length - 2]);
+  assert.match(statusRow, /\[main\] {2}feedback 0 {2}todo 0 {2}code 0/);
+  assert.match(statusRow, /\+35 {2}-6 {2}1\/17\s*$/);
+  assert.ok(!statusRow.includes('untracked'));
+  const notesAt = statusRow.indexOf('feedback 0');
+  const plusAt = statusRow.indexOf('+35');
+  assert.ok(notesAt < plusAt);
+  const colored = render.renderFrame(view, {
+    width: 80,
+    height: 10,
+    color: true,
+  });
+  const painted = colored.rows[colored.rows.length - 2];
+  assert.ok(painted.includes(fg(THEME.addLineFg)));
+  assert.ok(painted.includes(fg(THEME.delLineFg)));
 });
 
 test('long operations paint an infinite progress bar', () => {
@@ -1699,7 +1762,7 @@ test('compose panel sits above status and buttons', () => {
   assert.equal(frame.rows.length, 16);
   const statusRow = frame.rows[frame.rows.length - 2];
   const buttonRow = frame.rows[frame.rows.length - 1];
-  assert.match(statusRow, /unstaged 1/);
+  assert.match(statusRow, /0\/1/);
   assert.match(buttonRow, /feedback/);
   assert.match(buttonRow, /edit/);
   assert.ok(!buttonRow.includes('code'));
