@@ -482,6 +482,40 @@ test('vim ctrl-f pages down the files list', () => {
   assert.equal(session.fileCursor, 0);
 });
 
+test('files list up moves the cursor before scrolling', () => {
+  const items = [];
+  for (let i = 0; i < 20; i++) items.push(sampleItem(`f${i}.js`));
+  const { session } = openSession(items, { startPane: 'files' });
+  const last = session.fileList().length - 1;
+  for (let i = 0; i < last; i++) session.dispatch('next');
+  session.draw();
+  assert.equal(session.fileCursor, last);
+  const markRow = (frame) => {
+    for (let i = 0; i < frame.rows.length; i++) {
+      if (stripAnsi(frame.rows[i]).includes('▶')) return i;
+    }
+    return -1;
+  };
+  const listNames = (frame) => {
+    const names = [];
+    for (const hit of frame.fileHits) {
+      const match = /f\d+\.js/.exec(stripAnsi(frame.rows[hit.y - 1]));
+      if (match) names.push(match[0]);
+    }
+    return names;
+  };
+  const bottom = session.lastFrame;
+  const bottomMark = markRow(bottom);
+  const bottomNames = listNames(bottom);
+  assert.ok(bottomMark > 0);
+  assert.ok(bottomNames.length > 1);
+  session.dispatch('prev');
+  session.draw();
+  assert.equal(session.fileCursor, last - 1);
+  assert.deepEqual(listNames(session.lastFrame), bottomNames);
+  assert.equal(markRow(session.lastFrame), bottomMark - 1);
+});
+
 test('AC10 footer Add hitbox dispatches add', () => {
   const item = sampleItem('c.js');
   const { session, repo } = openSession([item]);

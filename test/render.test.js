@@ -755,6 +755,53 @@ test('file list keeps a blank line before and after', () => {
   assert.equal(frame.fileHits[1].y, 4);
 });
 
+test('file list up moves the cursor before scrolling', () => {
+  const files = [];
+  for (let i = 0; i < 20; i++) {
+    files.push({
+      path: `f${i}.js`,
+      status: 'unstaged',
+      remaining: 1,
+      firstIndex: i,
+    });
+  }
+  const view = {
+    pane: 'files',
+    files,
+    repoName: 'demo',
+    counts: { staged: 0, unstaged: 20, untracked: 0 },
+    status: '',
+    scroll: 0,
+  };
+  const opt = { width: 40, height: 8, color: false };
+  const markRow = (frame) => {
+    for (let i = 0; i < frame.rows.length; i++) {
+      if (stripAnsi(frame.rows[i]).includes('▶')) return i;
+    }
+    return -1;
+  };
+  const listNames = (frame) => {
+    const names = [];
+    for (const hit of frame.fileHits) {
+      const match = /f\d+\.js/.exec(stripAnsi(frame.rows[hit.y - 1]));
+      if (match) names.push(match[0]);
+    }
+    return names;
+  };
+  const last = files.length - 1;
+  const bottom = render.renderFrame(
+    { ...view, fileCursor: last, listScroll: 0 },
+    opt,
+  );
+  const up = render.renderFrame(
+    { ...view, fileCursor: last - 1, listScroll: bottom.listScroll },
+    opt,
+  );
+  assert.ok(listNames(bottom).length > 1);
+  assert.deepEqual(listNames(up), listNames(bottom));
+  assert.equal(markRow(up), markRow(bottom) - 1);
+});
+
 test('header last column uses the light grey bar background', () => {
   const view = {
     pane: 'files',
