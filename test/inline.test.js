@@ -62,6 +62,40 @@ test('AC19 identifier replace marks whole words', () => {
   );
 });
 
+test('camelCase identifier replace marks whole words', () => {
+  const diff = diffChars('sampleItem', 'tallItem');
+  const oldWords = diff.oldSpans.filter((span) => span.changed);
+  const newWords = diff.newSpans.filter((span) => span.changed);
+  assert.deepEqual(
+    oldWords.map((span) => span.text),
+    ['sample'],
+  );
+  assert.deepEqual(
+    newWords.map((span) => span.text),
+    ['tall'],
+  );
+  assert.equal(unchangedText(diff.oldSpans), 'Item');
+  assert.equal(unchangedText(diff.newSpans), 'Item');
+});
+
+test('sampleItem to tallItem keeps Item and marks whole words', () => {
+  const oldText = `const { session } = openSession([sampleItem('a.js')]);`;
+  const newText = `const { session } = openSession([tallItem('a.js', 80)]);`;
+  const diff = diffChars(oldText, newText);
+  const oldWords = diff.oldSpans.filter((span) => span.changed);
+  const newWords = diff.newSpans.filter((span) => span.changed);
+  assert.deepEqual(
+    oldWords.map((span) => span.text),
+    ['sample'],
+  );
+  assert.deepEqual(
+    newWords.map((span) => span.text),
+    ['tall', ', 80'],
+  );
+  assert.ok(unchangedText(diff.oldSpans).includes('Item'));
+  assert.ok(unchangedText(diff.newSpans).includes('Item'));
+});
+
 test('snake_case segment replace marks the whole segment', () => {
   const oldText = 'const destDir = process.env.METADIFF_BIN_DIR';
   const newText = 'const destDir = process.env.RESLOP_BIN_DIR';
