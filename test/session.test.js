@@ -1614,6 +1614,75 @@ test('todo edit arrows move across todos without leaving edit', () => {
   assert.deepEqual(session.view().todos, ['[ ] first', '[ ] second', '[ ] ']);
 });
 
+test('todo edit arrows move inside a multiline todo', () => {
+  const { session } = openSession([sampleItem('a.js')]);
+  session.dispatch('todo');
+  session.pushInput('first');
+  session.handleEvent({ type: 'key', key: 'enter' });
+  session.pushInput('second');
+  session.handleEvent({ type: 'key', key: 'escape' });
+  session.notes.todos[1].text = 'one\ntwo\nthree';
+  session.handleEvent({ type: 'key', key: 'enter' });
+  assert.equal(session.mode, 'compose');
+  assert.equal(session.editor.linePos().line, 2);
+  session.handleEvent({ type: 'key', key: 'up' });
+  assert.equal(session.todoFocus, 1);
+  assert.equal(session.editor.linePos().line, 1);
+  session.handleEvent({ type: 'key', key: 'up' });
+  assert.equal(session.todoFocus, 1);
+  assert.equal(session.editor.linePos().line, 0);
+  session.handleEvent({ type: 'key', key: 'up' });
+  assert.equal(session.mode, 'compose');
+  assert.equal(session.todoFocus, 0);
+  assert.equal(session.editor.text, 'first');
+  session.handleEvent({ type: 'key', key: 'down' });
+  assert.equal(session.todoFocus, 1);
+  assert.equal(session.editor.text, 'one\ntwo\nthree');
+  assert.equal(session.editor.linePos().line, 2);
+  session.handleEvent({ type: 'key', key: 'down' });
+  assert.equal(session.todoFocus, 2);
+  assert.equal(session.editor.text, '');
+});
+
+test('todo list arrows skip over multiline items', () => {
+  const { session } = openSession([sampleItem('a.js')]);
+  session.dispatch('todo');
+  session.pushInput('first');
+  session.handleEvent({ type: 'key', key: 'enter' });
+  session.pushInput('second');
+  session.handleEvent({ type: 'key', key: 'escape' });
+  session.notes.todos[1].text = 'one\ntwo\nthree';
+  assert.equal(session.mode, 'review');
+  assert.equal(session.todoFocus, 1);
+  session.handleEvent({ type: 'key', key: 'up' });
+  assert.equal(session.mode, 'review');
+  assert.equal(session.todoFocus, 0);
+  session.handleEvent({ type: 'key', key: 'down' });
+  assert.equal(session.todoFocus, 1);
+  session.handleEvent({ type: 'key', key: 'down' });
+  assert.equal(session.todoFocus, 2);
+});
+
+test('todo edit arrows move across wrapped lines', () => {
+  const { session } = openSession([sampleItem('a.js')]);
+  session.dispatch('todo');
+  session.pushInput('first');
+  session.handleEvent({ type: 'key', key: 'enter' });
+  session.pushInput('second');
+  session.handleEvent({ type: 'key', key: 'escape' });
+  const long = 'x'.repeat(90);
+  session.notes.todos[1].text = long;
+  session.handleEvent({ type: 'key', key: 'enter' });
+  session.handleEvent({ type: 'key', key: 'up' });
+  assert.equal(session.todoFocus, 1);
+  assert.ok(session.editor.cursor < long.length);
+  session.handleEvent({ type: 'key', key: 'down' });
+  assert.equal(session.todoFocus, 1);
+  assert.equal(session.editor.cursor, long.length);
+  session.handleEvent({ type: 'key', key: 'down' });
+  assert.equal(session.todoFocus, 2);
+});
+
 test('todo edit page keys jump across todos', () => {
   const { session } = openSession([sampleItem('a.js')]);
   session.dispatch('todo');

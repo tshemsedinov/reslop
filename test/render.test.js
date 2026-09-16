@@ -2149,6 +2149,52 @@ test('todo list exposes a click hit for each todo row', () => {
   assert.ok(frame.todoHits[0].y > 1);
 });
 
+test('todo wrap hangs under the checkbox text', () => {
+  const view = {
+    pane: 'diff',
+    item: {
+      origin: 'todo',
+      todoId: 1,
+      file: { newPath: 'f.js', oldPath: 'f.js', isBinary: false },
+      hunk: null,
+      blockId: 'todo-1',
+    },
+    index: 0,
+    total: 1,
+    scroll: 0,
+    status: '',
+    counts: { staged: 0, unstaged: 0, untracked: 0, todo: 1 },
+    repoName: 'demo',
+    todos: ['[ ] abcdefghijklmnopqrstuvwxyz12'],
+    todoFocus: 0,
+    todoEdit: { cursor: 14 },
+  };
+  const frame = render.renderFrame(view, {
+    width: 20,
+    height: 12,
+    color: false,
+  });
+  const first = frame.rows.find((row) => stripAnsi(row).includes('[ ]'));
+  const second = frame.rows.find((row) => {
+    const plain = stripAnsi(row);
+    return plain.includes('opqrstuvwxyz12') && !plain.includes('[ ]');
+  });
+  assert.ok(first);
+  assert.ok(second);
+  const firstPlain = stripAnsi(first);
+  const secondPlain = stripAnsi(second);
+  assert.match(firstPlain, /^ \[ \] abcdefghijklmn/);
+  assert.match(secondPlain, /^ {5}opqrstuvwxyz12/);
+  const lead = ' [ ] ';
+  const hang = '     ';
+  const chunk0 = firstPlain.trimEnd().slice(lead.length);
+  const chunk1 = secondPlain.trimEnd().slice(hang.length);
+  assert.equal(visibleWidth(chunk0), visibleWidth(chunk1));
+  assert.equal(firstPlain.indexOf('a'), secondPlain.indexOf('o'));
+  assert.equal(frame.cursor.x, 6);
+  assert.equal(frame.cursor.y, frame.todoHits[1].y);
+});
+
 test('wrapPlain moves whole words to the next line', () => {
   assert.deepEqual(wrap.wrapPlain('hello world', 8), ['hello ', 'world']);
   assert.deepEqual(wrap.wrapPlain('extract helper', 10), [
