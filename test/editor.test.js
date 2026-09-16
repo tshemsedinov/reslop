@@ -59,3 +59,22 @@ test('moveLine with width follows visual wrap', () => {
   editor.moveLine(-20, 8);
   assert.equal(editor.cursor, 5);
 });
+
+test('moveWord jumps by identifier', () => {
+  const editor = new Editor('hello world.foo');
+  editor.home();
+  editor.moveWord(1);
+  assert.equal(editor.cursor, 5);
+  editor.moveWord(1);
+  assert.equal(editor.cursor, 11);
+  editor.moveWord(1);
+  assert.equal(editor.cursor, 15);
+  editor.moveWord(1);
+  assert.equal(editor.cursor, 15);
+  editor.moveWord(-1);
+  assert.equal(editor.cursor, 12);
+  editor.moveWord(-1);
+  assert.equal(editor.cursor, 6);
+  editor.moveWord(-1);
+  assert.equal(editor.cursor, 0);
+});

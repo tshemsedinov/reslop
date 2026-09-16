@@ -48,6 +48,10 @@ test('decodeChunk maps letters and arrows', () => {
   assert.equal(homeTilde.key, 'home');
   const ss3Home = decodeChunk('\x1bOH').events[0];
   assert.equal(ss3Home.key, 'home');
+  const ctrlLeft = decodeChunk('\x1b[1;5D').events[0];
+  assert.equal(ctrlLeft.key, 'ctrl-left');
+  const ctrlRight = decodeChunk('\x1b[1;5C').events[0];
+  assert.equal(ctrlRight.key, 'ctrl-right');
 });
 
 test('decodeChunk parses SGR mouse press', () => {

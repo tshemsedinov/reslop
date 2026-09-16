@@ -87,6 +87,23 @@ test('page home and end move in a multiline compose editor', () => {
   assert.equal(composer.editor.linePos().line, 2);
 });
 
+test('ctrl arrows move by word in compose editors', () => {
+  const kinds = ['feedback', 'code', 'todo', 'commit', 'branch'];
+  for (const kind of kinds) {
+    const { composer } = setup();
+    composer.openCompose(kind, 'hello world');
+    composer.editor.home();
+    composer.handleKey('ctrl-right');
+    assert.equal(composer.editor.cursor, 5);
+    composer.handleKey('ctrl-right');
+    assert.equal(composer.editor.cursor, 11);
+    composer.handleKey('ctrl-left');
+    assert.equal(composer.editor.cursor, 6);
+    composer.handleKey('ctrl-left');
+    assert.equal(composer.editor.cursor, 0);
+  }
+});
+
 test('escape cancels branch compose without a command', () => {
   const { composer, getMode, getStatus } = setup();
   composer.openCompose('branch', 'feat');
