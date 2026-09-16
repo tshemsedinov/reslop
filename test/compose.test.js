@@ -73,6 +73,20 @@ test('autosave never returns a git command for commit or branch', () => {
   assert.equal(flushed.length, 0);
 });
 
+test('page home and end move in a multiline compose editor', () => {
+  const { composer } = setup();
+  composer.openCompose('code', 'aaa\nbbb\nccc');
+  assert.equal(composer.editor.cursor, 11);
+  composer.handleKey('home');
+  assert.equal(composer.editor.cursor, 8);
+  composer.handleKey('end');
+  assert.equal(composer.editor.cursor, 11);
+  composer.handleKey('pageUp');
+  assert.equal(composer.editor.linePos().line, 0);
+  composer.handleKey('pageDown');
+  assert.equal(composer.editor.linePos().line, 2);
+});
+
 test('escape cancels branch compose without a command', () => {
   const { composer, getMode, getStatus } = setup();
   composer.openCompose('branch', 'feat');

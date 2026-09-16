@@ -36,6 +36,18 @@ test('decodeChunk maps letters and arrows', () => {
   assert.equal(pageDown.key, 'ctrl-f');
   const del = decodeChunk('\x1b[3~').events[0];
   assert.equal(del.key, 'delete');
+  const pgUp = decodeChunk('\x1b[5~').events[0];
+  assert.equal(pgUp.key, 'pageUp');
+  const pgDown = decodeChunk('\x1b[6~').events[0];
+  assert.equal(pgDown.key, 'pageDown');
+  const home = decodeChunk('\x1b[H').events[0];
+  assert.equal(home.key, 'home');
+  const end = decodeChunk('\x1b[F').events[0];
+  assert.equal(end.key, 'end');
+  const homeTilde = decodeChunk('\x1b[1~').events[0];
+  assert.equal(homeTilde.key, 'home');
+  const ss3Home = decodeChunk('\x1bOH').events[0];
+  assert.equal(ss3Home.key, 'home');
 });
 
 test('decodeChunk parses SGR mouse press', () => {
@@ -68,6 +80,10 @@ test('actionFromKey maps aliases and ignores unbound keys', () => {
   assert.equal(actionFromKey('ctrl-e'), 'scrollDown');
   assert.equal(actionFromKey('ctrl-b'), 'pageUp');
   assert.equal(actionFromKey('ctrl-f'), 'pageDown');
+  assert.equal(actionFromKey('pageUp'), 'pageUp');
+  assert.equal(actionFromKey('pageDown'), 'pageDown');
+  assert.equal(actionFromKey('home'), 'home');
+  assert.equal(actionFromKey('end'), 'end');
   assert.equal(actionFromKey('ctrl-u'), 'halfUp');
   assert.equal(actionFromKey('ctrl-d'), 'halfDown');
   assert.equal(actionFromKey('enter'), 'open');

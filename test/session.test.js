@@ -456,6 +456,14 @@ test('vim ctrl keys scroll the diff by line and page', () => {
   assert.equal(session.scroll, Math.max(1, Math.floor(page * 0.5)));
   session.handleEvent({ type: 'key', key: 'ctrl-u' });
   assert.equal(session.scroll, 0);
+  session.handleEvent({ type: 'key', key: 'pageDown' });
+  assert.equal(session.scroll, page);
+  session.handleEvent({ type: 'key', key: 'end' });
+  assert.equal(session.scroll, session.lastFrame.scrollMax);
+  session.handleEvent({ type: 'key', key: 'home' });
+  assert.equal(session.scroll, 0);
+  session.handleEvent({ type: 'key', key: 'pageUp' });
+  assert.equal(session.scroll, 0);
 });
 
 test('diff up scrolls immediately after the last line', () => {
@@ -514,6 +522,23 @@ test('files list up moves the cursor before scrolling', () => {
   assert.equal(session.fileCursor, last - 1);
   assert.deepEqual(listNames(session.lastFrame), bottomNames);
   assert.equal(markRow(session.lastFrame), bottomMark - 1);
+});
+
+test('home end and page keys jump the files list', () => {
+  const items = [];
+  for (let i = 0; i < 20; i++) items.push(sampleItem(`f${i}.js`));
+  const { session } = openSession(items, { startPane: 'files' });
+  session.draw();
+  const page = session.lastFrame.bodyH;
+  const last = session.fileList().length - 1;
+  session.handleEvent({ type: 'key', key: 'pageDown' });
+  assert.equal(session.fileCursor, page);
+  session.handleEvent({ type: 'key', key: 'pageUp' });
+  assert.equal(session.fileCursor, 0);
+  session.handleEvent({ type: 'key', key: 'end' });
+  assert.equal(session.fileCursor, last);
+  session.handleEvent({ type: 'key', key: 'home' });
+  assert.equal(session.fileCursor, 0);
 });
 
 test('AC10 footer Add hitbox dispatches add', () => {
@@ -1516,6 +1541,27 @@ test('typing a todo starts editing at the end of the line', () => {
   assert.equal(session.editor.cursor, 'first more'.length);
 });
 
+test('home end and page keys jump the todo list', () => {
+  const { session } = openSession([sampleItem('a.js')]);
+  session.dispatch('todo');
+  session.pushInput('one');
+  session.handleEvent({ type: 'key', key: 'enter' });
+  session.pushInput('two');
+  session.handleEvent({ type: 'key', key: 'enter' });
+  session.pushInput('three');
+  session.handleEvent({ type: 'key', key: 'escape' });
+  assert.equal(session.mode, 'review');
+  session.handleEvent({ type: 'key', key: 'home' });
+  assert.equal(session.todoFocus, 0);
+  session.handleEvent({ type: 'key', key: 'end' });
+  assert.equal(session.todoFocus, 3);
+  session.handleEvent({ type: 'key', key: 'home' });
+  session.handleEvent({ type: 'key', key: 'pageDown' });
+  assert.equal(session.todoFocus, 3);
+  session.handleEvent({ type: 'key', key: 'pageUp' });
+  assert.equal(session.todoFocus, 0);
+});
+
 test('todo edit arrows move across todos without leaving edit', () => {
   const { session } = openSession([sampleItem('a.js')]);
   session.dispatch('todo');
@@ -1542,6 +1588,23 @@ test('todo edit arrows move across todos without leaving edit', () => {
   assert.equal(session.mode, 'compose');
   assert.equal(session.todoFocus, 2);
   assert.deepEqual(session.view().todos, ['[ ] first', '[ ] second', '[ ] ']);
+});
+
+test('todo edit page keys jump across todos', () => {
+  const { session } = openSession([sampleItem('a.js')]);
+  session.dispatch('todo');
+  session.pushInput('first');
+  session.handleEvent({ type: 'key', key: 'enter' });
+  session.pushInput('second');
+  session.handleEvent({ type: 'key', key: 'enter' });
+  session.pushInput('third');
+  session.handleEvent({ type: 'key', key: 'pageUp' });
+  assert.equal(session.mode, 'compose');
+  assert.equal(session.todoFocus, 0);
+  assert.equal(session.editor.text, 'first');
+  session.handleEvent({ type: 'key', key: 'pageDown' });
+  assert.equal(session.todoFocus, 3);
+  assert.equal(session.editor.text, '');
 });
 
 test('enter edits the next todo and escape stays on it', () => {
@@ -2197,6 +2260,10 @@ test('files pane b lists branches and enter checks out', () => {
   assert.equal(session.branchCursor, 0);
   session.pushInput('j');
   assert.equal(session.branchCursor, 1);
+  session.handleEvent({ type: 'key', key: 'home' });
+  assert.equal(session.branchCursor, 0);
+  session.handleEvent({ type: 'key', key: 'end' });
+  assert.equal(session.branchCursor, session.branches.length - 1);
   session.handleEvent({ type: 'key', key: 'enter' });
   assert.deepEqual(repo.checkouts, ['feat']);
   assert.equal(session.pane, 'files');

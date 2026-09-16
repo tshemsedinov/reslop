@@ -56,4 +56,6 @@ test('moveLine with width follows visual wrap', () => {
   assert.equal(editor.cursor, 5);
   editor.moveLine(1, 8);
   assert.equal(editor.cursor, 11);
+  editor.moveLine(-20, 8);
+  assert.equal(editor.cursor, 5);
 });
