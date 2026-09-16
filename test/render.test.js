@@ -568,6 +568,15 @@ test('quit prompt paints f and c yellow on grey copy', () => {
   assert.ok(statusRow.includes(BOLD));
   const warn = fg(THEME.warnFg);
   assert.equal(statusRow.split(warn).length - 1, 2);
+  const hits = colored.statusHits;
+  assert.equal(hits.length, 2);
+  assert.equal(hits[0].id, 'f');
+  assert.equal(hits[1].id, 'c');
+  assert.equal(hits[0].y, colored.rows.length - 1);
+  const finish = plain.slice(hits[0].x0, hits[0].x1).trim();
+  const cont = plain.slice(hits[1].x0, hits[1].x1).trim();
+  assert.equal(finish, 'finish as ready');
+  assert.equal(cont, 'continue next time');
 });
 
 test('commit prompt paints c a and f yellow on grey copy', () => {
@@ -611,6 +620,15 @@ test('commit prompt paints c a and f yellow on grey copy', () => {
   assert.ok(statusRow.includes(BOLD));
   const warn = fg(THEME.warnFg);
   assert.equal(statusRow.split(warn).length - 1, 3);
+  const hits = colored.statusHits;
+  assert.equal(hits.length, 3);
+  assert.equal(hits[0].id, 'c');
+  assert.equal(hits[1].id, 'a');
+  assert.equal(hits[2].id, 'f');
+  assert.equal(hits[0].y, colored.rows.length - 1);
+  assert.equal(plain.slice(hits[0].x0, hits[0].x1).trim(), 'commit');
+  assert.equal(plain.slice(hits[1].x0, hits[1].x1).trim(), 'amend');
+  assert.equal(plain.slice(hits[2].x0, hits[2].x1).trim(), 'fixup');
 });
 
 test('update prompt paints y and n on the status line', () => {
@@ -643,6 +661,13 @@ test('update prompt paints y and n on the status line', () => {
   assert.ok(statusRow.includes(bg(THEME.chromeBg)));
   const warn = fg(THEME.warnFg);
   assert.equal(statusRow.split(warn).length - 1, 2);
+  const hits = colored.statusHits;
+  assert.equal(hits.length, 2);
+  assert.equal(hits[0].id, 'y');
+  assert.equal(hits[1].id, 'n');
+  assert.equal(hits[0].y, colored.rows.length - 1);
+  assert.equal(plain.slice(hits[0].x0, hits[0].x1).trim(), 'y');
+  assert.equal(plain.slice(hits[1].x0, hits[1].x1), '/n');
 });
 
 test('drop branch prompt paints y and n on the status line', () => {
@@ -672,6 +697,13 @@ test('drop branch prompt paints y and n on the status line', () => {
   assert.match(plain, /drop feat\? y\/n/);
   const warn = fg(THEME.warnFg);
   assert.equal(statusRow.split(warn).length - 1, 2);
+  const hits = colored.statusHits;
+  assert.equal(hits.length, 2);
+  assert.equal(hits[0].id, 'y');
+  assert.equal(hits[1].id, 'n');
+  assert.equal(hits[0].y, colored.rows.length - 1);
+  assert.equal(plain.slice(hits[0].x0, hits[0].x1).trim(), 'y');
+  assert.equal(plain.slice(hits[1].x0, hits[1].x1), '/n');
 });
 
 test('rejected push prompt paints f for force push', () => {
@@ -700,6 +732,11 @@ test('rejected push prompt paints f for force push', () => {
   assert.ok(statusRow.includes(bg(THEME.chromeBg)));
   const warn = fg(THEME.warnFg);
   assert.equal(statusRow.split(warn).length - 1, 1);
+  const hits = colored.statusHits;
+  assert.equal(hits.length, 1);
+  assert.equal(hits[0].id, 'f');
+  assert.equal(hits[0].y, colored.rows.length - 1);
+  assert.equal(plain.slice(hits[0].x0, hits[0].x1).trim(), 'force push');
 });
 
 test('header and file list keep a right-side gap', () => {

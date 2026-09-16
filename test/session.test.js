@@ -149,6 +149,30 @@ const openSession = (items, extra = {}) => {
   return { session, repo, stdout };
 };
 
+const clickStatusChoice = (session, id) => {
+  session.draw();
+  const hit = session.lastFrame.statusHits.find((entry) => entry.id === id);
+  assert.ok(hit);
+  session.handleEvent({
+    type: 'mouse',
+    button: 0,
+    btn: 0,
+    kind: 'press',
+    x: hit.x0 + 1,
+    y: hit.y,
+    press: true,
+  });
+  session.handleEvent({
+    type: 'mouse',
+    button: 0,
+    btn: 0,
+    kind: 'release',
+    x: hit.x0 + 1,
+    y: hit.y,
+    press: false,
+  });
+};
+
 test('prev at first block opens todos and next reaches last', () => {
   const a = sampleItem('a.js');
   const b = sampleItem('b.js');
@@ -1660,6 +1684,18 @@ test('quit with notes asks f to finish or c to continue', () => {
   assert.match(last.body, /status: ready/);
 });
 
+test('click quit prompt continues next time', () => {
+  const { session } = openSession([sampleItem('a.js')]);
+  session.dispatch('feedback');
+  session.pushInput('nits');
+  session.handleEvent({ type: 'key', key: 'ctrl-s' });
+  session.dispatch('quit');
+  assert.equal(session.mode, 'confirmQuit');
+  clickStatusChoice(session, 'c');
+  assert.equal(session.done, true);
+  assert.equal(session.notes.status, 'editing');
+});
+
 test('quit continue keeps editing so the next run can resume', () => {
   const writes = [];
   const item = sampleItem('a.js');
@@ -1749,6 +1785,22 @@ test('c asks commit amend or fixup then commits the message', () => {
   assert.equal(repo.commits.length, 1);
   assert.equal(repo.commits[0].kind, 'commit');
   assert.equal(repo.commits[0].message, 'land the change');
+});
+
+test('click commit submenu chooses commit amend or fixup', () => {
+  const clickKind = (letter, kind) => {
+    const { session } = openSession([sampleItem('a.js', 'staged')], {
+      startPane: 'files',
+    });
+    session.pushInput('c');
+    clickStatusChoice(session, letter);
+    assert.equal(session.pane, 'files');
+    assert.equal(session.mode, 'compose');
+    assert.equal(session.commitKind, kind);
+  };
+  clickKind('c', 'commit');
+  clickKind('a', 'amend');
+  clickKind('f', 'fixup');
 });
 
 test('c then a amends with the previous message', () => {
@@ -2085,6 +2137,20 @@ test('major update asks y or n on the loaded status line', async () => {
   assert.equal(session.fileCursor, 1);
 });
 
+test('click update prompt y and n', async () => {
+  const declined = openUpdating({ latest: '1.0.0' });
+  await declined.session.openUpdate();
+  clickStatusChoice(declined.session, 'n');
+  assert.equal(declined.session.mode, 'review');
+  assert.deepEqual(declined.installed, []);
+
+  const accepted = openUpdating({ latest: '1.0.0' });
+  await accepted.session.openUpdate();
+  clickStatusChoice(accepted.session, 'y');
+  await accepted.session.updater.installPromise;
+  assert.deepEqual(accepted.installed, ['1.0.0']);
+});
+
 test('major prompt waits until the UI has loaded', async () => {
   const cache = memoryUpdateFs();
   const session = new Session({
@@ -2309,6 +2375,25 @@ test('rejected push asks f to force or escape to cancel', () => {
   assert.deepEqual(repo.pushes, [true]);
   assert.equal(session.mode, 'review');
   assert.equal(session.status, 'force pushed');
+});
+
+test('click force push prompt', () => {
+  const { session, repo } = openSession([sampleItem('a.js')], {
+    startPane: 'files',
+  });
+  session.repo.push = (top, force) => {
+    if (force) {
+      repo.pushes.push(true);
+      return;
+    }
+    const error = new Error('non-fast-forward');
+    error.rejected = true;
+    throw error;
+  };
+  session.pushInput('s');
+  clickStatusChoice(session, 'f');
+  assert.deepEqual(repo.pushes, [true]);
+  assert.equal(session.mode, 'review');
 });
 
 test('pull shows progress until git finishes', async () => {
@@ -2556,6 +2641,21 @@ test('branch list d asks to drop the selected branch', () => {
   assert.deepEqual(repo.drops, ['feat']);
   assert.match(session.status, /dropped feat/);
   assert.equal(session.pane, 'branches');
+});
+
+test('click drop prompt y and n', () => {
+  const { session, repo } = openSession([sampleItem('a.js')], {
+    startPane: 'files',
+  });
+  session.pushInput('b');
+  session.dispatch('next');
+  session.pushInput('d');
+  clickStatusChoice(session, 'n');
+  assert.equal(session.mode, 'review');
+  assert.equal(repo.drops.length, 0);
+  session.pushInput('d');
+  clickStatusChoice(session, 'y');
+  assert.deepEqual(repo.drops, ['feat']);
 });
 
 test('escape from branch list returns to files', () => {
