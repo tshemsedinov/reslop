@@ -5,6 +5,7 @@ const assert = require('node:assert/strict');
 const path = require('node:path');
 
 const { Session } = require('../lib/session.js');
+const { createOpsRunner } = require('../lib/session/ops.js');
 const { CHECK_INTERVAL_MS } = require('../lib/update.js');
 const { hitAction } = require('../lib/keys.js');
 const { sink } = require('./helpers.js');
@@ -1891,11 +1892,12 @@ const openUpdating = (extra = {}) => {
   const cache = memoryUpdateFs();
   const installed = [];
   let fetchResolve;
-  const fetchGate = extra.gateFetch
-    ? new Promise((resolve) => {
-        fetchResolve = resolve;
-      })
-    : null;
+  let fetchGate = null;
+  if (extra.gateFetch) {
+    fetchGate = new Promise((resolve) => {
+      fetchResolve = resolve;
+    });
+  }
   const update = {
     enabled: true,
     current: extra.current ?? '0.1.5',
@@ -2454,4 +2456,81 @@ test('read only blocks branch pull and push', () => {
   assert.equal(repo.pulls.length, 0);
   session.pushInput('s');
   assert.equal(repo.pushes.length, 0);
+});
+
+test('ops runner releases busy if after throws', async () => {
+  const runner = createOpsRunner({
+    top: () => '/tmp',
+    isDone: () => false,
+    getMode: () => 'review',
+    setMode: () => {},
+    getStatus: () => '',
+    setStatus: () => {},
+    paint: () => {},
+    startProgress: () => {},
+    stopProgress: () => {},
+    resetProgressFrame: () => {},
+  });
+  await assert.rejects(
+    () =>
+      runner.runBusy(
+        'pulling',
+        'pulled',
+        async () => {},
+        () => {
+          throw new Error('follow-up failed');
+        },
+      ),
+    /follow-up failed/,
+  );
+  assert.equal(runner.gitBusy, false);
+  assert.equal(runner.busy, '');
+});
+
+test('partial file add reloads after a later hunk fails', () => {
+  const first = sampleItem('a.js');
+  const second = sampleItem('a.js');
+  second.blockId = 1;
+  second.hunk = {
+    ...second.hunk,
+    oldStart: 10,
+    newStart: 10,
+    header: '@@ -10,1 +10,1 @@',
+  };
+  const other = sampleItem('b.js');
+  const staged = new Set();
+  let loads = 0;
+  const snapshot = () => {
+    loads += 1;
+    const a1 = { ...first, origin: staged.has(0) ? 'staged' : 'unstaged' };
+    const a2 = {
+      ...second,
+      origin: staged.has(1) ? 'staged' : 'unstaged',
+      blockId: 1,
+      hunk: second.hunk,
+    };
+    return { top: '/tmp', items: [a1, a2, other], branch: 'main' };
+  };
+  const repo = {
+    load: snapshot,
+    add: (top, item) => {
+      if (item.blockId === 1) throw new Error('patch failed');
+      staged.add(item.blockId ?? 0);
+    },
+    unstage: () => {},
+    revert: () => {},
+    revertFile: () => {},
+  };
+  const { session } = openSession([first, second, other], {
+    startPane: 'files',
+    repo,
+  });
+  const before = loads;
+  session.dispatch('next');
+  session.dispatch('add');
+  assert.equal(session.status, 'patch failed');
+  assert.ok(loads > before);
+  assert.equal(session.items[0].origin, 'staged');
+  assert.equal(session.items[1].origin, 'unstaged');
+  assert.equal(session.items[1].blockId, 1);
 });

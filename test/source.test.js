@@ -57,10 +57,13 @@ test('createLoadedSource is read only and returns a copy of items', () => {
   first.items.push({ origin: 'todo' });
   const second = source.load();
   assert.equal(second.items.length, 1);
-  source.add();
-  source.unstage();
-  source.revert();
-  source.revertFile();
+  assert.equal(typeof source.add, 'undefined');
+  assert.equal(typeof source.unstage, 'undefined');
+  assert.equal(typeof source.revert, 'undefined');
+  assert.equal(typeof source.revertFile, 'undefined');
+  assert.equal(typeof source.commit, 'undefined');
   assert.equal(source.resolveRev(), null);
   assert.equal(second.items[0].origin, 'pr');
+  assert.equal(source.capabilities.changes, false);
+  assert.equal(source.capabilities.branches, false);
 });

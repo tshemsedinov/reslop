@@ -11,10 +11,8 @@ const { allocateReviewPath, rankedTemplates } = review;
 const { prefixTemplates, upsertTemplate, createStore } = review;
 const { hasNotes, setFeedback, setCode, noteCounts, rememberTemplate } = review;
 const { addTodo, removeTodo, setTodoText, serializeReview } = review;
-const { applyImportedNotes } = review;
-const { flushReview, loadTemplates, parseReview } = review;
-const { resolveReviewPath, latestReviewName } = review;
-const { parseFrontmatterStatus } = review;
+const { applyImportedNotes, flushReview, loadTemplates, parseReview } = review;
+const { resolveReviewPath, latestReviewName, parseFrontmatterStatus } = review;
 
 test('allocateReviewPath uses 00 then 01 on the same day', () => {
   const date = new Date(2026, 8, 7);

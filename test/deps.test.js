@@ -6,9 +6,11 @@ const assert = require('node:assert/strict');
 const deps = require('../lib/deps.js');
 const diff = require('../lib/diff.js');
 const git = require('../lib/git.js');
+const gitDeps = require('../lib/git/dependencies.js');
 const render = require('../lib/render.js');
 const { Session } = require('../lib/session.js');
 const { samePath } = require('../lib/sys.js');
+const { proposedNpmPlan } = require('../lib/npm/commands.js');
 const { makeRepo, sink } = require('./helpers.js');
 const { stripAnsi, THEME, bg } = require('../lib/ansi.js');
 const { parseDiff, itemsFromFiles } = diff;
@@ -1256,6 +1258,155 @@ test('session revert dismisses a proposed outdated update', () => {
     session.dispatch('revert');
     assert.equal(repo.read('package.json'), pkgJson({ lodash: '^4.17.20' }));
     assert.equal(depByName(session.items, 'lodash'), null);
+  } finally {
+    repo.cleanup();
+  }
+});
+
+const proposedLodash = (repo) => {
+  const oldDeps = { lodash: '^4.17.20' };
+  const extra = { description: 'keep me' };
+  repo.write('package.json', pkgJson(oldDeps, extra));
+  repo.write('package-lock.json', lockV3(oldDeps, { lodash: '4.17.20' }));
+  repo.git(['add', '.']);
+  repo.git(['commit', '-m', 'init']);
+  repo.write('notes.txt', 'unrelated\n');
+  const outdated = new Map();
+  outdated.set('lodash', {
+    current: '4.17.20',
+    wanted: '4.17.21',
+    latest: '4.17.21',
+    type: 'dependencies',
+  });
+  const loaded = load(repo.dir, [], {
+    audit: true,
+    outdatedMap: outdated,
+    auditMap: null,
+  });
+  const item = depByName(loaded.items, 'lodash');
+  const pkg = repo.read('package.json');
+  const lock = repo.read('package-lock.json');
+  return { loaded, item, pkg, lock };
+};
+
+test('proposedNpmPlan does not write the manifest', () => {
+  const repo = makeRepo();
+  try {
+    const { loaded, item, pkg } = proposedLodash(repo);
+    const plan = proposedNpmPlan(loaded.top, item);
+    assert.ok(plan);
+    assert.deepEqual(plan.npmArgs, ['i']);
+    assert.equal(plan.prepareManifest, true);
+    assert.equal(repo.read('package.json'), pkg);
+  } finally {
+    repo.cleanup();
+  }
+});
+
+test('nonzero npm result restores owned dependency files', () => {
+  const repo = makeRepo();
+  try {
+    const { loaded, item, pkg, lock } = proposedLodash(repo);
+    item.dep.install = () => ({ status: 1, stderr: 'npm ERR! boom' });
+    assert.throws(() => addItem(loaded.top, item), /npm ERR! boom/);
+    assert.equal(repo.read('package.json'), pkg);
+    assert.equal(repo.read('package-lock.json'), lock);
+    assert.equal(repo.read('notes.txt'), 'unrelated\n');
+  } finally {
+    repo.cleanup();
+  }
+});
+
+test('thrown npm runner restores owned dependency files', () => {
+  const repo = makeRepo();
+  try {
+    const { loaded, item, pkg, lock } = proposedLodash(repo);
+    item.dep.install = () => {
+      throw new Error('install boom');
+    };
+    assert.throws(() => addItem(loaded.top, item), /install boom/);
+    assert.equal(repo.read('package.json'), pkg);
+    assert.equal(repo.read('package-lock.json'), lock);
+  } finally {
+    repo.cleanup();
+  }
+});
+
+test('rejected npm runner restores owned dependency files', async () => {
+  const repo = makeRepo();
+  try {
+    const { loaded, item, pkg, lock } = proposedLodash(repo);
+    item.dep.install = () => Promise.reject(new Error('install nope'));
+    await assert.rejects(
+      () => git.createGitRepo().addAsync(loaded.top, item),
+      /install nope/,
+    );
+    assert.equal(repo.read('package.json'), pkg);
+    assert.equal(repo.read('package-lock.json'), lock);
+  } finally {
+    repo.cleanup();
+  }
+});
+
+test('timed out npm result restores owned dependency files', () => {
+  const repo = makeRepo();
+  try {
+    const { loaded, item, pkg, lock } = proposedLodash(repo);
+    const error = new Error('timed out');
+    error.code = 'ETIMEDOUT';
+    item.dep.install = () => ({ status: null, error });
+    assert.throws(() => addItem(loaded.top, item), /timed out/);
+    assert.equal(repo.read('package.json'), pkg);
+    assert.equal(repo.read('package-lock.json'), lock);
+  } finally {
+    repo.cleanup();
+  }
+});
+
+test('git staging failure restores owned dependency files', () => {
+  const repo = makeRepo();
+  try {
+    const { loaded, item, pkg, lock } = proposedLodash(repo);
+    assert.throws(
+      () =>
+        gitDeps.applyProposedUpdate(loaded.top, item, {
+          run: () => {
+            const next = { lodash: '^4.17.21' };
+            repo.write(
+              'package-lock.json',
+              lockV3(next, { lodash: '4.17.21' }),
+            );
+            return { status: 0 };
+          },
+          stage: () => {
+            throw new Error('add failed');
+          },
+        }),
+      /add failed/,
+    );
+    assert.equal(repo.read('package.json'), pkg);
+    assert.equal(repo.read('package-lock.json'), lock);
+  } finally {
+    repo.cleanup();
+  }
+});
+
+test('captureFile distinguishes a missing file from an empty file', () => {
+  const repo = makeRepo();
+  try {
+    const missing = gitDeps.captureFile(repo.dir, 'gone.txt');
+    assert.equal(missing.existed, false);
+    assert.equal(missing.text, '');
+    repo.write('empty.txt', '');
+    const empty = gitDeps.captureFile(repo.dir, 'empty.txt');
+    assert.equal(empty.existed, true);
+    assert.equal(empty.text, '');
+    repo.write('empty.txt', 'changed\n');
+    gitDeps.restoreFile(repo.dir, empty);
+    assert.equal(repo.read('empty.txt'), '');
+    repo.write('gone.txt', 'created\n');
+    gitDeps.restoreFile(repo.dir, missing);
+    assert.equal(repo.exists('gone.txt'), false);
   } finally {
     repo.cleanup();
   }

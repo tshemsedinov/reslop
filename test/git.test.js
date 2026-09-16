@@ -13,6 +13,7 @@ const { commitChanges, hasStaged, lastMessage, createGitRepo } = git;
 const { currentBranch, listBranches, checkoutBranch } = git;
 const { createBranch, rebaseBranch, dropBranch, pullChanges } = git;
 const { pushChanges } = git;
+const { runProc } = require('../lib/git/proc.js');
 const { Session } = require('../lib/session.js');
 const { makeRepo, sink } = require('./helpers.js');
 
@@ -756,5 +757,73 @@ test('pushChanges force-with-lease after a rewritten commit', () => {
   } finally {
     repo.cleanup();
     bare.cleanup();
+  }
+});
+
+const mockSignal = () => {
+  const listeners = new Set();
+  return {
+    aborted: false,
+    listeners,
+    addEventListener(type, fn) {
+      if (type === 'abort') listeners.add(fn);
+    },
+    removeEventListener(type, fn) {
+      listeners.delete(fn);
+    },
+    abort() {
+      this.aborted = true;
+      for (const fn of [...listeners]) fn();
+    },
+  };
+};
+
+test('runProc finish removes abort listener on success', async () => {
+  const signal = mockSignal();
+  const result = await runProc(process.execPath, ['-e', 'process.exit(0)'], {
+    signal,
+  });
+  assert.equal(result.status, 0);
+  assert.equal(signal.listeners.size, 0);
+});
+
+test('runProc finish removes abort listener on abort', async () => {
+  const signal = mockSignal();
+  const pending = runProc(
+    process.execPath,
+    ['-e', 'setInterval(() => {}, 1000)'],
+    { signal, timeout: 30000 },
+  );
+  signal.abort();
+  const result = await pending;
+  assert.equal(result.error.code, 'ABORT');
+  assert.equal(signal.listeners.size, 0);
+});
+
+test('runProc finish removes abort listener on timeout', async () => {
+  const signal = mockSignal();
+  const result = await runProc(
+    process.execPath,
+    ['-e', 'setInterval(() => {}, 1000)'],
+    { signal, timeout: 30 },
+  );
+  assert.equal(result.error.code, 'ETIMEDOUT');
+  assert.equal(signal.listeners.size, 0);
+});
+
+test('loadAsync matches load for a dirty worktree', async () => {
+  const repo = makeRepo();
+  try {
+    repo.write('f.txt', 'a\n');
+    repo.git(['add', 'f.txt']);
+    repo.git(['commit', '-m', 'init']);
+    repo.write('f.txt', 'b\n');
+    const sync = load(repo.dir);
+    const asyncLoaded = await git.loadAsync(repo.dir);
+    assert.equal(asyncLoaded.items.length, sync.items.length);
+    assert.equal(asyncLoaded.items[0].origin, 'unstaged');
+    assert.equal(asyncLoaded.branch, sync.branch);
+  } finally {
+    repo.cleanup();
   }
 });

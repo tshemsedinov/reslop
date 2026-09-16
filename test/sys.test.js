@@ -59,7 +59,11 @@ test('watchResize listens to stdout resize', () => {
   );
   stdout.emit('resize');
   assert.equal(n, 1);
+  assert.equal(stdout.listenerCount('resize'), 1);
   ac.abort();
+  assert.equal(stdout.listenerCount('resize'), 0);
+  stdout.emit('resize');
+  assert.equal(n, 1);
 });
 
 test('samePath matches slash and symlink variants', () => {

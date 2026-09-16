@@ -637,6 +637,54 @@ test('loadMergeRequest paginates with x-next-page', async () => {
   assert.match(loaded.imported.feedback[1].text, /second/);
 });
 
+test('discussionToNotes falls back to a todo when unmatched', () => {
+  const items = itemsFromFiles(parseDiff(MR_DIFF), 'pr');
+  const notes = discussionToNotes(
+    [
+      {
+        notes: [
+          inlineDiffNote({
+            body: 'orphan',
+            newLine: 99,
+          }),
+        ],
+      },
+    ],
+    items,
+  );
+  assert.equal(notes.feedback.length, 0);
+  assert.equal(notes.todos.length, 1);
+  assert.equal(notes.todos[0].file, 'lib/parser.js');
+  assert.match(notes.todos[0].text, /orphan/);
+});
+
+test('loadMergeRequest abort during discussion does not fallback', async () => {
+  const ac = new AbortController();
+  const base = mockFetch(MR_JSON, MR_DIFF);
+  const fetchImpl = async (url, init) => {
+    if (`${url}`.includes('/discussions')) {
+      const error = new Error('fetch failed');
+      error.code = 'ECONNRESET';
+      throw error;
+    }
+    return base(url, init);
+  };
+  const pending = loadMergeRequest(MR, {
+    fetch: fetchImpl,
+    token: '',
+    retry: { attempts: 3, delayMs: 30_000 },
+    signal: ac.signal,
+  });
+  await new Promise((resolve) => {
+    setTimeout(resolve, 20);
+  });
+  ac.abort();
+  await assert.rejects(pending, (error) => {
+    assert.equal(ac.signal.aborted, true);
+    return error.name === 'AbortError' || error === ac.signal.reason;
+  });
+});
+
 test('loadMergeRequest still opens when discussion import fails', async () => {
   const base = mockFetch(MR_JSON, MR_DIFF);
   const fetchImpl = async (url, init) => {

@@ -137,3 +137,54 @@ test('toString identifier does not crash tokenize', () => {
   ]);
   assert.equal(tokensText(pieces), 'foo.toString()');
 });
+
+test('js family reconstructs incomplete strings templates regexes', () => {
+  const interp = ['$', '{'].join('');
+  const cases = [
+    ['js', 'const s = "oops'],
+    ['js', `const t = \`a${interp}x}b`],
+    ['js', `\`unclosed ${interp}a`],
+    ['js', '/unclosed'],
+    ['js', '@dec class Foo {}'],
+    ['js', 'const re = /ab+c/i;'],
+    ['js', 'a / b'],
+    ['js', '// c\nconst x = 1;'],
+    ['js', '/* c */ const x = 1;'],
+    ['ts', '@Injectable() class Svc {}'],
+    ['jsx', '<A><B>x</B></A>'],
+    ['jsx', '<>frag</>'],
+    ['tsx', 'const el = <A><B x={1}/></A>;'],
+  ];
+  for (const [lang, src] of cases) {
+    const tokens = tokenize(lang, src);
+    assert.equal(tokensText(tokens), src, `${lang}: ${src}`);
+  }
+});
+
+test('js comments beat regex and regex beats division', () => {
+  const line = tokenize('js', '// c\nconst x = 1;');
+  assert.equal(stylesOf(line, '// c')[0], 'comment');
+  const block = tokenize('js', '/* c */ const x = 1;');
+  assert.equal(stylesOf(block, '/* c */')[0], 'comment');
+  const re = tokenize('js', 'const re = /ab+c/i;');
+  assert.equal(stylesOf(re, '/ab+c/i')[0], 'regex');
+  const div = tokenize('js', 'a / b');
+  assert.equal(stylesOf(div, '/')[0], 'operator');
+  const ret = tokenize('js', 'return /x/;');
+  assert.equal(stylesOf(ret, '/x/')[0], 'regex');
+});
+
+test('js decorators templates and nested jsx keep styles', () => {
+  const interp = ['$', '{'].join('');
+  const dec = tokenize('js', '@dec class Foo {}');
+  assert.equal(stylesOf(dec, '@dec')[0], 'decorator');
+  assert.equal(stylesOf(dec, 'Foo')[0], 'className');
+  const tpl = tokenize('js', `const t = \`a${interp}x}b\`;`);
+  assert.ok(stylesOf(tpl, '`').includes('template'));
+  assert.ok(stylesOf(tpl, interp).includes('interpolation'));
+  assert.equal(stylesOf(tpl, 'x')[0], 'variable');
+  const nested = tokenize('jsx', '<A><B>x</B></A>');
+  assert.deepEqual(stylesOf(nested, 'A'), ['className', 'className']);
+  assert.deepEqual(stylesOf(nested, 'B'), ['className', 'className']);
+  assert.equal(stylesOf(nested, 'x')[0], 'plain');
+});
