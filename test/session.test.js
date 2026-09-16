@@ -42,6 +42,16 @@ const sampleItem = (name, origin = 'unstaged') => ({
   patchRevert: 'rev',
 });
 
+const tallItem = (name, count) => {
+  const item = sampleItem(name);
+  const lines = [];
+  for (let i = 0; i < count; i++) {
+    lines.push({ type: 'add', text: `line${i}`, noNl: false, blockId: 0 });
+  }
+  const hunk = { ...item.hunk, lines, oldCount: 0, newCount: count };
+  return { ...item, hunk };
+};
+
 const mockRepo = (initial) => {
   let items = [...initial];
   const added = [];
@@ -430,7 +440,7 @@ test('j and k move the files cursor', () => {
 });
 
 test('vim ctrl keys scroll the diff by line and page', () => {
-  const { session } = openSession([sampleItem('a.js')]);
+  const { session } = openSession([tallItem('a.js', 80)]);
   session.draw();
   const page = session.lastFrame.bodyH;
   assert.ok(page > 1);
@@ -446,6 +456,17 @@ test('vim ctrl keys scroll the diff by line and page', () => {
   assert.equal(session.scroll, Math.max(1, Math.floor(page * 0.5)));
   session.handleEvent({ type: 'key', key: 'ctrl-u' });
   assert.equal(session.scroll, 0);
+});
+
+test('diff up scrolls immediately after the last line', () => {
+  const { session } = openSession([tallItem('a.js', 80)]);
+  session.draw();
+  const max = session.lastFrame.scrollMax;
+  assert.ok(max > 1);
+  for (let i = 0; i < max + 10; i++) session.dispatch('scrollDown');
+  assert.equal(session.scroll, max);
+  session.dispatch('scrollUp');
+  assert.equal(session.scroll, max - 1);
 });
 
 test('vim ctrl-f pages down the files list', () => {
