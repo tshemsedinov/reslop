@@ -16,12 +16,15 @@ for the agent.
 Review → Plan → Repair → Verify
 ```
 
+- Leave feedback, issues/todos, and in-place code proposals as a repair plan.
 - Review uncommitted git diffs, a given commit, a GitHub PR, or a GitLab MR.
 - Stage, unstage, or revert each contiguous block of diff lines.
-- Leave feedback, todos, and in-place code proposals that become a repair plan.
 - Import GitHub PR and GitLab MR review comments into the local plan for AI.
+- Commit, amend, or fixup staged changes from the file list.
+- Branches: checkout, create, rebase, drop, pull and push.
 - Review each npm dependency once across `package.json` and the lockfile.
 - Propose unused removals, npm audit fixes, and outdated updates as diffs.
+- Code highlighting, diff compare: unified, mixed, and side-by-side layouts.
 
 ## Install
 
@@ -49,23 +52,34 @@ Reviews go in `.review/YYYY-MM-DD-NN.md` with frontmatter `status`:
 
 ## Hotkeys
 
-| Key                 | Action                                           |
-| ------------------- | ------------------------------------------------ |
-| `a` / `u` / `d`     | Stage / unstage / drop this diff                 |
-| `c`                 | Commit: then `c` commit / `a` amend / `f` fixup  |
-| `b`                 | List branches; `n` new; `r` rebase onto selected |
-| `p` / `s`           | git pull/push                                    |
-| `f` / `t` / `e`     | Add feedback / todo / edit diff text             |
-| `r`                 | Reload diffs from disk                           |
-| `m`                 | Mode: unified / mixed / side-by-side             |
-| `⏎`                 | Open the selected file                           |
-| `→` / `j`           | Next remaining diff / file                       |
-| `←` / `k`           | Previous remaining diff / file                   |
-| `Ctrl-e` / `Ctrl-y` | Scroll one line down / up                        |
-| `Ctrl-f` / `Ctrl-b` | Scroll page down / up                            |
-| `Ctrl-d` / `Ctrl-u` | Scroll half-page down / up                       |
-| `⌫` / `Del`         | Remove the selected todo                         |
-| `Esc` / `q`         | Quit                                             |
+| Key                 | Action                                        |
+| ------------------- | --------------------------------------------- |
+| `a` / `u` / `d`     | Stage / unstage / drop this diff              |
+| `c`                 | File list: `c` commit / `a` amend / `f` fixup |
+| `b`                 | List branches; `n` new; `r` rebase; `d` drop  |
+| `p` / `s`           | git pull/push                                 |
+| `f` / `t` / `e`     | Feedback / repo todo / edit added lines       |
+| `r`                 | Reload diffs from disk                        |
+| `m`                 | Mode: unified / mixed / side-by-side          |
+| `⏎`                 | Open the selected file                        |
+| `→` / `j`           | Next remaining diff / file                    |
+| `←` / `k`           | Previous remaining diff / file                |
+| `Ctrl-e` / `Ctrl-y` | Scroll one line down / up                     |
+| `Ctrl-f` / `Ctrl-b` | Scroll page down / up                         |
+| `Ctrl-d` / `Ctrl-u` | Scroll half-page down / up                    |
+| `⌫` / `Del`         | Remove the selected todo                      |
+| `Esc` / `q`         | Quit                                          |
+
+## Future
+
+- Import issues from GitHub and GitLab.
+- Security and code-quality audit; propose a repair plan.
+- Send anonymized code blocks for expert review.
+- Send questions and the repair plan to experts for approval.
+- Ask experts.
+- Verify the codebase.
+- Apply refactoring skills.
+- Call agents, harnesses, and IDEs to execute prepared plans.
 
 ## License
 

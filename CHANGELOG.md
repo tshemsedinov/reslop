@@ -2,9 +2,12 @@
 
 ## [Unreleased][unreleased]
 
+## [0.1.7][] - 2026-09-16
+
 - Make TODOs repo-wide, not per-file todos
 - Improve TODO screen and files screen TUI/TUX including hotkeys
-- Implemant branch rebase, drop
+- Implement branch rebase and drop
+- Improve branch screen TUI/TUX
 - Fix TODOs autosave bug with todo duplication
 
 ## [0.1.6][] - 2026-09-15
@@ -63,7 +66,9 @@
 - Feedback and todos that produce a repair plan for an agent
 - Intra-line highlighting in unified, mixed, and side-by-side layouts
 
-[unreleased]: https://github.com/tshemsedinov/reslop/compare/v0.1.5...HEAD
+[unreleased]: https://github.com/tshemsedinov/reslop/compare/v0.1.7...HEAD
+[0.1.7]: https://github.com/tshemsedinov/reslop/compare/v0.1.6...v0.1.7
+[0.1.6]: https://github.com/tshemsedinov/reslop/compare/v0.1.5...v0.1.6
 [0.1.5]: https://github.com/tshemsedinov/reslop/compare/v0.1.4...v0.1.5
 [0.1.4]: https://github.com/tshemsedinov/reslop/compare/v0.1.3...v0.1.4
 [0.1.3]: https://github.com/tshemsedinov/reslop/compare/v0.1.2...v0.1.3
