@@ -635,7 +635,7 @@ test('update prompt paints y and n on the status line', () => {
   const buttons = colored.rows[colored.rows.length - 1];
   const plain = stripAnsi(statusRow);
   assert.equal(plain.startsWith(render.updatePrompt('0.1.5', '1.0.0')), true);
-  assert.match(plain, /update reslop 0\.1\.5 → 1\.0\.0\? y {2}n/);
+  assert.match(plain, /update reslop 0\.1\.5 → 1\.0\.0\? y\/n/);
   assert.match(stripAnsi(colored.rows[2]), /a\.js/);
   assert.match(stripAnsi(buttons), /add/i);
   assert.ok(statusRow.includes(fg(THEME.warnFg)));
@@ -669,7 +669,7 @@ test('drop branch prompt paints y and n on the status line', () => {
   const statusRow = colored.rows[colored.rows.length - 2];
   const plain = stripAnsi(statusRow);
   assert.equal(plain.startsWith(render.dropPrompt('feat')), true);
-  assert.match(plain, /drop feat\? y {2}n/);
+  assert.match(plain, /drop feat\? y\/n/);
   const warn = fg(THEME.warnFg);
   assert.equal(statusRow.split(warn).length - 1, 2);
 });
@@ -1115,14 +1115,17 @@ test('branch pane lists names and marks the default branch', () => {
   const mainPainted = colored.rows.find((row) => row.includes('aaa1111'));
   const featPainted = colored.rows.find((row) => row.includes('bbb2222'));
   const whiteBg = bg(THEME.buttonHotFg);
-  const greenBg = bg(THEME.checkDoneBg);
-  const mainWrap = `${BOLD}${fg(THEME.mutedFg)}${greenBg}`;
-  const mainName = `${fg(THEME.checkDoneFg)}${greenBg}`;
+  const rowBg = bg(THEME.ctxBg);
+  const mainWrap = `${BOLD}${fg(THEME.mutedFg)}${rowBg}`;
+  const mainName = `${BOLD}${fg(THEME.warnFg)}${rowBg}`;
   const currentName = `${fg(THEME.headerFg)}${whiteBg}`;
   const currentWrap = `${BOLD}${fg(THEME.mutedFg)}${whiteBg}`;
   assert.ok(mainPainted.includes(`${mainWrap}[`));
   assert.ok(mainPainted.includes(`${mainName}main`));
   assert.ok(mainPainted.includes(`${mainWrap}]`));
+  assert.ok(!mainPainted.includes(bg(THEME.warnFg)));
+  const shaTone = `${fg(THEME.shaFg)}${bg(THEME.ctxBg)}`;
+  assert.ok(mainPainted.includes(`${shaTone}aaa1111`));
   assert.ok(featPainted.includes(`${currentWrap}[`));
   assert.ok(featPainted.includes(`${currentName}feat`));
   assert.ok(featPainted.includes(`${currentWrap}]`));

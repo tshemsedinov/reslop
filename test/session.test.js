@@ -1957,7 +1957,7 @@ test('major update asks y or n on the loaded status line', async () => {
   assert.equal(session.updateTo, '1.0.0');
   assert.deepEqual(installed, []);
   const text = session.lastFrame.text;
-  assert.match(text, /update reslop 0\.1\.5 → 1\.0\.0\? y {2}n/);
+  assert.match(text, /update reslop 0\.1\.5 → 1\.0\.0\? y\/n/);
   session.handleEvent({ type: 'key', key: 'n' });
   assert.equal(session.mode, 'review');
   assert.deepEqual(installed, []);
