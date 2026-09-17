@@ -1,6 +1,7 @@
 'use strict';
 
 const path = require('node:path');
+const fs = require('node:fs');
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 
@@ -104,6 +105,36 @@ const lint = (code, rules, filename = 'file.js') => {
 };
 
 const ruleIds = (messages) => messages.map((message) => message.ruleId);
+
+const checkDirectory = (directory, messages) => {
+  for (const entry of fs.readdirSync(directory, { withFileTypes: true })) {
+    const filename = path.join(directory, entry.name);
+    if (entry.isDirectory()) {
+      checkDirectory(filename, messages);
+      continue;
+    }
+    if (!filename.endsWith('.js')) continue;
+    const rules = {
+      'max-lines': ['error', 1000],
+      'max-lines-per-function': FUNCTION_RULE,
+      'local/session-class-lines': ['error', 500],
+    };
+    const sessionDir = path.join(path.dirname(SESSION_FILE), 'session');
+    if (filename.startsWith(`${sessionDir}${path.sep}`)) {
+      rules['local/no-session-require'] = 'error';
+    }
+    const code = fs.readFileSync(filename, 'utf8');
+    for (const result of lint(code, rules, filename)) {
+      messages.push(`${filename}:${result.line}: ${result.message}`);
+    }
+  }
+};
+
+test('lib files satisfy the structural limits and dependency direction', () => {
+  const messages = [];
+  checkDirectory(path.dirname(SESSION_FILE), messages);
+  assert.deepEqual(messages, []);
+});
 
 const exprArrow = (lineCount) => {
   const parts = ['const f = () =>'];

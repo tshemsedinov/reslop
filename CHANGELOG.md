@@ -2,6 +2,8 @@
 
 ## [Unreleased][unreleased]
 
+- Simplify session controllers, input dispatch, and loading orchestration
+- Enforce structural limits and session dependency direction on library files
 - Show staged/unstaged +/- and staged/remaining totals in status line
 - Jump by word with Ctrl+Left/Right in all text editors
 - Support PgUp, PgDn, Home, and End in lists and multiline editors
