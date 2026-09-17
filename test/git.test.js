@@ -701,6 +701,35 @@ test('createBranch rejects an empty name', () => {
   }
 });
 
+test('pushChanges sets origin upstream for the current branch', () => {
+  const repo = makeRepo();
+  const bare = makeBare();
+  try {
+    repo.write('f.txt', 'a\n');
+    repo.git(['add', 'f.txt']);
+    repo.git(['commit', '-m', 'init']);
+    repo.git(['checkout', '-b', 'autoreload']);
+    repo.git(['remote', 'add', 'origin', bare.dir]);
+    pushChanges(repo.dir);
+    const tracking = repo.git([
+      'rev-parse',
+      '--abbrev-ref',
+      '--symbolic-full-name',
+      '@{upstream}',
+    ]);
+    assert.equal(tracking.trim(), 'origin/autoreload');
+    const remoteLog = spawnSync(
+      'git',
+      ['log', 'autoreload', '-1', '--format=%s'],
+      { cwd: bare.dir, encoding: 'utf8' },
+    );
+    assert.equal(remoteLog.stdout.trim(), 'init');
+  } finally {
+    repo.cleanup();
+    bare.cleanup();
+  }
+});
+
 test('pushChanges sets upstream then push and pull update', () => {
   const repo = makeRepo();
   const bare = makeBare();

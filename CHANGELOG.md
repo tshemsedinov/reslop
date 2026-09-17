@@ -13,6 +13,7 @@
 - Keep reslop open when a local repo has no unstaged changes
 - Fix unvisible cursor movement in scrolling diffs
 - Auto-reload worktree on disk changes, keeping the current UI state
+- Set git push upstream to `origin <branch>` when missing
 
 ## [0.1.7][] - 2026-09-16
 
