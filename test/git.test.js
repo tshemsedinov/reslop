@@ -210,6 +210,33 @@ test('files pane revert restores the whole file', () => {
     assert.equal(repo.read('f.txt'), 'keep\nAAA\nkeep\nBBB\nkeep\n');
     const vsHead = repo.git(['diff', 'HEAD', '--', 'f.txt']);
     assert.equal(vsHead, '');
+    assert.equal(session.done, false);
+    assert.notEqual(session.status, 'nothing to review');
+  } finally {
+    repo.cleanup();
+  }
+});
+
+test('committing the last staged change does not end the review', () => {
+  const repo = makeRepo();
+  try {
+    repo.write('f.txt', 'one\n');
+    repo.git(['add', 'f.txt']);
+    repo.git(['commit', '-m', 'init']);
+    repo.write('f.txt', 'two\n');
+    repo.git(['add', 'f.txt']);
+    const session = sessionFor(repo.dir);
+    assert.equal(session.items[0].origin, 'staged');
+    session.showFiles();
+    session.pushInput('c');
+    session.pushInput('c');
+    session.pushInput('land the change');
+    session.handleEvent({ type: 'key', key: 'enter' });
+    assert.equal(session.done, false);
+    assert.equal(session.emptyReview, false);
+    assert.equal(session.status, 'committed');
+    assert.equal(session.items.length, 0);
+    assert.equal(session.pane, 'files');
   } finally {
     repo.cleanup();
   }

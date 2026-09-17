@@ -334,10 +334,10 @@ test('close while loading ignores the late snapshot', async () => {
   assert.equal(session.items.length, 0);
 });
 
-const emptySession = (asyncLoad = false) => {
+const emptySession = (asyncLoad = false, extra = {}) => {
   const load = () => ({ top: '/tmp', items: [] });
-  const repo = { load };
-  if (asyncLoad) repo.loadAsync = async () => load();
+  const repo = extra.repo ?? { load };
+  if (asyncLoad && !repo.loadAsync) repo.loadAsync = async () => load();
   return new Session({
     cwd: '/tmp',
     stdout: sink(),
@@ -347,28 +347,40 @@ const emptySession = (asyncLoad = false) => {
     clearInterval: () => {},
     ...reviewFs,
     repo,
+    ...extra,
   });
 };
 
-test('opening an empty review finishes without an error', async () => {
-  const session = emptySession(true);
+test('opening an empty worktree stays in the files pane', async () => {
+  const session = emptySession(true, { startPane: 'diff' });
   session.uiOpen = true;
   await session.openLoad();
-  assert.equal(session.done, true);
-  assert.equal(session.emptyReview, true);
-  assert.equal(session.exitCode, 0);
-  assert.equal(session.status, 'nothing to review');
+  assert.equal(session.done, false);
+  assert.equal(session.emptyReview, false);
+  assert.equal(session.pane, 'files');
+  assert.equal(session.status, '');
   assert.equal(session.busy, '');
 });
 
-test('an empty async reload preserves its final status', async () => {
+test('an empty worktree reload stays open with its done status', async () => {
   const session = emptySession(true);
   session.uiOpen = true;
   await new Promise((resolve) => {
     session.refreshFromRepo({ doneStatus: 'reloaded', afterLoad: resolve });
   });
-  assert.equal(session.done, true);
+  assert.equal(session.done, false);
   assert.equal(session.emptyReview, false);
+  assert.equal(session.status, 'reloaded');
+  assert.equal(session.busy, '');
+});
+
+test('opening an empty commit review finishes without an error', async () => {
+  const session = emptySession(true, { rev: 'abc1234' });
+  session.uiOpen = true;
+  await session.openLoad();
+  assert.equal(session.done, true);
+  assert.equal(session.emptyReview, true);
+  assert.equal(session.exitCode, 0);
   assert.equal(session.status, 'nothing to review');
   assert.equal(session.busy, '');
 });
