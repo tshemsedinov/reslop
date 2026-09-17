@@ -2,6 +2,14 @@
 
 ## [Unreleased][unreleased]
 
+- Show total +/- and staged/remaining totals in status line
+- Jump by word with Ctrl+Left/Right in all text editors
+- Support PgUp, PgDn, Home, and End in lists and multiline editors
+- Support mouse click in submenu and confirmation choices on the hint line
+- Fix TODO wrapped text; keep up/down navigation inside a multiline todos
+- Fix identifier diffs as whole words compare, not just letters
+- Fix unvisible cursor movement in scrolling diffs
+
 ## [0.1.7][] - 2026-09-16
 
 - Make TODOs repo-wide, not per-file todos
