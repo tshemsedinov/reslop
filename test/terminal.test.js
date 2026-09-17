@@ -9,6 +9,7 @@ const sys = require('../lib/sys.js');
 const { watchResize } = sys;
 const terminal = require('../lib/session/terminal.js');
 const { createTerminal, ENTER_TERM, LEAVE_TERM } = terminal;
+const { createProgress } = require('../lib/session/progress.js');
 
 const fakeStdin = () => {
   const stdin = new EventEmitter();
@@ -199,4 +200,28 @@ test('paint after dispose writes nothing', () => {
   term.paint({ text: 'x', rows: ['x'] }, { width: 8, height: 4 }, null);
   assert.equal(stdout.dump(), closed);
   assert.ok(closed.length > before.length);
+});
+
+test('stopping one progress id leaves the timer running', () => {
+  let started = 0;
+  let stopped = 0;
+  const term = {
+    startTimer: () => {
+      started += 1;
+    },
+    stopTimer: () => {
+      stopped += 1;
+    },
+  };
+  const progress = createProgress(term, () => {}, 80);
+  progress.start('busy');
+  progress.start('install');
+  assert.equal(started, 1);
+  assert.equal(progress.size(), 2);
+  progress.stop('busy');
+  assert.equal(stopped, 0);
+  assert.equal(progress.size(), 1);
+  progress.stop('install');
+  assert.equal(stopped, 1);
+  assert.equal(progress.size(), 0);
 });

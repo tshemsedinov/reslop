@@ -110,6 +110,199 @@ test('a slow load cannot replace a newer load', async () => {
   assert.notEqual(session.status, 'old');
 });
 
+test('reset invalidates generations without reusing them', () => {
+  const loader = createLoadCoordinator();
+  const old = loader.bump();
+  const signal = loader.signal;
+
+  loader.reset();
+  const current = loader.bump();
+
+  assert.equal(signal.aborted, true);
+  assert.equal(loader.accept(old), false);
+  assert.equal(loader.accept(current), true);
+});
+
+test('resetState allows a second openLoad after a completed load', async () => {
+  let calls = 0;
+  const item = sampleItem('a.js');
+  const session = new Session({
+    cwd: '/tmp',
+    stdout: sink(),
+    color: false,
+    getSize: () => ({ width: 80, height: 16 }),
+    startPane: 'files',
+    setInterval: () => 1,
+    clearInterval: () => {},
+    ...reviewFs,
+    repo: {
+      load: () => ({ top: '/tmp', items: [item] }),
+      loadAsync: async () => {
+        calls += 1;
+        return { top: '/tmp', items: [item] };
+      },
+    },
+  });
+  session.uiOpen = true;
+  await session.openLoad();
+  assert.equal(calls, 1);
+  assert.equal(session.items.length, 1);
+  assert.equal(Object.hasOwn(session.loader, 'loadPromise'), false);
+  session.resetState();
+  session.uiOpen = true;
+  await session.openLoad();
+  assert.equal(calls, 2);
+  assert.equal(session.items.length, 1);
+  assert.equal(session.items[0].file.newPath, 'a.js');
+});
+
+test('openLoad shares one in-flight promise without reset', async () => {
+  let finish;
+  const gate = new Promise((resolve) => {
+    finish = resolve;
+  });
+  let calls = 0;
+  const item = sampleItem('a.js');
+  const session = new Session({
+    cwd: '/tmp',
+    stdout: sink(),
+    color: false,
+    getSize: () => ({ width: 80, height: 16 }),
+    setInterval: () => 1,
+    clearInterval: () => {},
+    ...reviewFs,
+    repo: {
+      load: () => ({ top: '/tmp', items: [item] }),
+      loadAsync: async () => {
+        calls += 1;
+        await gate;
+        return { top: '/tmp', items: [item] };
+      },
+    },
+  });
+  session.uiOpen = true;
+  const first = session.openLoad();
+  const second = session.openLoad();
+  assert.equal(first, second);
+  finish();
+  await first;
+  await second;
+  assert.equal(calls, 1);
+});
+
+test('reset rejects a late snapshot that ignores abort', async () => {
+  let finishA;
+  const gateA = new Promise((resolve) => {
+    finishA = resolve;
+  });
+  let calls = 0;
+  const oldItem = sampleItem('old.js');
+  const newItem = sampleItem('new.js');
+  const session = new Session({
+    cwd: '/tmp',
+    stdout: sink(),
+    color: false,
+    getSize: () => ({ width: 80, height: 16 }),
+    setInterval: () => 1,
+    clearInterval: () => {},
+    ...reviewFs,
+    repo: {
+      load: () => ({ top: '/tmp', items: [newItem] }),
+      loadAsync: async () => {
+        calls += 1;
+        if (calls === 1) {
+          await gateA;
+          return { top: '/tmp', items: [oldItem] };
+        }
+        return { top: '/tmp', items: [newItem] };
+      },
+    },
+  });
+  session.uiOpen = true;
+  const first = session.openLoad();
+  session.resetState();
+  session.uiOpen = true;
+  await session.openLoad();
+  session.status = 'kept';
+  finishA();
+  await first;
+  assert.equal(session.items[0].file.newPath, 'new.js');
+  assert.equal(session.status, 'kept');
+});
+
+test('reset ignores extras from a previous load', async () => {
+  const gitItem = sampleItem('a.js');
+  const extraItem = sampleItem('package.json');
+  extraItem.dep = { change: { name: 'lodash', section: 'dependencies' } };
+  const newItem = sampleItem('new.js');
+  let extrasResolve;
+  const extras = new Promise((resolve) => {
+    extrasResolve = resolve;
+  });
+  let extrasStarted = false;
+  let calls = 0;
+  const session = new Session({
+    cwd: '/tmp',
+    stdout: sink(),
+    color: false,
+    audit: true,
+    getSize: () => ({ width: 80, height: 16 }),
+    setInterval: () => 1,
+    clearInterval: () => {},
+    ...reviewFs,
+    repo: {
+      load: () => ({ top: '/tmp', items: [gitItem] }),
+      loadAsync: async () => {
+        calls += 1;
+        if (calls === 1) {
+          return {
+            top: '/tmp',
+            items: [gitItem],
+            parsed: [gitItem],
+            pending: true,
+          };
+        }
+        return { top: '/tmp', items: [newItem], pending: false };
+      },
+      loadExtras: async () => {
+        extrasStarted = true;
+        await extras;
+        return {
+          top: '/tmp',
+          items: [gitItem, extraItem],
+          pending: false,
+        };
+      },
+    },
+  });
+  session.uiOpen = true;
+  const pending = session.openLoad();
+  await new Promise((resolve, reject) => {
+    const tick = (left) => {
+      if (extrasStarted) {
+        resolve();
+        return;
+      }
+      if (left <= 0) {
+        reject(new Error('extras did not start'));
+        return;
+      }
+      setImmediate(() => tick(left - 1));
+    };
+    tick(50);
+  });
+  session.resetState();
+  session.uiOpen = true;
+  await session.openLoad();
+  session.progress.start('loading');
+  extrasResolve();
+  await pending;
+  assert.equal(session.items.length, 1);
+  assert.equal(session.items[0].file.newPath, 'new.js');
+  assert.equal(session.progress.size(), 1);
+  assert.equal(session.busy, '');
+});
+
 test('close while loading ignores the late snapshot', async () => {
   let finish;
   const gate = new Promise((resolve) => {

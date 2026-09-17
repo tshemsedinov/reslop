@@ -7,7 +7,9 @@ const { LEAVE_TERM } = require('../lib/session.js');
 const fail = (reason) => {
   try {
     process.stdout.write(LEAVE_TERM);
-  } catch {}
+  } catch {
+    // ignore
+  }
   process.stderr.write(failLine(reason));
   process.exit(1);
 };

@@ -2,7 +2,7 @@
 
 ## [Unreleased][unreleased]
 
-- Show total +/- and staged/remaining totals in status line
+- Show staged/unstaged +/- and staged/remaining totals in status line
 - Jump by word with Ctrl+Left/Right in all text editors
 - Support PgUp, PgDn, Home, and End in lists and multiline editors
 - Support mouse click in submenu and confirmation choices on the hint line

@@ -522,10 +522,10 @@ test('status line includes repo +/- totals', () => {
   });
   const statusRow = stripAnsi(frame.rows[frame.rows.length - 2]);
   assert.match(statusRow, /\[main\] {2}feedback 0 {2}todo 0 {2}code 0/);
-  assert.match(statusRow, /\+35 {2}-6 {2}1\/17\s*$/);
+  assert.match(statusRow, /\+3\/32 {2}-1\/5 {2}1\/17\s*$/);
   assert.ok(!statusRow.includes('untracked'));
   const notesAt = statusRow.indexOf('feedback 0');
-  const plusAt = statusRow.indexOf('+35');
+  const plusAt = statusRow.indexOf('+3/32');
   assert.ok(notesAt < plusAt);
   const colored = render.renderFrame(view, {
     width: 80,
@@ -582,8 +582,16 @@ test('long operations paint an infinite progress bar', () => {
     height: 12,
     color: false,
   });
-  const row = frame.rows[frame.rows.length - 2];
-  assert.match(row, /pulling {2}▰/);
+  const row = stripAnsi(frame.rows[frame.rows.length - 2]);
+  const shown = render.formatBusyStatus('pulling', 0);
+  const msgAt = row.indexOf(shown);
+  const leftEnd = row.indexOf('code 0') + 'code 0'.length;
+  const rightAt = row.lastIndexOf('0/0');
+  assert.ok(msgAt > leftEnd);
+  assert.ok(msgAt + visibleWidth(shown) <= rightAt);
+  const leftGap = msgAt - leftEnd;
+  const rightGap = rightAt - (msgAt + visibleWidth(shown));
+  assert.ok(Math.abs(leftGap - rightGap) <= 1);
 });
 
 test('quit prompt paints f and c yellow on grey copy', () => {

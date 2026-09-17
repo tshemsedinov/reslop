@@ -86,6 +86,10 @@ test('fileEntries counts lines and mixed staged blocks', () => {
   assert.equal(entries[0].unstaged, 1);
   assert.equal(entries[0].added, 2);
   assert.equal(entries[0].removed, 3);
+  assert.equal(entries[0].stagedAdded, 1);
+  assert.equal(entries[0].stagedRemoved, 2);
+  assert.equal(entries[0].unstagedAdded, 1);
+  assert.equal(entries[0].unstagedRemoved, 1);
   assert.equal(entries[0].remaining, 2);
 });
 
@@ -135,6 +139,10 @@ test('fileTotals sums line and origin counts across files', () => {
   assert.equal(total.path, TOTAL_LABEL);
   assert.equal(total.added, 35);
   assert.equal(total.removed, 6);
+  assert.equal(total.stagedAdded, 3);
+  assert.equal(total.stagedRemoved, 1);
+  assert.equal(total.unstagedAdded, 32);
+  assert.equal(total.unstagedRemoved, 5);
   assert.equal(total.staged, 1);
   assert.equal(total.unstaged, 6);
   assert.equal(total.remaining, 7);
