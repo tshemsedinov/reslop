@@ -12,7 +12,7 @@ const { load, addItem, unstageItem, revertItem } = git;
 const { commitChanges, hasStaged, lastMessage, createGitRepo } = git;
 const { currentBranch, listBranches, checkoutBranch } = git;
 const { createBranch, rebaseBranch, dropBranch, pullChanges } = git;
-const { pushChanges } = git;
+const { pushChanges, editItem } = git;
 const { runProc } = require('../lib/git/proc.js');
 const { Session } = require('../lib/session.js');
 const { makeRepo, sink } = require('./helpers.js');
@@ -879,6 +879,73 @@ test('loadAsync matches load for a dirty worktree', async () => {
     assert.equal(asyncLoaded.items.length, sync.items.length);
     assert.equal(asyncLoaded.items[0].origin, 'unstaged');
     assert.equal(asyncLoaded.branch, sync.branch);
+  } finally {
+    repo.cleanup();
+  }
+});
+
+test('editItem writes added lines into the reviewed file', () => {
+  const repo = makeRepo();
+  try {
+    repo.write('f.txt', 'alpha\nbeta\ngamma\n');
+    repo.git(['add', 'f.txt']);
+    repo.git(['commit', '-m', 'init']);
+    repo.write('f.txt', 'alpha\nBETA\ngamma\n');
+    const loaded = load(repo.dir);
+    assert.equal(loaded.items.length, 1);
+    editItem(loaded.top, loaded.items[0], 'BETA-edited');
+    assert.equal(repo.read('f.txt'), 'alpha\nBETA-edited\ngamma\n');
+    const again = load(repo.dir);
+    const lines = again.items[0].hunk.lines;
+    const adds = lines.filter((line) => line.type === 'add');
+    assert.equal(adds.length, 1);
+    assert.equal(adds[0].text, 'BETA-edited');
+  } finally {
+    repo.cleanup();
+  }
+});
+
+test('e saves added lines to the reviewed file and reloads', () => {
+  const repo = makeRepo();
+  try {
+    repo.write('f.txt', 'alpha\nbeta\ngamma\n');
+    repo.git(['add', 'f.txt']);
+    repo.git(['commit', '-m', 'init']);
+    repo.write('f.txt', 'alpha\nBETA\ngamma\n');
+    const session = sessionFor(repo.dir);
+    session.dispatch('code');
+    assert.equal(session.composeKind, 'code');
+    session.editor.replace('BETA-edited');
+    session.handleEvent({ type: 'key', key: 'escape' });
+    assert.equal(session.mode, 'review');
+    assert.equal(repo.read('f.txt'), 'alpha\nBETA-edited\ngamma\n');
+    assert.equal(session.notes.code.size, 0);
+    const adds = session
+      .current()
+      .hunk.lines.filter((line) => line.type === 'add');
+    assert.equal(adds[0].text, 'BETA-edited');
+  } finally {
+    repo.cleanup();
+  }
+});
+
+test('editItem updates staged added lines in the index', () => {
+  const repo = makeRepo();
+  try {
+    repo.write('f.txt', 'alpha\nbeta\ngamma\n');
+    repo.git(['add', 'f.txt']);
+    repo.git(['commit', '-m', 'init']);
+    repo.write('f.txt', 'alpha\nBETA\ngamma\n');
+    repo.git(['add', 'f.txt']);
+    const loaded = load(repo.dir);
+    const item = loaded.items.find((entry) => entry.origin === 'staged');
+    assert.ok(item);
+    editItem(loaded.top, item, 'STAGED');
+    assert.equal(repo.read('f.txt'), 'alpha\nSTAGED\ngamma\n');
+    const cached = repo.git(['diff', '--cached', '--', 'f.txt']);
+    assert.match(cached, /\+STAGED/);
+    const work = repo.git(['diff', '--', 'f.txt']);
+    assert.equal(work, '');
   } finally {
     repo.cleanup();
   }

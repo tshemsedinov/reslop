@@ -64,6 +64,7 @@ const mockRepo = (initial) => {
   const created = [];
   const rebases = [];
   const drops = [];
+  const edited = [];
   return {
     added,
     reverted,
@@ -75,6 +76,7 @@ const mockRepo = (initial) => {
     created,
     rebases,
     drops,
+    edited,
     load: () => ({ top: '/tmp', items: [...items], branch: 'main' }),
     add: (top, item) => {
       added.push(item);
@@ -109,6 +111,9 @@ const mockRepo = (initial) => {
     drop: (top, name) => drops.push(name),
     pull: () => pulls.push(true),
     push: () => pushes.push(true),
+    edit: (top, item, text) => {
+      edited.push({ top, item, text });
+    },
   };
 };
 
@@ -1196,9 +1201,9 @@ test('existing unique feedback hides the template list', () => {
   assert.equal(session.lastFrame.templateHits.length, 0);
 });
 
-test('e edits added lines in place as a code proposal', () => {
+test('e edits added lines in the reviewed file', () => {
   const item = sampleItem('a.js');
-  const { session } = openSession([item]);
+  const { session, repo } = openSession([item]);
   session.pushInput('e');
   assert.equal(session.mode, 'compose');
   assert.equal(session.composeKind, 'code');
@@ -1215,12 +1220,23 @@ test('e edits added lines in place as a code proposal', () => {
   assert.equal(session.editor.text, 'b2\n');
   session.handleEvent({ type: 'key', key: 'escape' });
   assert.equal(session.mode, 'review');
+  assert.equal(session.notes.code.size, 0);
+  assert.equal(session.counts().code, 0);
+  assert.equal(repo.edited.length, 1);
+  assert.equal(repo.edited[0].text, 'b2\n');
+  assert.equal(repo.edited[0].item.file.newPath, 'a.js');
+});
+
+test('e on a read-only commit keeps a code proposal', () => {
+  const item = sampleItem('a.js', 'commit');
+  const { session, repo } = openSession([item], { rev: 'abc1234' });
+  session.pushInput('e');
+  session.pushInput('2');
+  session.handleEvent({ type: 'key', key: 'escape' });
+  assert.equal(repo.edited.length, 0);
   const note = session.notes.code.get('a.js:1:1:0');
-  assert.equal(note.text, 'b2\n');
+  assert.equal(note.text, 'b2');
   assert.equal(session.counts().code, 1);
-  session.draw();
-  const saved = stripAnsi(session.lastFrame.rows.join('\n'));
-  assert.match(saved, /\+ b2/);
 });
 
 test('code save equal to original drops the proposal', () => {

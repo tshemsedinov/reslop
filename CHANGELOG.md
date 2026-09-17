@@ -14,6 +14,7 @@
 - Fix unvisible cursor movement in scrolling diffs
 - Auto-reload worktree on disk changes, keeping the current UI state
 - Set git push upstream to `origin <branch>` when missing
+- Save in-place diff edits to the reviewed file
 
 ## [0.1.7][] - 2026-09-16
 

@@ -83,6 +83,7 @@ test('createReviewStorage uses injected fs methods', () => {
 test('change and branch method lists stay explicit', () => {
   assert.ok(CHANGE_METHODS.includes('add'));
   assert.ok(CHANGE_METHODS.includes('revertFile'));
+  assert.ok(CHANGE_METHODS.includes('edit'));
   assert.ok(BRANCH_METHODS.includes('push'));
   assert.ok(BRANCH_METHODS.includes('createBranchAsync'));
 });

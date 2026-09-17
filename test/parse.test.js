@@ -6,6 +6,7 @@ const assert = require('node:assert/strict');
 const diff = require('../lib/diff.js');
 const { parseDiff, splitHunk, formatPatch, flattenBlock } = diff;
 const { displayLines, itemsFromFiles, DISPLAY_CONTEXT } = diff;
+const { replaceBlockAdds, addBlockRange } = diff;
 
 const SAMPLE = `diff --git a/n.js b/n.js
 index 1111111..2222222 100644
@@ -147,4 +148,26 @@ test('displayLines overlay replaces added lines', () => {
   const empty = displayLines(hunk, 0, 'unified', undefined, { text: '' });
   const emptyTypes = empty.map((line) => `${line.type}:${line.text}`);
   assert.deepEqual(emptyTypes, ['del:OLD']);
+});
+
+test('replaceBlockAdds rewrites added lines in file text', () => {
+  const hunk = {
+    oldStart: 1,
+    oldCount: 3,
+    newStart: 1,
+    newCount: 3,
+    header: '@@ -1,3 +1,3 @@',
+    lines: [
+      { type: 'ctx', text: 'alpha', noNl: false, blockId: null },
+      { type: 'del', text: 'beta', noNl: false, blockId: 0 },
+      { type: 'add', text: 'BETA', noNl: false, blockId: 0 },
+      { type: 'ctx', text: 'gamma', noNl: false, blockId: null },
+    ],
+  };
+  const range = addBlockRange(hunk, 0);
+  assert.deepEqual(range, { start: 2, count: 1 });
+  const next = replaceBlockAdds('alpha\nBETA\ngamma\n', hunk, 0, 'BETA-edited');
+  assert.equal(next, 'alpha\nBETA-edited\ngamma\n');
+  const extra = replaceBlockAdds('alpha\nBETA\ngamma\n', hunk, 0, 'one\ntwo');
+  assert.equal(extra, 'alpha\none\ntwo\ngamma\n');
 });
