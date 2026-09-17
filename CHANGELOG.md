@@ -2,6 +2,8 @@
 
 ## [Unreleased][unreleased]
 
+## [0.1.8][] - 2026-09-17
+
 - Simplify session controllers, input dispatch, and loading orchestration
 - Enforce structural limits and session dependency direction on library files
 - Show staged/unstaged +/- and staged/remaining totals in status line
@@ -11,7 +13,7 @@
 - Fix TODO wrapped text; keep up/down navigation inside a multiline todos
 - Fix identifier diffs as whole words compare, not just letters
 - Keep reslop open when a local repo has no unstaged changes
-- Fix unvisible cursor movement in scrolling diffs
+- Fix invisible cursor movement in scrolling diffs
 - Auto-reload worktree on disk changes, keeping the current UI state
 - Fix disk watch paths on Windows
 - Set git push upstream to `origin <branch>` when missing
@@ -81,7 +83,8 @@
 - Feedback and todos that produce a repair plan for an agent
 - Intra-line highlighting in unified, mixed, and side-by-side layouts
 
-[unreleased]: https://github.com/tshemsedinov/reslop/compare/v0.1.7...HEAD
+[unreleased]: https://github.com/tshemsedinov/reslop/compare/v0.1.8...HEAD
+[0.1.8]: https://github.com/tshemsedinov/reslop/compare/v0.1.7...v0.1.8
 [0.1.7]: https://github.com/tshemsedinov/reslop/compare/v0.1.6...v0.1.7
 [0.1.6]: https://github.com/tshemsedinov/reslop/compare/v0.1.5...v0.1.6
 [0.1.5]: https://github.com/tshemsedinov/reslop/compare/v0.1.4...v0.1.5
