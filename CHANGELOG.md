@@ -13,6 +13,7 @@
 - Keep reslop open when a local repo has no unstaged changes
 - Fix unvisible cursor movement in scrolling diffs
 - Auto-reload worktree on disk changes, keeping the current UI state
+- Fix disk watch paths on Windows
 - Set git push upstream to `origin <branch>` when missing
 - Save in-place diff edits to the reviewed file
 

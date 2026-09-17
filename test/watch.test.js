@@ -11,6 +11,8 @@ const watch = require('../lib/session/watch.js');
 const { ignoredRel, createDiskWatcher } = watch;
 const { sink } = require('./helpers.js');
 
+const REPO_ROOT = path.resolve('/tmp/repo');
+
 const sampleItem = (name, extra = {}) => ({
   origin: extra.origin ?? 'unstaged',
   file: {
@@ -137,7 +139,7 @@ test('startWatch also watches parent dirs of review files', () => {
   const { session, fsWatch } = openWatched([nested]);
   session.uiOpen = true;
   session.lifecycle.startWatch();
-  const parent = path.join('/tmp/repo', 'src');
+  const parent = path.join(REPO_ROOT, 'src');
   assert.ok(fsWatch.watchers.some((entry) => entry.target === parent));
   session.lifecycle.stopWatch();
 });
@@ -152,6 +154,8 @@ test('ignoredRel skips review, modules, and git internals', () => {
   assert.equal(ignoredRel('.git/HEAD'), false);
   assert.equal(ignoredRel('.git/refs/heads/main'), false);
   assert.equal(ignoredRel('src/a.js'), false);
+  assert.equal(ignoredRel('src\\a.js'), false);
+  assert.equal(ignoredRel('.git\\index.lock'), true);
   assert.equal(ignoredRel('a.js.swp'), true);
 });
 
@@ -172,9 +176,9 @@ test('disk watcher debounces changes and ignores lock files', () => {
       n += 1;
     },
   });
-  const gitDir = path.join('/tmp/repo', '.git');
+  const gitDir = path.join(REPO_ROOT, '.git');
   const git = fsWatch.watchers.find((entry) => entry.target === gitDir);
-  const root = fsWatch.watchers.find((entry) => entry.target === '/tmp/repo');
+  const root = fsWatch.watchers.find((entry) => entry.target === REPO_ROOT);
   assert.ok(git);
   assert.ok(root);
   git.listener('change', 'index.lock');
