@@ -19,6 +19,7 @@ Review → Plan → Repair → Verify
 - Leave feedback, issues/todos, and in-place code proposals as a repair plan.
 - Review uncommitted git diffs, a given commit, a GitHub PR, or a GitLab MR.
 - Stage, unstage, or revert each contiguous block of diff lines.
+- Auto-reload local diffs when files change, keeping the current screen.
 - Import GitHub PR and GitLab MR review comments into the local plan for AI.
 - Commit, amend, or fixup staged changes from the file list.
 - Branches: checkout, create, rebase, drop, pull and push.
@@ -59,7 +60,6 @@ Reviews go in `.review/YYYY-MM-DD-NN.md` with frontmatter `status`:
 | `b`                 | List branches; `n` new; `r` rebase; `d` drop  |
 | `p` / `s`           | git pull/push                                 |
 | `f` / `t` / `e`     | Feedback / repo todo / edit added lines       |
-| `r`                 | Reload diffs from disk                        |
 | `m`                 | Mode: unified / mixed / side-by-side          |
 | `⏎`                 | Open the selected file                        |
 | `→` / `j`           | Next remaining diff / file                    |

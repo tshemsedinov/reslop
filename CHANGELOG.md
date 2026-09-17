@@ -12,6 +12,7 @@
 - Fix identifier diffs as whole words compare, not just letters
 - Keep reslop open when a local repo has no unstaged changes
 - Fix unvisible cursor movement in scrolling diffs
+- Auto-reload worktree on disk changes, keeping the current UI state
 
 ## [0.1.7][] - 2026-09-16
 
