@@ -2,6 +2,8 @@
 
 ## [Unreleased][unreleased]
 
+- Remove `r` reload hotkey and hint; auto-reload covers disk changes
+
 ## [0.1.8][] - 2026-09-17
 
 - Simplify session controllers, input dispatch, and loading orchestration

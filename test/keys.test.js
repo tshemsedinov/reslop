@@ -96,7 +96,7 @@ test('actionFromKey maps aliases and ignores unbound keys', () => {
   assert.equal(actionFromKey('c'), 'commit');
   assert.equal(actionFromKey('l'), null);
   assert.equal(actionFromKey('g'), null);
-  assert.equal(actionFromKey('r'), 'reload');
+  assert.equal(actionFromKey('r'), null);
   assert.equal(actionFromKey('backspace'), 'removeTodo');
   assert.equal(actionFromKey('delete'), 'removeTodo');
   assert.equal(actionFromKey('s'), null);
@@ -115,15 +115,14 @@ test('actionFromKey maps aliases and ignores unbound keys', () => {
   assert.equal(actionFromKey('r', 'branches'), 'rebase');
   assert.equal(actionFromKey('d', 'branches'), 'drop');
   assert.equal(actionFromKey('d'), 'revert');
-  assert.equal(actionFromKey('r'), 'reload');
-  assert.equal(actionFromKey('r', 'files'), 'reload');
+  assert.equal(actionFromKey('r', 'files'), null);
   assert.equal(actionFromKey('escape'), null);
 });
 
 test('layoutButtons hitboxes cover labels', () => {
   const layout = layoutButtons(160, false);
   assert.equal(layout.hits[0].id, 'add');
-  assert.ok(layout.parts.some((part) => part.action.id === 'reload'));
+  assert.ok(!layout.parts.some((part) => part.action.id === 'reload'));
   assert.ok(!layout.parts.some((part) => part.action.id === 'newBranch'));
   assert.ok(!layout.parts.some((part) => part.action.id === 'files'));
   assert.equal(layout.parts[0].label, 'add');
@@ -151,7 +150,7 @@ test('layoutButtons hitboxes cover labels', () => {
   assert.equal(hitIds.includes('feedback'), false);
   assert.equal(hitIds.includes('code'), false);
   assert.equal(hitIds.includes('add'), true);
-  assert.equal(hitIds.includes('reload'), true);
+  assert.equal(hitIds.includes('reload'), false);
   assert.equal(hitIds.includes('branch'), true);
   assert.equal(hitIds.includes('pull'), true);
   assert.equal(hitIds.includes('push'), true);

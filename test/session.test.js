@@ -435,8 +435,6 @@ test('AC9 hotkeys dispatch add revert next prev quit', () => {
   assert.equal(session.status, 'side-by-side');
   session.pushInput('m');
   assert.equal(session.layout, 'unified');
-  session.pushInput('r');
-  assert.equal(session.pane, 'diff');
   session.handleEvent({ type: 'key', key: 'escape' });
   assert.equal(session.pane, 'files');
   session.pushInput('q');
@@ -882,12 +880,8 @@ test('reload picks up disk changes and keeps the current hunk', () => {
   });
   repo.load = () => ({ top: '/tmp', items: [a, b, c] });
   session.dispatch('reload');
-  assert.equal(session.status, '');
-  assert.equal(session.items.length, 2);
-  session.handleEvent({ type: 'key', key: 'escape' });
-  session.dispatch('reload');
   assert.equal(session.status, 'reloaded');
-  assert.equal(session.pane, 'files');
+  assert.equal(session.pane, 'diff');
   assert.equal(session.current().file.newPath, 'b.js');
   assert.equal(session.items.length, 3);
   assert.equal(session.notes.feedback.get('b.js:1:1:0').text, 'keep me');
@@ -913,7 +907,7 @@ test('reload from the file list still refreshes', () => {
   const b = sampleItem('b.js');
   const { session, repo } = openSession([a], { startPane: 'files' });
   repo.load = () => ({ top: '/tmp', items: [a, b] });
-  session.handleEvent({ type: 'key', key: 'r' });
+  session.dispatch('reload');
   assert.equal(session.status, 'reloaded');
   assert.equal(session.pane, 'files');
   assert.equal(session.items.length, 2);
