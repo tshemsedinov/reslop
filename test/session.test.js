@@ -65,6 +65,7 @@ const mockRepo = (initial) => {
   const rebases = [];
   const drops = [];
   const edited = [];
+  const listed = [];
   return {
     added,
     reverted,
@@ -77,6 +78,7 @@ const mockRepo = (initial) => {
     rebases,
     drops,
     edited,
+    listed,
     load: () => ({ top: '/tmp', items: [...items], branch: 'main' }),
     add: (top, item) => {
       added.push(item);
@@ -101,10 +103,13 @@ const mockRepo = (initial) => {
       commits.push({ top, kind, message });
     },
     lastMessage: () => 'previous message',
-    listBranches: () => [
-      { name: 'main', current: true },
-      { name: 'feat', current: false },
-    ],
+    listBranches: () => {
+      listed.push(true);
+      return [
+        { name: 'main', current: true },
+        { name: 'feat', current: false },
+      ];
+    },
     checkout: (top, name) => checkouts.push(name),
     createBranch: (top, name) => created.push(name),
     rebase: (top, onto) => rebases.push(onto),
@@ -2434,12 +2439,15 @@ test('branch list p pulls and s pushes', () => {
   session.dispatch('pull');
   assert.equal(repo.pulls.length, 0);
   session.pushInput('b');
+  assert.equal(repo.listed.length, 1);
   session.pushInput('p');
   assert.equal(repo.pulls.length, 1);
+  assert.equal(repo.listed.length, 2);
   assert.equal(session.status, 'pulled');
   assert.equal(session.pane, 'branches');
   session.pushInput('s');
   assert.equal(repo.pushes.length, 1);
+  assert.equal(repo.listed.length, 3);
   assert.equal(session.status, 'pushed');
   session.handleEvent({ type: 'key', key: 'down' });
   session.pushInput('p');
@@ -2703,6 +2711,7 @@ test('branch list n creates a new branch', () => {
   session.pushInput('topic');
   session.handleEvent({ type: 'key', key: 'enter' });
   assert.deepEqual(repo.created, ['topic']);
+  assert.equal(repo.listed.length, 2);
   assert.equal(session.pane, 'files');
   assert.equal(session.mode, 'review');
   assert.match(session.status, /created topic/);
@@ -2718,6 +2727,7 @@ test('branch list r rebases current onto selected', () => {
   session.dispatch('next');
   session.pushInput('r');
   assert.deepEqual(repo.rebases, ['feat']);
+  assert.equal(repo.listed.length, 2);
   assert.match(session.status, /rebased onto feat/);
   assert.equal(session.pane, 'branches');
 });
