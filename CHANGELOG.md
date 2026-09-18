@@ -2,6 +2,8 @@
 
 ## [Unreleased][unreleased]
 
+- Add light theme: `--theme light|dark` option and `l` hotkey to switch
+
 ## [0.1.8][] - 2026-09-17
 
 - Simplify session controllers, input dispatch, and loading orchestration

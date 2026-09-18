@@ -11,6 +11,7 @@ const { hitAction } = require('../lib/keys.js');
 const { sink } = require('./helpers.js');
 const { createStore, addTodo, serializeReview } = require('../lib/review.js');
 const { stripAnsi, THEME, BOLD, seq } = require('../lib/ansi.js');
+const { setTheme, themeName } = require('../lib/ansi.js');
 const { REVIEW_DIR } = require('../lib/files.js');
 
 const reviewFile = (name) => path.join('/tmp', REVIEW_DIR, name);
@@ -2840,4 +2841,23 @@ test('partial file add reloads after a later hunk fails', () => {
   assert.equal(session.items[0].origin, 'staged');
   assert.equal(session.items[1].origin, 'unstaged');
   assert.equal(session.items[1].blockId, 1);
+});
+
+test('l toggles the theme and is typed as text while composing', () => {
+  const { session } = openSession([sampleItem('a.js')]);
+  try {
+    session.pushInput('l');
+    assert.equal(themeName(), 'light');
+    assert.equal(session.status, 'light');
+    session.pushInput('l');
+    assert.equal(themeName(), 'dark');
+    assert.equal(session.status, 'dark');
+    session.dispatch('feedback');
+    session.handleEvent({ type: 'key', key: 'l' });
+    assert.equal(session.mode, 'compose');
+    assert.equal(session.editor.text, 'l');
+    assert.equal(themeName(), 'dark');
+  } finally {
+    setTheme('dark');
+  }
 });

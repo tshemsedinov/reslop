@@ -43,6 +43,7 @@ Works on Linux, macOS, and Windows. On Windows use Windows Terminal.
 - `reslop https://github.com/metarhia/metacom/pull/555` GitHub/GitLab PR/MR
 - `reslop -n` start a new review even if the latest is still editing
 - `reslop -r` read-only mode
+- `reslop --theme light` light color theme (default `dark`)
 
 Reviews go in `.review/YYYY-MM-DD-NN.md` with frontmatter `status`:
 
@@ -61,6 +62,7 @@ Reviews go in `.review/YYYY-MM-DD-NN.md` with frontmatter `status`:
 | `p` / `s`           | git pull/push                                 |
 | `f` / `t` / `e`     | Feedback / repo todo / edit added lines       |
 | `m`                 | Mode: unified / mixed / side-by-side          |
+| `l`                 | Switch light / dark theme                     |
 | `⏎`                 | Open the selected file                        |
 | `→` / `j`           | Next remaining diff / file                    |
 | `←` / `k`           | Previous remaining diff / file                |
