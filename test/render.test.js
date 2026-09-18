@@ -1029,7 +1029,7 @@ test('AC10 footer words highlight the bound letter', () => {
   const row = frame.rows[frame.rows.length - 1];
   const plain = stripAnsi(row);
   assert.match(plain, /add {2}unstage {2}drop {2}commit {2}←/);
-  assert.match(plain, /todo {2}reload {2}branch {2}pull {2}push {2}q/);
+  assert.match(plain, /todo {2}branch {2}pull {2}push {2}q/);
   assert.ok(!plain.includes('prev'));
   assert.ok(!plain.includes('next'));
   assert.ok(!plain.includes('quit'));
@@ -1056,7 +1056,10 @@ test('AC10 footer words highlight the bound letter', () => {
   assert.equal(feedback, undefined);
   assert.equal(code, undefined);
   assert.ok(frame.buttons.find((hit) => hit.id === 'add'));
-  assert.ok(frame.buttons.find((hit) => hit.id === 'reload'));
+  assert.equal(
+    frame.buttons.find((hit) => hit.id === 'reload'),
+    undefined,
+  );
   assert.equal(
     frame.buttons.find((hit) => hit.id === 'files'),
     undefined,
