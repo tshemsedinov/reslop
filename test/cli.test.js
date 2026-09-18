@@ -68,6 +68,16 @@ test('parseArgv accepts -n and -r', () => {
   }
 });
 
+test('parseArgv reads --theme', () => {
+  assert.equal(parseArgv([]).theme, 'dark');
+  assert.equal(parseArgv(['--theme', 'light']).theme, 'light');
+  assert.equal(parseArgv(['--theme=light', 'lib']).theme, 'light');
+  assert.deepEqual(parseArgv(['--theme', 'light', 'lib']).paths, ['lib']);
+  assert.throws(() => parseArgv(['--theme', 'blue']), /unknown theme blue/);
+  assert.throws(() => parseArgv(['--theme']), /missing theme/);
+  assert.throws(() => parseArgv(['--theme=']), /missing theme/);
+});
+
 test('unknown option exits 1', async () => {
   const proc = fakeProc(process.cwd(), {
     argv: ['node', 'reslop', '--nope'],
@@ -76,8 +86,12 @@ test('unknown option exits 1', async () => {
   assert.equal(code, 1);
   const err = proc.stderrText();
   assert.match(err, /unknown option/);
-  const usage =
-    /Usage: reslop \[-n\] \[-r\] \[path \| commit \| pr-url \| mr-url\]/;
+  const usage = new RegExp(
+    [
+      'Usage: reslop \\[-n\\] \\[-r\\] \\[--theme dark\\|light\\]',
+      '\\[path \\| commit \\| pr-url \\| mr-url\\]',
+    ].join(' '),
+  );
   assert.match(err, usage);
   assert.doesNotMatch(err, /--help/);
 });

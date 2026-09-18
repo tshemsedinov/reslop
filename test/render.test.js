@@ -55,8 +55,8 @@ test('AC2 muted line color differs from strong char color', () => {
     height: 16,
     color: true,
   });
-  assert.ok(frame.text.includes(render.DEL_CHAR_BG));
-  assert.ok(frame.text.includes(render.ADD_CHAR_BG));
+  assert.ok(frame.text.includes(render.delCharBg()));
+  assert.ok(frame.text.includes(render.addCharBg()));
   assert.ok(frame.text.includes(fg(CODE_FG.variable)));
   assert.ok(!frame.text.includes(fg(THEME.delLineFg)));
   assert.equal(frame.rows.length, 16);
@@ -360,8 +360,8 @@ test('AC23 staged lines are grey with plus and minus marks', () => {
   });
   assert.ok(frame.text.includes(bg(THEME.stagedDelCharBg)));
   assert.ok(frame.text.includes(bg(THEME.stagedAddCharBg)));
-  assert.ok(!frame.text.includes(render.DEL_CHAR_BG));
-  assert.ok(!frame.text.includes(render.ADD_CHAR_BG));
+  assert.ok(!frame.text.includes(render.delCharBg()));
+  assert.ok(!frame.text.includes(render.addCharBg()));
   const plain = render.renderFrame(view, {
     width: 80,
     height: 16,
@@ -1269,11 +1269,11 @@ test('branch pane lists names and marks the default branch', () => {
   });
   const mainPainted = colored.rows.find((row) => row.includes('aaa1111'));
   const featPainted = colored.rows.find((row) => row.includes('bbb2222'));
-  const whiteBg = bg(THEME.buttonHotFg);
+  const whiteBg = bg(THEME.chipBg);
   const rowBg = bg(THEME.ctxBg);
   const mainWrap = `${BOLD}${fg(THEME.mutedFg)}${rowBg}`;
   const mainName = `${BOLD}${fg(THEME.warnFg)}${rowBg}`;
-  const currentName = `${fg(THEME.headerFg)}${whiteBg}`;
+  const currentName = `${fg(THEME.chipFg)}${whiteBg}`;
   const currentWrap = `${BOLD}${fg(THEME.mutedFg)}${whiteBg}`;
   assert.ok(mainPainted.includes(`${mainWrap}[`));
   assert.ok(mainPainted.includes(`${mainName}main`));
@@ -2447,4 +2447,46 @@ test('code overlay paints proposed adds and an in-place cursor', () => {
   assert.ok(!body.includes('+ b'));
   assert.ok(frame.cursor);
   assert.equal(frame.cursor.x, 3);
+});
+
+test('diff and chrome pick up a theme switched after load', () => {
+  const hunk = {
+    oldStart: 1,
+    oldCount: 1,
+    newStart: 1,
+    newCount: 1,
+    header: '@@ -1,1 +1,1 @@',
+    lines: [
+      { type: 'del', text: 'a', noNl: false, blockId: 0 },
+      { type: 'add', text: 'b', noNl: false, blockId: 0 },
+    ],
+  };
+  const view = {
+    item: {
+      origin: 'unstaged',
+      file: { newPath: 'f.js', oldPath: 'f.js', isBinary: false },
+      hunk,
+      blockId: 0,
+    },
+    index: 0,
+    total: 1,
+    scroll: 0,
+    status: '',
+    counts: { staged: 0, unstaged: 1, untracked: 0 },
+    repoName: 'demo',
+  };
+  try {
+    ansi.setTheme('light');
+    const frame = render.renderFrame(view, {
+      width: 80,
+      height: 16,
+      color: true,
+    });
+    assert.ok(frame.text.includes(bg(ansi.PALETTES.light.ui.addLineBg)));
+    assert.ok(frame.text.includes(bg(ansi.PALETTES.light.ui.headerBg)));
+    assert.ok(frame.text.includes(bg(ansi.PALETTES.light.ui.buttonBg)));
+    assert.ok(!frame.text.includes(bg(ansi.PALETTES.dark.ui.addLineBg)));
+  } finally {
+    ansi.setTheme('dark');
+  }
 });
