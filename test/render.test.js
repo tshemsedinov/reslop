@@ -1029,7 +1029,7 @@ test('AC10 footer words highlight the bound letter', () => {
   const row = frame.rows[frame.rows.length - 1];
   const plain = stripAnsi(row);
   assert.match(plain, /add {2}unstage {2}drop {2}commit {2}←/);
-  assert.match(plain, /todo {2}branch {2}pull {2}push {2}q/);
+  assert.match(plain, /todo {2}branch {2}q/);
   assert.ok(!plain.includes('prev'));
   assert.ok(!plain.includes('next'));
   assert.ok(!plain.includes('quit'));
@@ -1062,6 +1062,14 @@ test('AC10 footer words highlight the bound letter', () => {
   );
   assert.equal(
     frame.buttons.find((hit) => hit.id === 'files'),
+    undefined,
+  );
+  assert.equal(
+    frame.buttons.find((hit) => hit.id === 'pull'),
+    undefined,
+  );
+  assert.equal(
+    frame.buttons.find((hit) => hit.id === 'push'),
     undefined,
   );
 });
@@ -1253,8 +1261,14 @@ test('branch pane lists names and marks the default branch', () => {
   assert.match(footer, /new/);
   assert.match(footer, /rebase/);
   assert.match(footer, /drop/);
+  assert.match(footer, /pull/);
+  assert.match(footer, /push/);
   assert.ok(!footer.includes('add'));
+  assert.ok(!footer.includes('←'));
+  assert.ok(!footer.includes('→'));
   assert.ok(frame.buttons.find((hit) => hit.id === 'newBranch'));
+  assert.ok(frame.buttons.find((hit) => hit.id === 'pull'));
+  assert.ok(frame.buttons.find((hit) => hit.id === 'push'));
   assert.equal(
     frame.buttons.find((hit) => hit.id === 'rebase'),
     undefined,
@@ -1265,6 +1279,11 @@ test('branch pane lists names and marks the default branch', () => {
   );
   assert.equal(mainRow.indexOf('aaa1111'), featRow.indexOf('bbb2222'));
   assert.equal(mainRow.indexOf('2 days ago'), featRow.indexOf('3 weeks ago'));
+  assert.match(featRow, /⇣2 {3}3 weeks ago/);
+  assert.ok(featRow.endsWith('3 weeks ago   '));
+  assert.ok(!featRow.endsWith('3 weeks ago    '));
+  assert.equal(visibleWidth(featRow), 80);
+  assert.equal(visibleWidth(mainRow), 80);
   const colored = render.renderFrame(view, {
     width: 80,
     height: 12,
@@ -1272,21 +1291,31 @@ test('branch pane lists names and marks the default branch', () => {
   });
   const mainPainted = colored.rows.find((row) => row.includes('aaa1111'));
   const featPainted = colored.rows.find((row) => row.includes('bbb2222'));
-  const whiteBg = bg(THEME.buttonHotFg);
+  const currentBg = bg(THEME.currentBg);
   const rowBg = bg(THEME.ctxBg);
   const mainWrap = `${BOLD}${fg(THEME.mutedFg)}${rowBg}`;
   const mainName = `${BOLD}${fg(THEME.warnFg)}${rowBg}`;
-  const currentName = `${fg(THEME.headerFg)}${whiteBg}`;
-  const currentWrap = `${BOLD}${fg(THEME.mutedFg)}${whiteBg}`;
+  const currentName = `${fg(THEME.mutedFg)}${currentBg}`;
+  const currentWrap = `${BOLD}${fg(THEME.mutedFg)}${currentBg}`;
   assert.ok(mainPainted.includes(`${mainWrap}[`));
   assert.ok(mainPainted.includes(`${mainName}main`));
   assert.ok(mainPainted.includes(`${mainWrap}]`));
   assert.ok(!mainPainted.includes(bg(THEME.warnFg)));
+  assert.ok(!mainPainted.includes(currentBg));
   const shaTone = `${fg(THEME.shaFg)}${bg(THEME.ctxBg)}`;
   assert.ok(mainPainted.includes(`${shaTone}aaa1111`));
   assert.ok(featPainted.includes(`${currentWrap}[`));
   assert.ok(featPainted.includes(`${currentName}feat`));
   assert.ok(featPainted.includes(`${currentWrap}]`));
+  assert.ok(!featPainted.includes(`${fg(THEME.buttonHotFg)}${currentBg}`));
+  assert.ok(featPainted.includes(`${fg(THEME.shaDarkFg)}${currentBg}`));
+  assert.ok(!featPainted.includes(`${fg(THEME.shaFg)}${currentBg}`));
+  assert.ok(featPainted.includes(`${fg(THEME.headerFg)}${currentBg}`));
+  const date = ansi.paint('3 weeks ago', THEME.headerFg, THEME.currentBg, true);
+  const dateTail = ansi.paint(' ', THEME.headerFg, THEME.currentBg, true);
+  assert.ok(featPainted.includes(`${date}${dateTail}`));
+  assert.ok(featPainted.includes(`${fg(THEME.delLineFg)}${currentBg}`));
+  assert.ok(!featPainted.includes(bg(THEME.buttonHotFg)));
   const rest = seq(THEME.buttonFg, THEME.buttonBg);
   const hot = seq(THEME.buttonHotFg, THEME.buttonBg);
   const currentFooter = colored.rows[colored.rows.length - 1];
@@ -1294,6 +1323,8 @@ test('branch pane lists names and marks the default branch', () => {
   assert.ok(currentFooter.includes(`${rest}drop`));
   assert.ok(!currentFooter.includes(`${BOLD}${hot}r`));
   assert.ok(!currentFooter.includes(`${BOLD}${hot}d`));
+  assert.ok(currentFooter.includes(`${BOLD}${hot}p`));
+  assert.ok(currentFooter.includes(`${BOLD}${hot}s`));
   view.branchCursor = 0;
   const onto = render.renderFrame(view, {
     width: 80,
@@ -1301,10 +1332,35 @@ test('branch pane lists names and marks the default branch', () => {
     color: true,
   });
   const ontoFooter = onto.rows[onto.rows.length - 1];
+  const ontoFeat = onto.rows.find((row) => row.includes('bbb2222'));
+  const ontoMain = onto.rows.find((row) => row.includes('aaa1111'));
+  assert.ok(ontoFeat.includes(currentBg));
+  const selectDate = ansi.paint(
+    '2 days ago ',
+    THEME.mutedFg,
+    THEME.buttonBg,
+    true,
+  );
+  const selectTail = ansi.paint(' ', THEME.chromeFg, THEME.buttonBg, true);
+  assert.ok(ontoMain.includes(`${selectDate}${selectTail}`));
+  const selectEdge = ansi.paint('  ', THEME.chromeFg, THEME.ctxBg, true);
+  assert.ok(ontoMain.includes(selectEdge));
   assert.ok(onto.buttons.find((hit) => hit.id === 'rebase'));
   assert.ok(onto.buttons.find((hit) => hit.id === 'drop'));
+  assert.equal(
+    onto.buttons.find((hit) => hit.id === 'pull'),
+    undefined,
+  );
+  assert.equal(
+    onto.buttons.find((hit) => hit.id === 'push'),
+    undefined,
+  );
   assert.ok(ontoFooter.includes(`${BOLD}${hot}r`));
   assert.ok(ontoFooter.includes(`${BOLD}${hot}d`));
+  assert.ok(ontoFooter.includes(`${rest}pull`));
+  assert.ok(ontoFooter.includes(`${rest}push`));
+  assert.ok(!ontoFooter.includes(`${BOLD}${hot}p`));
+  assert.ok(!ontoFooter.includes(`${BOLD}${hot}s`));
 });
 
 test('branch pane types a new name on a row under the list', () => {

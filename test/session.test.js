@@ -2403,6 +2403,14 @@ test('files pane b lists branches and enter checks out', () => {
   session.pushInput('b');
   assert.equal(session.pane, 'branches');
   assert.equal(session.branchCursor, 0);
+  session.handleEvent({ type: 'key', key: 'right' });
+  assert.equal(session.branchCursor, 0);
+  session.handleEvent({ type: 'key', key: 'left' });
+  assert.equal(session.branchCursor, 0);
+  session.handleEvent({ type: 'key', key: 'down' });
+  assert.equal(session.branchCursor, 1);
+  session.handleEvent({ type: 'key', key: 'up' });
+  assert.equal(session.branchCursor, 0);
   session.pushInput('j');
   assert.equal(session.branchCursor, 1);
   session.handleEvent({ type: 'key', key: 'home' });
@@ -2415,17 +2423,32 @@ test('files pane b lists branches and enter checks out', () => {
   assert.match(session.status, /checked out feat/);
 });
 
-test('files pane p pulls and s pushes', () => {
+test('branch list p pulls and s pushes', () => {
   const a = sampleItem('a.js');
   const b = sampleItem('b.js');
   const { session, repo } = openSession([a, b], { startPane: 'files' });
   session.pushInput('p');
+  assert.equal(repo.pulls.length, 0);
+  session.pushInput('s');
+  assert.equal(repo.pushes.length, 0);
+  session.dispatch('pull');
+  assert.equal(repo.pulls.length, 0);
+  session.pushInput('b');
+  session.pushInput('p');
   assert.equal(repo.pulls.length, 1);
   assert.equal(session.status, 'pulled');
-  assert.equal(session.fileCursor, 0);
+  assert.equal(session.pane, 'branches');
   session.pushInput('s');
   assert.equal(repo.pushes.length, 1);
   assert.equal(session.status, 'pushed');
+  session.handleEvent({ type: 'key', key: 'down' });
+  session.pushInput('p');
+  assert.equal(repo.pulls.length, 1);
+  session.pushInput('s');
+  assert.equal(repo.pushes.length, 1);
+  session.handleEvent({ type: 'key', key: 'up' });
+  session.pushInput('p');
+  assert.equal(repo.pulls.length, 2);
 });
 
 test('rejected push asks f to force or escape to cancel', () => {
@@ -2441,6 +2464,7 @@ test('rejected push asks f to force or escape to cancel', () => {
     error.rejected = true;
     throw error;
   };
+  session.pushInput('b');
   session.pushInput('s');
   assert.equal(session.mode, 'confirmPush');
   assert.equal(repo.pushes.length, 0);
@@ -2469,6 +2493,7 @@ test('click force push prompt', () => {
     error.rejected = true;
     throw error;
   };
+  session.pushInput('b');
   session.pushInput('s');
   clickStatusChoice(session, 'f');
   assert.deepEqual(repo.pushes, [true]);
@@ -2490,6 +2515,7 @@ test('pull shows progress until git finishes', async () => {
     clearInterval: () => {},
   });
   session.repo.pullAsync = () => pending;
+  session.pushInput('b');
   session.pushInput('p');
   assert.equal(repo.pulls.length, 0);
   assert.equal(session.busy, 'pulling');
