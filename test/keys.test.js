@@ -107,13 +107,21 @@ test('actionFromKey maps aliases and ignores unbound keys', () => {
   assert.equal(actionFromKey('u'), 'unstage');
   assert.equal(actionFromKey('b'), null);
   assert.equal(actionFromKey('b', 'files'), 'branch');
-  assert.equal(actionFromKey('p', 'files'), 'pull');
+  assert.equal(actionFromKey('p', 'files'), 'prev');
   assert.equal(actionFromKey('u', 'files'), 'unstage');
-  assert.equal(actionFromKey('s', 'files'), 'push');
+  assert.equal(actionFromKey('s', 'files'), null);
   assert.equal(actionFromKey('n'), 'next');
   assert.equal(actionFromKey('n', 'branches'), 'newBranch');
   assert.equal(actionFromKey('r', 'branches'), 'rebase');
   assert.equal(actionFromKey('d', 'branches'), 'drop');
+  assert.equal(actionFromKey('p', 'branches'), 'pull');
+  assert.equal(actionFromKey('s', 'branches'), 'push');
+  assert.equal(actionFromKey('left', 'branches'), null);
+  assert.equal(actionFromKey('right', 'branches'), null);
+  assert.equal(actionFromKey('j', 'branches'), 'next');
+  assert.equal(actionFromKey('k', 'branches'), 'prev');
+  assert.equal(actionFromKey('up', 'branches'), 'scrollUp');
+  assert.equal(actionFromKey('down', 'branches'), 'scrollDown');
   assert.equal(actionFromKey('d'), 'revert');
   assert.equal(actionFromKey('r', 'files'), null);
   assert.equal(actionFromKey('escape'), null);
@@ -152,8 +160,8 @@ test('layoutButtons hitboxes cover labels', () => {
   assert.equal(hitIds.includes('add'), true);
   assert.equal(hitIds.includes('reload'), false);
   assert.equal(hitIds.includes('branch'), true);
-  assert.equal(hitIds.includes('pull'), true);
-  assert.equal(hitIds.includes('push'), true);
+  assert.equal(hitIds.includes('pull'), false);
+  assert.equal(hitIds.includes('push'), false);
   assert.equal(hitIds.includes('newBranch'), false);
   const ids = off.parts.map((part) => part.action.id);
   assert.equal(ids.includes('layout'), false);
@@ -181,6 +189,8 @@ test('disabledActions hides add unstage drop on files todos', () => {
   assert.equal(file.includes('add'), false);
   assert.equal(file.includes('unstage'), false);
   assert.equal(file.includes('revert'), false);
+  assert.equal(file.includes('pull'), true);
+  assert.equal(file.includes('push'), true);
   const todos = disabledActions('files', { kind: 'todos' });
   assert.deepEqual(todos, FILES_TODO_DISABLED);
   assert.equal(todos.includes('add'), true);
@@ -199,21 +209,46 @@ test('disabledActions hides add unstage drop on files todos', () => {
   const current = disabledActions('branches', { name: 'feat', current: true });
   assert.equal(current.includes('rebase'), true);
   assert.equal(current.includes('drop'), true);
+  assert.equal(current.includes('pull'), false);
+  assert.equal(current.includes('push'), false);
+  assert.equal(current.includes('prev'), true);
+  assert.equal(current.includes('next'), true);
   const onto = disabledActions('branches', { name: 'main', current: false });
   assert.equal(onto.includes('rebase'), false);
   assert.equal(onto.includes('drop'), false);
-  const branchLayout = layoutButtons(
-    160,
-    false,
-    BRANCHES_DISABLED,
-    ['newBranch', 'rebase', 'drop'],
-    ['rebase', 'drop'],
-  );
+  assert.equal(onto.includes('pull'), true);
+  assert.equal(onto.includes('push'), true);
+  const branchIds = ['newBranch', 'rebase', 'drop', 'pull', 'push'];
+  const branchLayout = layoutButtons(160, false, BRANCHES_DISABLED, branchIds, [
+    'rebase',
+    'drop',
+  ]);
   assert.ok(branchLayout.parts.some((part) => part.action.id === 'drop'));
+  assert.ok(branchLayout.parts.some((part) => part.action.id === 'pull'));
+  assert.ok(branchLayout.hits.some((hit) => hit.id === 'pull'));
+  assert.ok(branchLayout.hits.some((hit) => hit.id === 'push'));
+  assert.ok(!branchLayout.parts.some((part) => part.action.id === 'prev'));
+  assert.ok(!branchLayout.parts.some((part) => part.action.id === 'next'));
   assert.equal(
     branchLayout.hits.find((hit) => hit.id === 'drop'),
     undefined,
   );
+  const ontoLayout = layoutButtons(160, false, BRANCHES_DISABLED, branchIds, [
+    'pull',
+    'push',
+  ]);
+  assert.ok(ontoLayout.parts.some((part) => part.action.id === 'pull'));
+  assert.ok(ontoLayout.parts.some((part) => part.action.id === 'push'));
+  assert.equal(
+    ontoLayout.hits.find((hit) => hit.id === 'pull'),
+    undefined,
+  );
+  assert.equal(
+    ontoLayout.hits.find((hit) => hit.id === 'push'),
+    undefined,
+  );
+  assert.ok(ontoLayout.hits.some((hit) => hit.id === 'rebase'));
+  assert.ok(ontoLayout.hits.some((hit) => hit.id === 'drop'));
 });
 
 test('buttonWord is the footer hint including the bound mark', () => {
