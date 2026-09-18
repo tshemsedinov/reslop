@@ -6,7 +6,8 @@ const assert = require('node:assert/strict');
 const keys = require('../lib/keys.js');
 const { FILES_DISABLED, FILES_TODO_DISABLED, FILES_GIT_DISABLED } = keys;
 const { DIFF_DISABLED, TODO_DISABLED, BRANCHES_DISABLED } = keys;
-const { decodeChunk, actionFromKey, hitAction, disabledActions } = keys;
+const { COMMITS_DISABLED, decodeChunk, actionFromKey, hitAction } = keys;
+const { disabledActions } = keys;
 const { actionLetter, buttonWord } = keys;
 const { layoutButtons } = require('../lib/render.js');
 
@@ -122,6 +123,15 @@ test('actionFromKey maps aliases and ignores unbound keys', () => {
   assert.equal(actionFromKey('k', 'branches'), 'prev');
   assert.equal(actionFromKey('up', 'branches'), 'scrollUp');
   assert.equal(actionFromKey('down', 'branches'), 'scrollDown');
+  assert.equal(actionFromKey('a', 'commits'), 'amend');
+  assert.equal(actionFromKey('f', 'commits'), 'fixup');
+  assert.equal(actionFromKey('d', 'commits'), 'drop');
+  assert.equal(actionFromKey('c', 'commits'), 'commit');
+  assert.equal(actionFromKey('left', 'commits'), null);
+  assert.equal(actionFromKey('right', 'commits'), null);
+  assert.equal(actionFromKey('a', 'files'), 'add');
+  assert.equal(actionFromKey('f', 'files'), 'feedback');
+  assert.equal(actionFromKey('d', 'files'), 'revert');
   assert.equal(actionFromKey('d'), 'revert');
   assert.equal(actionFromKey('r', 'files'), null);
   assert.equal(actionFromKey('escape'), null);
@@ -249,6 +259,30 @@ test('disabledActions hides add unstage drop on files todos', () => {
   );
   assert.ok(ontoLayout.hits.some((hit) => hit.id === 'rebase'));
   assert.ok(ontoLayout.hits.some((hit) => hit.id === 'drop'));
+  const commitIds = ['amend', 'fixup', 'drop'];
+  const head = { sha: 'aaa', canCommit: true };
+  const commitOff = disabledActions('commits', head);
+  assert.equal(commitOff.includes('amend'), false);
+  assert.equal(commitOff.includes('commit'), false);
+  assert.equal(commitOff.includes('prev'), true);
+  assert.equal(commitOff.includes('layout'), true);
+  const emptyOff = disabledActions('commits', { canCommit: true });
+  assert.equal(emptyOff.includes('amend'), true);
+  assert.equal(emptyOff.includes('commit'), false);
+  const commitLayout = layoutButtons(160, false, COMMITS_DISABLED, commitIds, [
+    'commit',
+    'fixup',
+  ]);
+  assert.ok(commitLayout.parts.some((part) => part.action.id === 'commit'));
+  assert.ok(commitLayout.parts.some((part) => part.action.id === 'amend'));
+  assert.ok(commitLayout.parts.some((part) => part.action.id === 'drop'));
+  assert.ok(!commitLayout.parts.some((part) => part.action.id === 'prev'));
+  assert.ok(!commitLayout.parts.some((part) => part.action.id === 'layout'));
+  assert.equal(
+    commitLayout.hits.find((hit) => hit.id === 'commit'),
+    undefined,
+  );
+  assert.ok(commitLayout.hits.some((hit) => hit.id === 'amend'));
 });
 
 test('buttonWord is the footer hint including the bound mark', () => {

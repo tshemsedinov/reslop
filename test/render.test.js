@@ -650,56 +650,110 @@ test('quit prompt paints f and c yellow on grey copy', () => {
   assert.equal(cont, 'continue next time');
 });
 
-test('commit prompt paints c a and f yellow on grey copy', () => {
-  const hunk = {
-    oldStart: 1,
-    oldCount: 1,
-    newStart: 1,
-    newCount: 1,
-    header: '@@ -1,1 +1,1 @@',
-    lines: [{ type: 'add', text: 'x', noNl: false, blockId: 0 }],
-  };
+test('commit pane lists subject author date and hash', () => {
   const view = {
-    item: {
-      origin: 'unstaged',
-      file: { newPath: 'f.js', oldPath: 'f.js', isBinary: false },
-      hunk,
-      blockId: 0,
-    },
-    index: 0,
-    total: 1,
-    scroll: 0,
-    status: '',
-    mode: 'confirmCommit',
-    counts: { staged: 0, unstaged: 1, untracked: 0 },
+    pane: 'commits',
+    commits: [
+      {
+        sha: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+        shortSha: 'aaa1111',
+        author: 'Ada',
+        date: '2 hours ago',
+        subject: 'land the change',
+        head: true,
+      },
+      {
+        sha: 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
+        shortSha: 'bbb2222',
+        author: 'Bob',
+        date: 'yesterday',
+        subject: 'init',
+        head: false,
+      },
+    ],
+    commitCursor: 0,
     repoName: 'demo',
+    counts: { staged: 1, unstaged: 0, untracked: 0 },
+    branch: 'main',
+    status: '',
+    scroll: 0,
   };
+  const frame = render.renderFrame(view, {
+    width: 80,
+    height: 12,
+    color: false,
+  });
+  const rows = frame.rows.map((row) => stripAnsi(row));
+  const text = rows.join('\n');
+  const headRow = rows.find((row) => row.includes('aaa1111'));
+  const oldRow = rows.find((row) => row.includes('bbb2222'));
+  assert.ok(headRow);
+  assert.ok(oldRow);
+  assert.ok(headRow.includes('▶  land the change'));
+  assert.ok(headRow.includes('Ada'));
+  assert.ok(headRow.includes('2 hours ago'));
+  assert.ok(oldRow.includes('    init'));
+  assert.ok(oldRow.includes('Bob'));
+  assert.ok(oldRow.includes('yesterday'));
+  assert.ok(headRow.endsWith('2 hours ago   '));
+  assert.ok(oldRow.endsWith('yesterday   '));
+  assert.equal(
+    headRow.indexOf('2 hours ago') + '2 hours ago'.length,
+    oldRow.indexOf('yesterday') + 'yesterday'.length,
+  );
+  assert.match(text, /land the change/);
+  assert.match(render.headerText(view), /land the change HEAD 1\/2/);
+  const footer = frame.rows[frame.rows.length - 1];
+  assert.match(footer, /commit/);
+  assert.match(footer, /amend/);
+  assert.match(footer, /fixup/);
+  assert.match(footer, /drop/);
+  assert.ok(!footer.includes('add'));
+  assert.ok(!footer.includes('←'));
+  assert.ok(!footer.includes('mode'));
+  assert.ok(frame.buttons.find((hit) => hit.id === 'commit'));
+  assert.ok(frame.buttons.find((hit) => hit.id === 'amend'));
+  assert.ok(frame.buttons.find((hit) => hit.id === 'fixup'));
+  assert.ok(frame.buttons.find((hit) => hit.id === 'drop'));
   const colored = render.renderFrame(view, {
     width: 80,
-    height: 16,
+    height: 12,
     color: true,
   });
-  const statusRow = colored.rows[colored.rows.length - 2];
-  const plain = stripAnsi(statusRow);
-  assert.equal(plain.startsWith(render.COMMIT_PROMPT), true);
-  assert.ok(plain.includes('commit'));
-  assert.ok(plain.includes('amend'));
-  assert.ok(plain.includes('fixup'));
-  assert.ok(statusRow.includes(fg(THEME.warnFg)));
-  assert.ok(statusRow.includes(fg(THEME.mutedFg)));
-  assert.ok(statusRow.includes(bg(THEME.chromeBg)));
-  assert.ok(statusRow.includes(BOLD));
-  const warn = fg(THEME.warnFg);
-  assert.equal(statusRow.split(warn).length - 1, 3);
-  const hits = colored.statusHits;
-  assert.equal(hits.length, 3);
-  assert.equal(hits[0].id, 'c');
-  assert.equal(hits[1].id, 'a');
-  assert.equal(hits[2].id, 'f');
-  assert.equal(hits[0].y, colored.rows.length - 1);
-  assert.equal(plain.slice(hits[0].x0, hits[0].x1).trim(), 'commit');
-  assert.equal(plain.slice(hits[1].x0, hits[1].x1).trim(), 'amend');
-  assert.equal(plain.slice(hits[2].x0, hits[2].x1).trim(), 'fixup');
+  const headPainted = colored.rows.find((row) => row.includes('aaa1111'));
+  const lead = ansi.paint(' ', THEME.buttonHotFg, THEME.buttonBg, true);
+  const subject = ansi.paint(
+    'land the change',
+    THEME.buttonHotFg,
+    THEME.buttonBg,
+    true,
+  );
+  assert.ok(headPainted.includes(`${lead}${subject}`));
+  assert.ok(!headPainted.includes(bg(THEME.currentBg)));
+  view.commitCursor = 1;
+  const selected = render.renderFrame(view, {
+    width: 80,
+    height: 12,
+    color: true,
+  });
+  const idleHead = selected.rows.find((row) => row.includes('aaa1111'));
+  const idleLead = ansi.paint(' ', THEME.chromeFg, THEME.ctxBg, true);
+  const idleSubject = ansi.paint(
+    'land the change',
+    THEME.chromeFg,
+    THEME.ctxBg,
+    true,
+  );
+  assert.ok(idleHead.includes(`${idleLead}${idleSubject}`));
+  const selectedRow = selected.rows.find((row) => row.includes('bbb2222'));
+  const selectedLead = ansi.paint(' ', THEME.buttonHotFg, THEME.buttonBg, true);
+  const selectedSubject = ansi.paint(
+    'init',
+    THEME.buttonHotFg,
+    THEME.buttonBg,
+    true,
+  );
+  assert.ok(selectedRow.includes(`${selectedLead}${selectedSubject}`));
 });
 
 test('update prompt paints y and n on the status line', () => {

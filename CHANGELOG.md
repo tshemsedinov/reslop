@@ -6,6 +6,7 @@
 - Move git pull and push from the file list to the branch list
 - Improve branch list TUI/TUX
 - Keep diff viewer order when staging or unstaging a block
+- Add a commits list screen with commit operation
 
 ## [0.1.8][] - 2026-09-17
 

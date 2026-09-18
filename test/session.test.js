@@ -58,6 +58,7 @@ const mockRepo = (initial) => {
   const reverted = [];
   const unstageCalls = [];
   const commits = [];
+  const commitDrops = [];
   const pulls = [];
   const pushes = [];
   const checkouts = [];
@@ -66,6 +67,22 @@ const mockRepo = (initial) => {
   const drops = [];
   const edited = [];
   const listed = [];
+  let commitList = [
+    {
+      sha: 'aaa1111aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+      shortSha: 'aaa1111',
+      author: 'Ada',
+      date: '2 hours ago',
+      subject: 'land the change',
+    },
+    {
+      sha: 'bbb2222bbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
+      shortSha: 'bbb2222',
+      author: 'Bob',
+      date: 'yesterday',
+      subject: 'init',
+    },
+  ];
   return {
     added,
     reverted,
@@ -79,6 +96,7 @@ const mockRepo = (initial) => {
     drops,
     edited,
     listed,
+    commitDrops,
     load: () => ({ top: '/tmp', items: [...items], branch: 'main' }),
     add: (top, item) => {
       added.push(item);
@@ -114,6 +132,12 @@ const mockRepo = (initial) => {
     createBranch: (top, name) => created.push(name),
     rebase: (top, onto) => rebases.push(onto),
     drop: (top, name) => drops.push(name),
+    listCommits: () =>
+      commitList.map((entry, index) => ({ ...entry, head: index === 0 })),
+    dropCommit: (top, sha) => {
+      commitDrops.push(sha);
+      commitList = commitList.filter((entry) => entry.sha !== sha);
+    },
     pull: () => pulls.push(true),
     push: () => pushes.push(true),
     edit: (top, item, text) => {
@@ -179,6 +203,31 @@ const clickStatusChoice = (session, id) => {
     kind: 'release',
     x: hit.x0 + 1,
     y: hit.y,
+    press: false,
+  });
+};
+
+const clickFooter = (session, id) => {
+  session.draw();
+  const hit = session.lastFrame.buttons.find((entry) => entry.id === id);
+  assert.ok(hit);
+  const y = session.lastFrame.height;
+  session.handleEvent({
+    type: 'mouse',
+    button: 0,
+    btn: 0,
+    kind: 'press',
+    x: hit.x0 + 1,
+    y,
+    press: true,
+  });
+  session.handleEvent({
+    type: 'mouse',
+    button: 0,
+    btn: 0,
+    kind: 'release',
+    x: hit.x0 + 1,
+    y,
     press: false,
   });
 };
@@ -1853,14 +1902,17 @@ test('newReview starts a new file even if latest is editing', () => {
   assert.equal(session.notes.todos.length, 0);
 });
 
-test('c asks commit amend or fixup then commits the message', () => {
+test('files pane c lists commits and c commits the message', () => {
   const { session, repo } = openSession([sampleItem('a.js', 'staged')], {
     startPane: 'files',
   });
   session.pushInput('c');
-  assert.equal(session.mode, 'confirmCommit');
-  session.handleEvent({ type: 'key', key: 'escape' });
+  assert.equal(session.pane, 'commits');
   assert.equal(session.mode, 'review');
+  assert.equal(session.commitCursor, 0);
+  assert.equal(session.view().commits[0].subject, 'land the change');
+  session.handleEvent({ type: 'key', key: 'escape' });
+  assert.equal(session.pane, 'files');
   assert.equal(repo.commits.length, 0);
   session.pushInput('c');
   session.pushInput('c');
@@ -1880,23 +1932,23 @@ test('c asks commit amend or fixup then commits the message', () => {
   assert.equal(repo.commits[0].message, 'land the change');
 });
 
-test('click commit submenu chooses commit amend or fixup', () => {
-  const clickKind = (letter, kind) => {
+test('click commit footer chooses commit amend or fixup', () => {
+  const clickKind = (id, kind) => {
     const { session } = openSession([sampleItem('a.js', 'staged')], {
       startPane: 'files',
     });
     session.pushInput('c');
-    clickStatusChoice(session, letter);
-    assert.equal(session.pane, 'files');
+    clickFooter(session, id);
+    assert.equal(session.pane, 'commits');
     assert.equal(session.mode, 'compose');
     assert.equal(session.commitKind, kind);
   };
-  clickKind('c', 'commit');
-  clickKind('a', 'amend');
-  clickKind('f', 'fixup');
+  clickKind('commit', 'commit');
+  clickKind('amend', 'amend');
+  clickKind('fixup', 'fixup');
 });
 
-test('c then a amends with the previous message', () => {
+test('commits pane a amends with the previous message', () => {
   const { session, repo } = openSession([sampleItem('a.js')], {
     startPane: 'files',
   });
@@ -1911,17 +1963,17 @@ test('c then a amends with the previous message', () => {
   assert.equal(repo.commits[0].message, 'previous message');
 });
 
-test('c then f fixups HEAD', () => {
+test('commits pane f fixups the selected commit', () => {
   const { session, repo } = openSession([sampleItem('a.js', 'staged')], {
     startPane: 'files',
   });
   session.pushInput('c');
   session.pushInput('f');
-  assert.equal(session.editor.text, 'HEAD');
+  assert.equal(session.editor.text, 'aaa1111');
   session.handleEvent({ type: 'key', key: 'enter' });
   assert.equal(session.status, 'fixup');
   assert.equal(repo.commits[0].kind, 'fixup');
-  assert.equal(repo.commits[0].message, 'HEAD');
+  assert.equal(repo.commits[0].message, 'aaa1111');
 });
 
 test('escape from commit message does not run git', () => {
@@ -1946,39 +1998,134 @@ test('compose c inserts a letter and does not open commit', () => {
   assert.equal(repo.commits.length, 0);
 });
 
-test('files pane c still opens commit', () => {
+test('files pane c opens the commits list', () => {
   const { session } = openSession([sampleItem('a.js', 'staged')], {
     startPane: 'files',
   });
   session.pushInput('c');
-  assert.equal(session.mode, 'confirmCommit');
+  assert.equal(session.pane, 'commits');
   session.pushInput('c');
   assert.equal(session.mode, 'compose');
   assert.equal(session.composeKind, 'commit');
 });
 
-test('diff pane c does not open commit', () => {
+test('diff pane c does not open commits', () => {
   const { session } = openSession([sampleItem('a.js', 'staged')]);
   session.pushInput('c');
   assert.equal(session.mode, 'review');
   assert.equal(session.pane, 'diff');
 });
 
-test('c skips commit when nothing is staged', () => {
+test('commits pane skips commit when nothing is staged', () => {
   const { session, repo } = openSession([sampleItem('a.js')], {
     startPane: 'files',
   });
   session.pushInput('c');
-  assert.equal(session.mode, 'confirmCommit');
+  assert.equal(session.pane, 'commits');
   session.pushInput('c');
   assert.equal(session.mode, 'review');
   assert.equal(session.status, 'nothing to commit');
   assert.equal(repo.commits.length, 0);
-  session.pushInput('c');
   session.pushInput('f');
   assert.equal(session.mode, 'review');
   assert.equal(session.status, 'nothing to commit');
   assert.equal(repo.commits.length, 0);
+});
+
+test('commits pane lists newest first', () => {
+  const { session } = openSession([sampleItem('a.js')], { startPane: 'files' });
+  session.pushInput('c');
+  const listed = session.view().commits.map((entry) => entry.subject);
+  assert.deepEqual(listed, ['land the change', 'init']);
+  session.handleEvent({ type: 'key', key: 'right' });
+  assert.equal(session.commitCursor, 0);
+  session.handleEvent({ type: 'key', key: 'down' });
+  assert.equal(session.commitCursor, 1);
+  session.handleEvent({ type: 'key', key: 'up' });
+  assert.equal(session.commitCursor, 0);
+  session.pushInput('j');
+  assert.equal(session.commitCursor, 1);
+  session.handleEvent({ type: 'key', key: 'home' });
+  assert.equal(session.commitCursor, 0);
+  session.handleEvent({ type: 'key', key: 'end' });
+  assert.equal(session.commitCursor, 1);
+  session.handleEvent({ type: 'key', key: 'enter' });
+  assert.equal(session.pane, 'commits');
+  session.pushInput('m');
+  assert.equal(session.layout, 'unified');
+  assert.equal(session.pane, 'commits');
+});
+
+test('commits pane d asks to drop the selected commit', () => {
+  const { session, repo } = openSession([sampleItem('a.js')], {
+    startPane: 'files',
+  });
+  session.pushInput('c');
+  session.pushInput('d');
+  assert.equal(session.mode, 'confirmDrop');
+  assert.equal(session.view().dropName, 'aaa1111');
+  session.pushInput('n');
+  assert.equal(session.mode, 'review');
+  assert.equal(repo.commitDrops.length, 0);
+  session.pushInput('d');
+  session.handleEvent({ type: 'key', key: 'escape' });
+  assert.equal(session.mode, 'review');
+  assert.equal(repo.commitDrops.length, 0);
+  session.pushInput('d');
+  session.pushInput('y');
+  assert.deepEqual(repo.commitDrops, [
+    'aaa1111aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+  ]);
+  assert.match(session.status, /dropped aaa1111/);
+  assert.equal(session.pane, 'commits');
+  assert.equal(session.view().commits[0].subject, 'init');
+});
+
+test('click commit row selects it', () => {
+  const { session } = openSession([sampleItem('a.js')], { startPane: 'files' });
+  session.pushInput('c');
+  session.draw();
+  const hit = session.lastFrame.fileHits.find((entry) => entry.cursor === 1);
+  assert.ok(hit);
+  session.handleEvent({
+    type: 'mouse',
+    button: 0,
+    btn: 0,
+    kind: 'press',
+    x: 4,
+    y: hit.y,
+    press: true,
+  });
+  session.handleEvent({
+    type: 'mouse',
+    button: 0,
+    btn: 0,
+    kind: 'release',
+    x: 4,
+    y: hit.y,
+    press: false,
+  });
+  assert.equal(session.commitCursor, 1);
+  assert.equal(session.pane, 'commits');
+});
+
+test('escape from commits returns to files', () => {
+  const { session } = openSession([sampleItem('a.js')], { startPane: 'files' });
+  session.pushInput('c');
+  assert.equal(session.pane, 'commits');
+  session.handleEvent({ type: 'key', key: 'escape' });
+  assert.equal(session.pane, 'files');
+});
+
+test('files pane a and d stay add and revert', () => {
+  const added = openSession([sampleItem('a.js')], { startPane: 'files' });
+  added.session.handleEvent({ type: 'key', key: 'down' });
+  added.session.pushInput('a');
+  assert.equal(added.repo.added.length, 1);
+  const reverted = openSession([sampleItem('a.js')], { startPane: 'files' });
+  reverted.session.handleEvent({ type: 'key', key: 'down' });
+  reverted.session.pushInput('d');
+  assert.equal(reverted.repo.reverted.length, 1);
 });
 
 test('quit without notes does not write a review file', () => {
