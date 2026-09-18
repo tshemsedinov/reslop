@@ -15,6 +15,7 @@ const { createBranch, rebaseBranch, dropBranch, pullChanges } = git;
 const { pushChanges, editItem } = git;
 const { runProc } = require('../lib/git/proc.js');
 const { Session } = require('../lib/session.js');
+const { blockAddText } = require('../lib/diff.js');
 const { makeRepo, sink } = require('./helpers.js');
 
 const sessionFor = (dir) => {
@@ -284,9 +285,72 @@ test('add and unstage keep file order', () => {
     assert.equal(session.items[1].origin, 'staged');
     assert.deepEqual(paths(), ['a.txt', 'b.txt', 'c.txt']);
     assert.equal(session.current().file.newPath, 'b.txt');
+    session.refreshFromRepo({ keepView: true });
+    assert.deepEqual(paths(), ['a.txt', 'b.txt', 'c.txt']);
+    assert.equal(session.items[1].origin, 'staged');
+    assert.equal(session.current().file.newPath, 'b.txt');
     session.dispatch('unstage');
     assert.equal(session.items[1].origin, 'unstaged');
     assert.deepEqual(paths(), ['a.txt', 'b.txt', 'c.txt']);
+  } finally {
+    repo.cleanup();
+  }
+});
+
+test('staging a later hunk keeps hunk order after reload', () => {
+  const repo = makeRepo();
+  try {
+    repo.write('f.txt', 'keep\nAAA\nkeep\nBBB\nkeep\n');
+    repo.git(['add', 'f.txt']);
+    repo.git(['commit', '-m', 'init']);
+    repo.write('f.txt', 'keep\naaa\nkeep\nbbb\nkeep\n');
+    const session = sessionFor(repo.dir);
+    assert.equal(session.items.length, 2);
+    session.index = 1;
+    const before = blockAddText(
+      session.current().hunk,
+      session.current().blockId,
+    );
+    session.dispatch('add');
+    assert.equal(session.items[0].origin, 'unstaged');
+    assert.equal(session.items[1].origin, 'staged');
+    session.refreshFromRepo({ keepView: true });
+    assert.equal(session.items.length, 2);
+    assert.equal(session.items[0].origin, 'unstaged');
+    assert.equal(session.items[1].origin, 'staged');
+    assert.equal(session.current().origin, 'staged');
+    assert.equal(
+      blockAddText(session.current().hunk, session.current().blockId),
+      before,
+    );
+  } finally {
+    repo.cleanup();
+  }
+});
+
+test('staging the current hunk keeps it on screen after reload', () => {
+  const repo = makeRepo();
+  try {
+    repo.write('f.txt', 'keep\nAAA\nkeep\nBBB\nkeep\n');
+    repo.git(['add', 'f.txt']);
+    repo.git(['commit', '-m', 'init']);
+    repo.write('f.txt', 'keep\naaa\nkeep\nbbb\nkeep\n');
+    const session = sessionFor(repo.dir);
+    assert.equal(session.items.length, 2);
+    const before = blockAddText(
+      session.current().hunk,
+      session.current().blockId,
+    );
+    session.dispatch('add');
+    assert.equal(session.current().origin, 'staged');
+    session.refreshFromRepo({ keepView: true });
+    assert.equal(session.current().origin, 'staged');
+    assert.equal(
+      blockAddText(session.current().hunk, session.current().blockId),
+      before,
+    );
+    assert.equal(session.items[0].origin, 'staged');
+    assert.equal(session.items[1].origin, 'unstaged');
   } finally {
     repo.cleanup();
   }

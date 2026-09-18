@@ -266,6 +266,15 @@ test('add and unstage keep block order', () => {
   );
   assert.equal(session.items[1].origin, 'staged');
   assert.equal(session.current().file.newPath, 'b.js');
+  const stagedFirst = [session.items[1], session.items[0], session.items[2]];
+  repo.load = () => ({ top: '/tmp', items: stagedFirst, branch: 'main' });
+  session.refreshFromRepo({ keepView: true });
+  assert.deepEqual(
+    session.items.map((item) => item.file.newPath),
+    ['a.js', 'b.js', 'c.js'],
+  );
+  assert.equal(session.items[1].origin, 'staged');
+  assert.equal(session.current().file.newPath, 'b.js');
   session.dispatch('unstage');
   assert.equal(loads, 0);
   assert.equal(session.items[1].origin, 'unstaged');

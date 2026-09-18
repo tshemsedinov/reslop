@@ -6,7 +6,7 @@ const path = require('node:path');
 
 const { Session } = require('../lib/session.js');
 const items = require('../lib/session/items.js');
-const { restoredIndex } = items;
+const { restoredIndex, alignLoadedItems } = items;
 const watch = require('../lib/session/watch.js');
 const { ignoredRel, createDiskWatcher } = watch;
 const { sink } = require('./helpers.js');
@@ -193,6 +193,81 @@ test('disk watcher debounces changes and ignores lock files', () => {
     fsWatch.watchers.every((entry) => entry.closed),
     true,
   );
+});
+
+test('restoredIndex keeps the same changed lines when headers collide', () => {
+  const here = sampleItem('f.js', { origin: 'staged', text: 'aaa' });
+  const other = sampleItem('f.js', { origin: 'staged', text: 'bbb' });
+  const remain = sampleItem('f.js', { text: 'aaa' });
+  assert.equal(restoredIndex([other, remain], here), 1);
+});
+
+test('ignoreWatch skips the next disk reload', () => {
+  const a = sampleItem('a.js');
+  const b = sampleItem('b.js');
+  const { session, repo } = openWatched([a]);
+  session.uiOpen = true;
+  session.lifecycle.ignoreWatch();
+  repo.setItems([a, b]);
+  session.lifecycle.onDiskChange();
+  assert.equal(session.items.length, 1);
+});
+
+test('alignLoadedItems prefers changed lines over hunk headers', () => {
+  const first = sampleItem('f.js', { text: 'aaa' });
+  const second = sampleItem('f.js', { text: 'bbb' });
+  second.blockId = 1;
+  second.hunk = {
+    ...second.hunk,
+    lines: [{ type: 'add', text: 'bbb', noNl: false, blockId: 1 }],
+  };
+  const staged = sampleItem('f.js', { origin: 'staged', text: 'bbb' });
+  const remain = sampleItem('f.js', { text: 'aaa' });
+  const ordered = alignLoadedItems([first, second], [staged, remain]);
+  assert.equal(ordered[0].hunk.lines[0].text, 'aaa');
+  assert.equal(ordered[0].origin, 'unstaged');
+  assert.equal(ordered[1].hunk.lines[0].text, 'bbb');
+  assert.equal(ordered[1].origin, 'staged');
+});
+
+test('alignLoadedItems keeps order when origin and headers change', () => {
+  const prevA = sampleItem('a.js', { text: 'a' });
+  const prevB = sampleItem('b.js', { text: 'b' });
+  const prevC = sampleItem('c.js', { text: 'c' });
+  const nextB = sampleItem('b.js', {
+    origin: 'staged',
+    text: 'b',
+    oldStart: 8,
+    newStart: 8,
+  });
+  const nextA = sampleItem('a.js', { text: 'a' });
+  const nextC = sampleItem('c.js', { text: 'c' });
+  const prev = [prevA, prevB, prevC];
+  const next = [nextB, nextA, nextC];
+  const ordered = alignLoadedItems(prev, next);
+  assert.deepEqual(
+    ordered.map((item) => item.file.newPath),
+    ['a.js', 'b.js', 'c.js'],
+  );
+  assert.equal(ordered[1].origin, 'staged');
+  assert.equal(ordered[1].hunk.oldStart, 8);
+});
+
+test('watch reload keeps item order after origin change', () => {
+  const a = sampleItem('a.js', { text: 'a' });
+  const b = sampleItem('b.js', { text: 'b' });
+  const c = sampleItem('c.js', { text: 'c' });
+  const { session, repo } = openWatched([a, b, c]);
+  session.uiOpen = true;
+  session.index = 1;
+  repo.setItems([{ ...b, origin: 'staged' }, a, c]);
+  session.lifecycle.onDiskChange();
+  assert.deepEqual(
+    session.items.map((item) => item.file.newPath),
+    ['a.js', 'b.js', 'c.js'],
+  );
+  assert.equal(session.items[1].origin, 'staged');
+  assert.equal(session.current().file.newPath, 'b.js');
 });
 
 test('restoredIndex keeps a shifted hunk on the same file', () => {
