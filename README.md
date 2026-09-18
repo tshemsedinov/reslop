@@ -21,7 +21,7 @@ Review → Plan → Repair → Verify
 - Stage, unstage, or revert each contiguous block of diff lines.
 - Auto-reload local diffs when files change, keeping the current screen.
 - Import GitHub PR and GitLab MR review comments into the local plan for AI.
-- Commit, amend, or fixup staged changes from the file list.
+- Commit, amend, fixup, or drop from the commits list.
 - Branches: checkout, create, rebase, drop, pull and push.
 - Review each npm dependency once across `package.json` and the lockfile.
 - Propose unused removals, npm audit fixes, and outdated updates as diffs.
@@ -53,22 +53,22 @@ Reviews go in `.review/YYYY-MM-DD-NN.md` with frontmatter `status`:
 
 ## Hotkeys
 
-| Key                 | Action                                        |
-| ------------------- | --------------------------------------------- |
-| `a` / `u` / `d`     | Stage / unstage / drop this diff              |
-| `c`                 | File list: `c` commit / `a` amend / `f` fixup |
-| `b`                 | List branches; `n` new; `r` rebase; `d` drop  |
-| `p` / `s`           | git pull/push                                 |
-| `f` / `t` / `e`     | Feedback / repo todo / edit added lines       |
-| `m`                 | Mode: unified / mixed / side-by-side          |
-| `⏎`                 | Open the selected file                        |
-| `→` / `j`           | Next remaining diff / file                    |
-| `←` / `k`           | Previous remaining diff / file                |
-| `Ctrl-e` / `Ctrl-y` | Scroll one line down / up                     |
-| `Ctrl-f` / `Ctrl-b` | Scroll page down / up                         |
-| `Ctrl-d` / `Ctrl-u` | Scroll half-page down / up                    |
-| `⌫` / `Del`         | Remove the selected todo                      |
-| `Esc` / `q`         | Quit                                          |
+| Key                 | Action                                       |
+| ------------------- | -------------------------------------------- |
+| `a` / `u` / `d`     | Stage / unstage / drop this diff             |
+| `c`                 | File list: commits; `c`/`a`/`f`/`d` there    |
+| `b`                 | List branches; `n` new; `r` rebase; `d` drop |
+| `p` / `s`           | Branch list: git pull / push                 |
+| `f` / `t` / `e`     | Feedback / repo todo / edit added lines      |
+| `m`                 | Mode: unified / mixed / side-by-side         |
+| `⏎`                 | Open the selected file                       |
+| `→` / `j`           | Next remaining diff / file                   |
+| `←` / `k`           | Previous remaining diff / file               |
+| `Ctrl-e` / `Ctrl-y` | Scroll one line down / up                    |
+| `Ctrl-f` / `Ctrl-b` | Scroll page down / up                        |
+| `Ctrl-d` / `Ctrl-u` | Scroll half-page down / up                   |
+| `⌫` / `Del`         | Remove the selected todo                     |
+| `Esc` / `q`         | Quit                                         |
 
 ## Future
 

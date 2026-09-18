@@ -12,6 +12,7 @@ const { load, addItem, unstageItem, revertItem } = git;
 const { commitChanges, hasStaged, lastMessage, createGitRepo } = git;
 const { currentBranch, listBranches, checkoutBranch } = git;
 const { createBranch, rebaseBranch, dropBranch, pullChanges } = git;
+const { listCommits, dropCommit } = git;
 const { pushChanges, editItem } = git;
 const { runProc } = require('../lib/git/proc.js');
 const { Session } = require('../lib/session.js');
@@ -237,7 +238,7 @@ test('committing the last staged change does not end the review', () => {
     assert.equal(session.emptyReview, false);
     assert.equal(session.status, 'committed');
     assert.equal(session.items.length, 0);
-    assert.equal(session.pane, 'files');
+    assert.equal(session.pane, 'commits');
   } finally {
     repo.cleanup();
   }
@@ -679,6 +680,87 @@ test('rebaseBranch aborts when the replay conflicts', () => {
     assert.throws(() => rebaseBranch(repo.dir, 'main'));
     assert.equal(currentBranch(repo.dir), 'feat');
     assert.equal(repo.read('f.txt'), 'feat\n');
+  } finally {
+    repo.cleanup();
+  }
+});
+
+test('listCommits is newest first with author date and hash', () => {
+  const repo = makeRepo();
+  try {
+    repo.write('f.txt', 'a\n');
+    repo.git(['add', 'f.txt']);
+    repo.git(['commit', '-m', 'init']);
+    repo.write('f.txt', 'b\n');
+    repo.git(['add', 'f.txt']);
+    repo.git(['commit', '-m', 'next']);
+    const listed = listCommits(repo.dir);
+    assert.equal(listed.length, 2);
+    assert.equal(listed[0].subject, 'next');
+    assert.equal(listed[0].head, true);
+    assert.equal(listed[1].subject, 'init');
+    assert.equal(listed[1].head, false);
+    assert.ok(listed[0].author);
+    assert.ok(listed[0].date);
+    assert.match(listed[0].sha, /^[0-9a-f]{40}$/);
+    assert.match(listed[0].shortSha, /^[0-9a-f]{7,}$/);
+  } finally {
+    repo.cleanup();
+  }
+});
+
+test('dropCommit soft-resets HEAD', () => {
+  const repo = makeRepo();
+  try {
+    repo.write('f.txt', 'a\n');
+    repo.git(['add', 'f.txt']);
+    repo.git(['commit', '-m', 'one']);
+    repo.write('f.txt', 'b\n');
+    repo.git(['add', 'f.txt']);
+    repo.git(['commit', '-m', 'two']);
+    const listed = listCommits(repo.dir);
+    dropCommit(repo.dir, listed[0].sha);
+    const subjects = listCommits(repo.dir).map((entry) => entry.subject);
+    assert.deepEqual(subjects, ['one']);
+    assert.equal(repo.read('f.txt'), 'b\n');
+  } finally {
+    repo.cleanup();
+  }
+});
+
+test('dropCommit rebases out an older commit', () => {
+  const repo = makeRepo();
+  try {
+    repo.write('a.txt', 'a\n');
+    repo.git(['add', 'a.txt']);
+    repo.git(['commit', '-m', 'one']);
+    repo.write('b.txt', 'b\n');
+    repo.git(['add', 'b.txt']);
+    repo.git(['commit', '-m', 'two']);
+    repo.write('c.txt', 'c\n');
+    repo.git(['add', 'c.txt']);
+    repo.git(['commit', '-m', 'three']);
+    const older = listCommits(repo.dir)[1].sha;
+    dropCommit(repo.dir, older);
+    const subjects = listCommits(repo.dir).map((entry) => entry.subject);
+    assert.deepEqual(subjects, ['three', 'one']);
+    assert.equal(repo.read('a.txt'), 'a\n');
+    assert.equal(repo.read('c.txt'), 'c\n');
+    assert.equal(repo.exists('b.txt'), false);
+  } finally {
+    repo.cleanup();
+  }
+});
+
+test('dropCommit refuses the root commit', () => {
+  const repo = makeRepo();
+  try {
+    repo.write('f.txt', 'a\n');
+    repo.git(['add', 'f.txt']);
+    repo.git(['commit', '-m', 'init']);
+    const root = listCommits(repo.dir)[0].sha;
+    assert.throws(() => dropCommit(repo.dir, root));
+    assert.equal(listCommits(repo.dir)[0].subject, 'init');
   } finally {
     repo.cleanup();
   }
