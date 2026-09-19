@@ -9,6 +9,7 @@
 - Add a commits list screen with commit operation
 - Show staged/total rather than staged/unstaged in files list
 - Show file ages in the file list right-aligned
+- Sort the file list by path from the repo root
 
 ## [0.1.8][] - 2026-09-17
 

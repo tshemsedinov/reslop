@@ -179,3 +179,14 @@ test('fileEntries copies the first item date', () => {
   const entries = fileEntries([staged, unstaged]);
   assert.equal(entries[0].date, '2 hours ago');
 });
+
+test('fileEntries sorts by path from the repo root', () => {
+  const entries = fileEntries([
+    item('lib/z.js', 'unstaged', 0),
+    item('a.js', 'staged', 1),
+    item('lib/a.js', 'untracked', 2),
+    item('README.md', 'unstaged', 3),
+  ]);
+  const paths = entries.map((entry) => entry.path);
+  assert.deepEqual(paths, ['a.js', 'lib/a.js', 'lib/z.js', 'README.md']);
+});
