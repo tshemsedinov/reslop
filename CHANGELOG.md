@@ -2,6 +2,8 @@
 
 ## [Unreleased][unreleased]
 
+## [0.1.9][] - 2026-09-19
+
 - Remove `r` reload hotkey and hint; auto-reload covers disk changes
 - Improve branch list TUI/TUX
 - Keep diff viewer order when staging or unstaging a block
@@ -9,6 +11,7 @@
 - Show staged/total rather than staged/unstaged in files list
 - Show file ages in the file list right-aligned
 - Sort the file list by path from the repo root
+- Update file-list hotkeys and hints
 
 ## [0.1.8][] - 2026-09-17
 
