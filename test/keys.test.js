@@ -4,7 +4,8 @@ const { test } = require('node:test');
 const assert = require('node:assert/strict');
 
 const keys = require('../lib/keys.js');
-const { FILES_DISABLED, FILES_TODO_DISABLED, FILES_GIT_DISABLED } = keys;
+const { FILES_DISABLED, FILES_HIDDEN } = keys;
+const { FILES_TODO_DISABLED, FILES_GIT_DISABLED } = keys;
 const { DIFF_DISABLED, TODO_DISABLED, BRANCHES_DISABLED } = keys;
 const { COMMITS_DISABLED, decodeChunk, actionFromKey, hitAction } = keys;
 const { disabledActions } = keys;
@@ -108,9 +109,9 @@ test('actionFromKey maps aliases and ignores unbound keys', () => {
   assert.equal(actionFromKey('u'), 'unstage');
   assert.equal(actionFromKey('b'), null);
   assert.equal(actionFromKey('b', 'files'), 'branch');
-  assert.equal(actionFromKey('p', 'files'), 'prev');
+  assert.equal(actionFromKey('p', 'files'), 'pull');
   assert.equal(actionFromKey('u', 'files'), 'unstage');
-  assert.equal(actionFromKey('s', 'files'), null);
+  assert.equal(actionFromKey('s', 'files'), 'push');
   assert.equal(actionFromKey('n'), 'next');
   assert.equal(actionFromKey('n', 'branches'), 'newBranch');
   assert.equal(actionFromKey('r', 'branches'), 'rebase');
@@ -129,6 +130,10 @@ test('actionFromKey maps aliases and ignores unbound keys', () => {
   assert.equal(actionFromKey('c', 'commits'), 'commit');
   assert.equal(actionFromKey('left', 'commits'), null);
   assert.equal(actionFromKey('right', 'commits'), null);
+  assert.equal(actionFromKey('left', 'files'), null);
+  assert.equal(actionFromKey('right', 'files'), null);
+  assert.equal(actionFromKey('j', 'files'), 'next');
+  assert.equal(actionFromKey('k', 'files'), 'prev');
   assert.equal(actionFromKey('a', 'files'), 'add');
   assert.equal(actionFromKey('f', 'files'), 'feedback');
   assert.equal(actionFromKey('d', 'files'), 'revert');
@@ -178,12 +183,37 @@ test('layoutButtons hitboxes cover labels', () => {
   assert.equal(ids.includes('feedback'), false);
   assert.equal(ids.includes('code'), false);
   assert.equal(ids.includes('todo'), true);
+  const filesHint = layoutButtons(160, false, FILES_HIDDEN, [
+    'commit',
+    'pull',
+    'push',
+  ]);
+  const filesIds = filesHint.parts.map((part) => part.action.id);
+  assert.deepEqual(filesIds, [
+    'add',
+    'unstage',
+    'revert',
+    'todo',
+    'branch',
+    'commit',
+    'pull',
+    'push',
+    'quit',
+  ]);
+  assert.ok(!filesIds.includes('prev'));
+  assert.ok(!filesIds.includes('next'));
   const todo = layoutButtons(160, false, TODO_DISABLED);
   const todoIds = todo.parts.map((part) => part.action.id);
   assert.equal(todoIds.includes('commit'), false);
   assert.equal(todoIds.includes('todo'), false);
   assert.equal(todoIds.includes('open'), false);
-  const dim = layoutButtons(160, false, FILES_DISABLED, [], FILES_GIT_DISABLED);
+  const dim = layoutButtons(
+    160,
+    false,
+    FILES_HIDDEN,
+    ['commit', 'pull', 'push'],
+    FILES_GIT_DISABLED,
+  );
   const dimAdd = dim.parts.find((part) => part.action.id === 'add');
   assert.equal(dimAdd.disabled, true);
   assert.equal(
@@ -199,8 +229,8 @@ test('disabledActions hides add unstage drop on files todos', () => {
   assert.equal(file.includes('add'), false);
   assert.equal(file.includes('unstage'), false);
   assert.equal(file.includes('revert'), false);
-  assert.equal(file.includes('pull'), true);
-  assert.equal(file.includes('push'), true);
+  assert.equal(file.includes('pull'), false);
+  assert.equal(file.includes('push'), false);
   const todos = disabledActions('files', { kind: 'todos' });
   assert.deepEqual(todos, FILES_TODO_DISABLED);
   assert.equal(todos.includes('add'), true);
