@@ -522,10 +522,10 @@ test('status line includes repo +/- totals', () => {
   });
   const statusRow = stripAnsi(frame.rows[frame.rows.length - 2]);
   assert.match(statusRow, /\[main\] {2}feedback 0 {2}todo 0 {2}code 0/);
-  assert.match(statusRow, /\+3\/32 {2}-1\/5 {2}1\/17\s*$/);
+  assert.match(statusRow, /\+3\/35 {2}-1\/6 {2}1\/17\s*$/);
   assert.ok(!statusRow.includes('untracked'));
   const notesAt = statusRow.indexOf('feedback 0');
-  const plusAt = statusRow.indexOf('+3/32');
+  const plusAt = statusRow.indexOf('+3/35');
   assert.ok(notesAt < plusAt);
   const colored = render.renderFrame(view, {
     width: 80,

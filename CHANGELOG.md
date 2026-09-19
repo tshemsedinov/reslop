@@ -7,6 +7,7 @@
 - Improve branch list TUI/TUX
 - Keep diff viewer order when staging or unstaging a block
 - Add a commits list screen with commit operation
+- Show staged/total rather than staged/unstaged in files list
 
 ## [0.1.8][] - 2026-09-17
 
