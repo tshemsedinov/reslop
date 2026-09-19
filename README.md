@@ -1,4 +1,6 @@
-# 👁️ reslop — Review AI generated code and plan changes
+# 👁️ reslop
+
+## Review AI generated code and plan changes
 
 [![ci status](https://github.com/tshemsedinov/reslop/workflows/Testing%20CI/badge.svg)](https://github.com/tshemsedinov/reslop/actions?query=workflow%3A%22Testing+CI%22+branch%3Amain)
 [![snyk](https://snyk.io/test/github/tshemsedinov/reslop/badge.svg)](https://snyk.io/test/github/tshemsedinov/reslop)
@@ -16,16 +18,18 @@ for the agent.
 Review → Plan → Repair → Verify
 ```
 
-- Leave feedback, issues/todos, and in-place code proposals as a repair plan.
-- Review uncommitted git diffs, a given commit, a GitHub PR, or a GitLab MR.
-- Stage, unstage, or revert each contiguous block of diff lines.
-- Auto-reload local diffs when files change, keeping the current screen.
-- Import GitHub PR and GitLab MR review comments into the local plan for AI.
-- Commit, amend, fixup, or drop from the commits list.
-- Branches: checkout, create, rebase, drop, pull and push.
-- Review each npm dependency once across `package.json` and the lockfile.
-- Propose unused removals, npm audit fixes, and outdated updates as diffs.
-- Code highlighting, diff compare: unified, mixed, and side-by-side layouts.
+- Leave feedback, issues/todos, and in-place code proposals as a repair plan
+- Review uncommitted git diffs, a given commit, a GitHub PR, or a GitLab MR
+- Stage, unstage, or revert each contiguous block of diff lines
+- Auto-reload local diffs when files change, keeping the current screen
+- Import GitHub PR and GitLab MR review comments into the local plan for AI
+- Commits list: commit, amend, fixup, and drop
+- Branches: checkout, create, rebase, drop, pull, and push
+- Review each npm dependency once across `package.json` and the lockfile
+- Propose unused removals, npm audit fixes, and outdated updates as diffs
+- Code highlighting and intra-line diffs: unified, mixed, and side-by-side
+- Auto-update patch and minor releases; confirm a new major
+- Work with git, npm and fetch in background
 
 ## Install
 
@@ -51,35 +55,19 @@ Reviews go in `.review/YYYY-MM-DD-NN.md` with frontmatter `status`:
 - `partial`: AI started; some items remain
 - `done`: all items marked `[x]`
 
-## Hotkeys
-
-| Key                 | Action                                       |
-| ------------------- | -------------------------------------------- |
-| `a` / `u` / `d`     | Stage / unstage / drop this diff             |
-| `c`                 | File list: commits; `c`/`a`/`f`/`d` there    |
-| `b`                 | List branches; `n` new; `r` rebase; `d` drop |
-| `p` / `s`           | File or branch list: git pull / push         |
-| `f` / `t` / `e`     | Feedback / repo todo / edit added lines      |
-| `m`                 | Mode: unified / mixed / side-by-side         |
-| `⏎`                 | Open the selected file                       |
-| `→` / `j`           | Next remaining diff                          |
-| `←` / `k`           | Previous remaining diff                      |
-| `Ctrl-e` / `Ctrl-y` | Scroll one line down / up                    |
-| `Ctrl-f` / `Ctrl-b` | Scroll page down / up                        |
-| `Ctrl-d` / `Ctrl-u` | Scroll half-page down / up                   |
-| `⌫` / `Del`         | Remove the selected todo                     |
-| `Esc` / `q`         | Quit                                         |
-
 ## Future
 
-- Import issues from GitHub and GitLab.
-- Security and code-quality audit; propose a repair plan.
-- Send anonymized code blocks for expert review.
-- Send questions and the repair plan to experts for approval.
-- Ask experts.
-- Verify the codebase.
-- Apply refactoring skills.
-- Call agents, harnesses, and IDEs to execute prepared plans.
+- Import issues from GitHub and GitLab
+- Search, blame, and file history in the review
+- Security and code-quality audit; propose a repair plan
+- Send anonymized code blocks for expert review
+- Send questions and the repair plan to experts for approval
+- Ask experts
+- Verify the codebase
+- Apply refactoring skills
+- Call agents, harnesses, and IDEs to execute prepared plans
+- Squash, cherry-pick, and interactive rebase
+- Merge, rename, and conflict resolution
 
 ## License
 
