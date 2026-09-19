@@ -19,7 +19,7 @@ const { foldDepItems, readSections, diffSections } = deps;
 const { mergeResolved, lockEntries, lockPackageCount } = deps;
 const { mergeDepFile, collectUsedNames, parseAuditReport } = deps;
 const { parseOutdatedReport, applyWantedRange, proposeDepItems } = deps;
-const { patchedFromRange } = deps;
+const { patchedFromRange, mergeProposedItems } = deps;
 
 const pkgJson = (dependencies, extra = {}) => {
   const body = { name: 'demo', ...extra, dependencies };
@@ -672,6 +672,7 @@ test('proposeDepItems shows a transitive npm audit finding', () => {
   assert.equal(item.dep.change.from, '1.1.15');
   assert.equal(item.dep.change.to, '1.1.18');
   assert.deepEqual(item.dep.files, ['package-lock.json']);
+  assert.equal(item.file.newPath, 'package.json');
   const lines = hunkTexts(item);
   const heading = 'npm audit: lockfile vulnerable, high';
   const oldEntry = '"brace-expansion": "1.1.15"';
@@ -712,6 +713,34 @@ test('proposeDepItems uses an audit fix version when not outdated', () => {
   const lines = hunkTexts(item);
   assert.ok(lines.includes('npm audit: dependency version changed, high'));
   assert.ok(lines.includes('npm audit  high  Prototype Pollution in lodash'));
+});
+
+test('mergeProposedItems inserts extras after package.json diffs', () => {
+  const leftover = dummyHunkItem('package.json', [
+    { type: 'del', text: '  "version": "0.1.8",' },
+    { type: 'add', text: '  "version": "0.1.9",' },
+  ]);
+  const items = [dummyItem('keep.js'), leftover, dummyItem('lib/a.js')];
+  const outdated = new Map();
+  outdated.set('prettier', {
+    current: '3.9.7',
+    wanted: '3.9.8',
+    latest: '3.9.8',
+    type: 'devDependencies',
+  });
+  const merged = mergeProposedItems(
+    items,
+    pkgJson({ prettier: '^3.9.7' }, { version: '0.1.9' }),
+    outdated,
+    null,
+  );
+  assert.equal(merged.length, 4);
+  assert.equal(merged[0].file.newPath, 'keep.js');
+  assert.equal(merged[1], leftover);
+  assert.ok(merged[2].dep);
+  assert.equal(merged[2].dep.change.name, 'prettier');
+  assert.equal(hunkTexts(merged[2])[0], DEP_CAPTION);
+  assert.equal(merged[3].file.newPath, 'lib/a.js');
 });
 
 test('foldDepItems keeps package.json hunks for whitespace-only edits', () => {
@@ -780,14 +809,14 @@ test('foldDepItems reviews dependencies apart from other fields', () => {
   );
   assert.equal(folded.length, 4);
   assert.equal(folded[0].file.newPath, 'lib/a.js');
-  assert.ok(folded[1].dep);
-  assert.equal(folded[1].dep.change.name, 'lodash');
-  assert.equal(hunkTexts(folded[1])[0], DEP_CAPTION);
-  assert.equal(folded[2].dep, undefined);
-  assert.equal(folded[2].file.newPath, 'package.json');
-  const kept = hunkTexts(folded[2]);
+  assert.equal(folded[1].dep, undefined);
+  assert.equal(folded[1].file.newPath, 'package.json');
+  const kept = hunkTexts(folded[1]);
   assert.ok(kept.some((line) => line.includes('tui')));
   assert.ok(!kept.some((line) => line.includes('lodash')));
+  assert.ok(folded[2].dep);
+  assert.equal(folded[2].dep.change.name, 'lodash');
+  assert.equal(hunkTexts(folded[2])[0], DEP_CAPTION);
   assert.equal(folded[3].file.newPath, 'lib/b.js');
 });
 
@@ -822,12 +851,97 @@ test('foldDepItems keeps description in a shared package.json hunk', () => {
     }),
   );
   assert.equal(folded.length, 2);
-  assert.ok(folded[0].dep);
-  assert.equal(folded[0].dep.change.name, 'lodash');
-  assert.equal(folded[1].dep, undefined);
-  assert.equal(folded[1].blockId, 0);
-  const kept = hunkTexts(folded[1]);
+  assert.equal(folded[0].dep, undefined);
+  assert.equal(folded[0].blockId, 0);
+  const kept = hunkTexts(folded[0]);
   assert.ok(kept.some((line) => line.includes('description')));
+  assert.ok(folded[1].dep);
+  assert.equal(folded[1].dep.change.name, 'lodash');
+});
+
+test('foldDepItems hides mid-section dep hunks next to other fields', () => {
+  const oldDeps = { eslint: '^9.0.0', prettier: '^3.9.7' };
+  const newDeps = { eslint: '^9.0.0', prettier: '^3.9.8' };
+  const versionItem = dummyHunkItem('package.json', [
+    { type: 'ctx', text: '  "name": "demo",' },
+    { type: 'del', text: '  "version": "0.1.8",' },
+    { type: 'add', text: '  "version": "0.1.9",' },
+    { type: 'ctx', text: '  "description": "x",' },
+  ]);
+  const depItem = dummyHunkItem('package.json', [
+    { type: 'ctx', text: '    "eslint": "^9.0.0",' },
+    { type: 'del', text: '    "prettier": "^3.9.7"' },
+    { type: 'add', text: '    "prettier": "^3.9.8"' },
+    { type: 'ctx', text: '  }' },
+  ]);
+  const items = [versionItem, depItem, dummyItem('package-lock.json')];
+  const folded = foldDepItems(
+    items,
+    sidesOf({
+      'package.json': {
+        oldText: pkgJson(oldDeps, { version: '0.1.8' }),
+        newText: pkgJson(newDeps, { version: '0.1.9' }),
+      },
+      'package-lock.json': {
+        oldText: lockV3(oldDeps, { eslint: '9.0.0', prettier: '3.9.7' }),
+        newText: lockV3(newDeps, { eslint: '9.0.0', prettier: '3.9.8' }),
+      },
+    }),
+  );
+  const depItems = folded.filter((item) => item.dep);
+  const jsonItems = folded.filter(
+    (item) => !item.dep && item.file.newPath === 'package.json',
+  );
+  assert.equal(depItems.length, 1);
+  assert.equal(depItems[0].dep.change.name, 'prettier');
+  assert.equal(jsonItems.length, 1);
+  assert.equal(folded[0], jsonItems[0]);
+  assert.equal(folded[1], depItems[0]);
+  const kept = hunkTexts(jsonItems[0]);
+  assert.ok(kept.some((line) => line.includes('version')));
+  assert.ok(!kept.some((line) => line.includes('prettier')));
+});
+
+test('foldDepItems strips dep lines from a leftover mixed hunk', () => {
+  const oldDeps = { eslint: '^9.0.0', prettier: '^3.9.7' };
+  const newDeps = { eslint: '^9.0.0', prettier: '^3.9.8' };
+  const noNl = false;
+  const lines = [
+    { type: 'ctx', text: '  "name": "demo",', noNl, blockId: null },
+    { type: 'del', text: '  "version": "0.1.8",', noNl, blockId: 0 },
+    { type: 'add', text: '  "version": "0.1.9",', noNl, blockId: 0 },
+    { type: 'ctx', text: '    "eslint": "^9.0.0",', noNl, blockId: null },
+    { type: 'del', text: '    "prettier": "^3.9.7"', noNl, blockId: 1 },
+    { type: 'add', text: '    "prettier": "^3.9.8"', noNl, blockId: 1 },
+    { type: 'ctx', text: '  }', noNl, blockId: null },
+  ];
+  const parts = splitHunkItems('package.json', lines);
+  const items = [...parts, dummyItem('package-lock.json')];
+  const folded = foldDepItems(
+    items,
+    sidesOf({
+      'package.json': {
+        oldText: pkgJson(oldDeps, { version: '0.1.8' }),
+        newText: pkgJson(newDeps, { version: '0.1.9' }),
+      },
+      'package-lock.json': {
+        oldText: lockV3(oldDeps, { eslint: '9.0.0', prettier: '3.9.7' }),
+        newText: lockV3(newDeps, { eslint: '9.0.0', prettier: '3.9.8' }),
+      },
+    }),
+  );
+  const depItems = folded.filter((item) => item.dep);
+  const jsonItems = folded.filter(
+    (item) => !item.dep && item.file.newPath === 'package.json',
+  );
+  assert.equal(depItems.length, 1);
+  assert.equal(depItems[0].dep.change.name, 'prettier');
+  assert.equal(jsonItems.length, 1);
+  assert.equal(folded[0], jsonItems[0]);
+  assert.equal(folded[1], depItems[0]);
+  const kept = hunkTexts(jsonItems[0]);
+  assert.ok(kept.some((line) => line.includes('version')));
+  assert.ok(!kept.some((line) => line.includes('prettier')));
 });
 
 test('foldDepItems hides lockfile-only noise', () => {
@@ -847,7 +961,7 @@ test('foldDepItems hides lockfile-only noise', () => {
     }),
   );
   assert.equal(folded.length, 2);
-  assert.equal(folded[1].file.newPath, 'package-lock.json');
+  assert.equal(folded[1].file.newPath, 'package.json');
   assert.ok(folded[1].dep);
   assert.deepEqual(folded[1].dep.files, ['package-lock.json']);
   assert.equal(folded[1].dep.change.section, 'resolved');
@@ -855,6 +969,22 @@ test('foldDepItems hides lockfile-only noise', () => {
   const lockLines = hunkTexts(folded[1]);
   assert.equal(lockLines[0], DEP_CAPTION);
   assertBlankAfter(lockLines, 'lockfile resolved version changed');
+});
+
+test('foldDepItems drops empty lockfile updated screens', () => {
+  const deps = { lodash: '^4.17.21' };
+  const lock = lockV3(deps, { lodash: '4.17.21' });
+  const items = [dummyItem('keep.js'), dummyItem('package-lock.json')];
+  const folded = foldDepItems(
+    items,
+    sidesOf({
+      'package.json': { oldText: pkgJson(deps), newText: pkgJson(deps) },
+      'package-lock.json': { oldText: lock, newText: lock },
+    }),
+  );
+  assert.equal(folded.length, 1);
+  assert.equal(folded[0].file.newPath, 'keep.js');
+  assert.equal(folded[0].dep, undefined);
 });
 
 test('foldDepItems pairs nested package.json with its lockfile', () => {
@@ -1443,6 +1573,48 @@ test('load keeps description and keywords as normal diffs', () => {
     assert.ok(texts.some((line) => line.includes('description')));
     const hasKeywords = texts.some((line) => line.includes('tui'));
     assert.ok(hasKeywords);
+  } finally {
+    repo.cleanup();
+  }
+});
+
+test('load does not duplicate a dep hunk when other fields change', () => {
+  const repo = makeRepo();
+  try {
+    const pad = {
+      description: 'x'.repeat(80),
+      keywords: ['cli'],
+      license: 'MIT',
+    };
+    const oldDeps = { eslint: '^9.0.0', prettier: '^3.9.7' };
+    const newDeps = { eslint: '^9.0.0', prettier: '^3.9.8' };
+    const oldVers = { eslint: '9.0.0', prettier: '3.9.7' };
+    const newVers = { eslint: '9.0.0', prettier: '3.9.8' };
+    repo.write('package.json', pkgJson(oldDeps, { version: '0.1.8', ...pad }));
+    repo.write('package-lock.json', lockV3(oldDeps, oldVers));
+    repo.git(['add', '.']);
+    repo.git(['commit', '-m', 'init']);
+    repo.write('package.json', pkgJson(newDeps, { version: '0.1.9', ...pad }));
+    repo.write('package-lock.json', lockV3(newDeps, newVers));
+    const loaded = load(repo.dir);
+    const prettier = depByName(loaded.items, 'prettier');
+    assert.ok(prettier);
+    const jsonItems = loaded.items.filter((item) => {
+      if (item.dep) return false;
+      return item.file.newPath === 'package.json';
+    });
+    const pkgItems = loaded.items.filter(
+      (item) => item.file.newPath === 'package.json',
+    );
+    assert.ok(pkgItems.length >= 2);
+    assert.equal(pkgItems[0].dep, undefined);
+    assert.equal(pkgItems.at(-1), prettier);
+    const texts = [];
+    for (const item of jsonItems) {
+      for (const line of hunkTexts(item)) texts.push(line);
+    }
+    assert.ok(texts.some((line) => line.includes('version')));
+    assert.ok(!texts.some((line) => line.includes('prettier')));
   } finally {
     repo.cleanup();
   }

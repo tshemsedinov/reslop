@@ -190,3 +190,17 @@ test('fileEntries sorts by path from the repo root', () => {
   const paths = entries.map((entry) => entry.path);
   assert.deepEqual(paths, ['a.js', 'lib/a.js', 'lib/z.js', 'README.md']);
 });
+
+test('fileEntries lists lockfile changes under package.json', () => {
+  const entries = fileEntries([
+    item('package-lock.json', 'staged', 0),
+    item('package.json', 'unstaged', 1),
+    item('packages/app/package-lock.json', 'unstaged', 2),
+  ]);
+  const paths = entries.map((entry) => entry.path);
+  assert.deepEqual(paths, ['package.json', 'packages/app/package.json']);
+  assert.equal(entries[0].remaining, 2);
+  assert.equal(entries[0].status, 'partial');
+  assert.equal(entries[1].path, 'packages/app/package.json');
+  assert.equal(entries[1].remaining, 1);
+});
