@@ -1082,8 +1082,10 @@ test('AC10 footer words highlight the bound letter', () => {
   });
   const row = frame.rows[frame.rows.length - 1];
   const plain = stripAnsi(row);
-  assert.match(plain, /add {2}unstage {2}drop {2}commit {2}←/);
-  assert.match(plain, /todo {2}branch {2}q/);
+  assert.match(
+    plain,
+    /add {2}unstage {2}drop {2}todo {2}branch {2}commit {2}pull {2}push {2}q/,
+  );
   assert.ok(!plain.includes('prev'));
   assert.ok(!plain.includes('next'));
   assert.ok(!plain.includes('quit'));
@@ -1092,6 +1094,8 @@ test('AC10 footer words highlight the bound letter', () => {
   assert.ok(!plain.includes('feedback'));
   assert.ok(!plain.includes('code'));
   assert.ok(!plain.includes('['));
+  assert.ok(!plain.includes('←'));
+  assert.ok(!plain.includes('→'));
   assert.ok(row.includes(fg(THEME.buttonHotFg)));
   assert.ok(row.includes(fg(THEME.buttonFg)));
   assert.ok(row.includes(BOLD));
@@ -1101,7 +1105,10 @@ test('AC10 footer words highlight the bound letter', () => {
     color: false,
   });
   const dimRow = dim.rows[dim.rows.length - 1];
-  assert.match(dimRow, /add {2}unstage {2}drop {2}commit {2}←/);
+  assert.match(
+    dimRow,
+    /add {2}unstage {2}drop {2}todo {2}branch {2}commit {2}pull {2}push {2}q/,
+  );
   assert.ok(!dimRow.includes('['));
   const mode = frame.buttons.find((hit) => hit.id === 'layout');
   const feedback = frame.buttons.find((hit) => hit.id === 'feedback');
@@ -1118,14 +1125,8 @@ test('AC10 footer words highlight the bound letter', () => {
     frame.buttons.find((hit) => hit.id === 'files'),
     undefined,
   );
-  assert.equal(
-    frame.buttons.find((hit) => hit.id === 'pull'),
-    undefined,
-  );
-  assert.equal(
-    frame.buttons.find((hit) => hit.id === 'push'),
-    undefined,
-  );
+  assert.ok(frame.buttons.find((hit) => hit.id === 'pull'));
+  assert.ok(frame.buttons.find((hit) => hit.id === 'push'));
 });
 
 test('files pane todos row dims add unstage drop', () => {
@@ -1154,7 +1155,12 @@ test('files pane todos row dims add unstage drop', () => {
     color: false,
   });
   const footer = frame.rows[frame.rows.length - 1];
-  assert.match(footer, /add {2}unstage {2}drop {2}commit {2}←/);
+  assert.match(
+    footer,
+    /add {2}unstage {2}drop {2}todo {2}branch {2}commit {2}pull {2}push {2}q/,
+  );
+  assert.ok(!footer.includes('←'));
+  assert.ok(!footer.includes('→'));
   assert.equal(
     frame.buttons.find((hit) => hit.id === 'add'),
     undefined,

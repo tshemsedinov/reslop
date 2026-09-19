@@ -523,10 +523,16 @@ test('j and k move the files cursor', () => {
   const b = sampleItem('b.js');
   const { session } = openSession([a, b], { startPane: 'files' });
   assert.equal(session.fileCursor, 0);
+  session.handleEvent({ type: 'key', key: 'right' });
+  assert.equal(session.fileCursor, 0);
+  session.handleEvent({ type: 'key', key: 'left' });
+  assert.equal(session.fileCursor, 0);
   session.pushInput('j');
   assert.equal(session.fileCursor, 1);
   session.pushInput('k');
   assert.equal(session.fileCursor, 0);
+  session.handleEvent({ type: 'key', key: 'down' });
+  assert.equal(session.fileCursor, 1);
 });
 
 test('vim ctrl keys scroll the diff by line and page', () => {
@@ -2128,6 +2134,18 @@ test('files pane a and d stay add and revert', () => {
   assert.equal(reverted.repo.reverted.length, 1);
 });
 
+test('files pane p pulls and s pushes', () => {
+  const { session, repo } = openSession([sampleItem('a.js')], {
+    startPane: 'files',
+  });
+  session.pushInput('p');
+  assert.equal(repo.pulls.length, 1);
+  assert.equal(session.status, 'pulled');
+  session.pushInput('s');
+  assert.equal(repo.pushes.length, 1);
+  assert.equal(session.status, 'pushed');
+});
+
 test('quit without notes does not write a review file', () => {
   const writes = [];
   const item = sampleItem('a.js');
@@ -2588,12 +2606,6 @@ test('branch list p pulls and s pushes', () => {
   const a = sampleItem('a.js');
   const b = sampleItem('b.js');
   const { session, repo } = openSession([a, b], { startPane: 'files' });
-  session.pushInput('p');
-  assert.equal(repo.pulls.length, 0);
-  session.pushInput('s');
-  assert.equal(repo.pushes.length, 0);
-  session.dispatch('pull');
-  assert.equal(repo.pulls.length, 0);
   session.pushInput('b');
   assert.equal(repo.listed.length, 1);
   session.pushInput('p');
