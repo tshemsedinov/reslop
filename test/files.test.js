@@ -4,7 +4,7 @@ const { test } = require('node:test');
 const assert = require('node:assert/strict');
 
 const files = require('../lib/files.js');
-const { fileEntries, fileStatus, itemPath } = files;
+const { fileEntries, fileStatus, itemPath, relativeAge } = files;
 const { TODO_FILE, repoTodosLabel, isTodosEntry, isTodoItem } = files;
 const { fileTotals, isTotalEntry, TOTAL_LABEL } = files;
 
@@ -160,4 +160,22 @@ test('fileEntries opens a partial file on the first unstaged block', () => {
   assert.equal(entries[0].status, 'partial');
   assert.equal(entries[0].firstIndex, 0);
   assert.equal(entries[0].openIndex, 1);
+});
+
+test('relativeAge uses git-style units', () => {
+  const now = 1_000_000_000_000;
+  assert.equal(relativeAge(now - 1000, now), '1 second ago');
+  assert.equal(relativeAge(now - 2000, now), '2 seconds ago');
+  assert.equal(relativeAge(now - 2 * 3600 * 1000, now), '2 hours ago');
+  assert.equal(relativeAge(now - 2 * 86400 * 1000, now), '2 days ago');
+  assert.equal(relativeAge(now - 21 * 86400 * 1000, now), '3 weeks ago');
+});
+
+test('fileEntries copies the first item date', () => {
+  const staged = item('a.js', 'staged', 0);
+  staged.date = '2 hours ago';
+  const unstaged = item('a.js', 'unstaged', 1);
+  unstaged.date = 'yesterday';
+  const entries = fileEntries([staged, unstaged]);
+  assert.equal(entries[0].date, '2 hours ago');
 });
