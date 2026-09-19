@@ -1,6 +1,6 @@
 {
   "name": "reslop",
-  "version": "0.1.8",
+  "version": "0.1.9",
   "description": "Interactive code review and repair planning for AI-assisted changes",
   "keywords": [
     "code-review",
@@ -59,7 +59,7 @@
     "eslint": "^9.39.4",
     "eslint-config-metarhia": "^9.1.9",
     "metaskills": "^1.0.5",
-    "prettier": "^3.9.7"
+    "prettier": "^3.9.8"
   },
   "dependencies": {
     "metautil": "^5.5.2"
