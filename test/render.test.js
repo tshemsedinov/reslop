@@ -1554,6 +1554,67 @@ test('AC26 file list status and counts are column-aligned', () => {
   assert.match(first, /unstaged {2}0\/4 {2}$/);
 });
 
+test('file list dates are right-aligned', () => {
+  const files = [
+    {
+      path: 'a.js',
+      status: 'unstaged',
+      remaining: 1,
+      staged: 0,
+      added: 1,
+      removed: 0,
+      date: '2 hours ago',
+      firstIndex: 0,
+    },
+    {
+      path: 'b.js',
+      status: 'staged',
+      remaining: 1,
+      staged: 1,
+      added: 1,
+      removed: 0,
+      date: 'yesterday',
+      firstIndex: 1,
+    },
+  ];
+  const frame = render.renderFrame(
+    {
+      pane: 'files',
+      files,
+      fileCursor: 0,
+      repoName: 'demo',
+      counts: { staged: 1, unstaged: 1, untracked: 0 },
+      status: '',
+      scroll: 0,
+    },
+    { width: 80, height: 8, color: false },
+  );
+  const rows = [2, 3].map((i) => stripAnsi(frame.rows[i]));
+  const recent = rows.find((row) => row.includes('a.js'));
+  const older = rows.find((row) => row.includes('b.js'));
+  assert.ok(recent.endsWith('2 hours ago '));
+  assert.ok(older.endsWith('yesterday '));
+  assert.equal(
+    recent.indexOf('2 hours ago') + '2 hours ago'.length,
+    older.indexOf('yesterday') + 'yesterday'.length,
+  );
+  const colored = render.renderFrame(
+    {
+      pane: 'files',
+      files,
+      fileCursor: 0,
+      repoName: 'demo',
+      counts: { staged: 1, unstaged: 1, untracked: 0 },
+      status: '',
+      scroll: 0,
+    },
+    { width: 80, height: 8, color: true },
+  );
+  const painted = colored.rows.find((row) => row.includes('2 hours ago'));
+  const age = ansi.paint('2 hours ago', THEME.mutedFg, THEME.buttonBg, true);
+  assert.ok(painted.includes(age));
+});
+
 test('file list TODOs n/m aligns with file staged/remaining', () => {
   const files = [
     {
