@@ -58,12 +58,12 @@ Reviews go in `.review/YYYY-MM-DD-NN.md` with frontmatter `status`:
 | `a` / `u` / `d`     | Stage / unstage / drop this diff             |
 | `c`                 | File list: commits; `c`/`a`/`f`/`d` there    |
 | `b`                 | List branches; `n` new; `r` rebase; `d` drop |
-| `p` / `s`           | Branch list: git pull / push                 |
+| `p` / `s`           | File or branch list: git pull / push         |
 | `f` / `t` / `e`     | Feedback / repo todo / edit added lines      |
 | `m`                 | Mode: unified / mixed / side-by-side         |
 | `⏎`                 | Open the selected file                       |
-| `→` / `j`           | Next remaining diff / file                   |
-| `←` / `k`           | Previous remaining diff / file               |
+| `→` / `j`           | Next remaining diff                          |
+| `←` / `k`           | Previous remaining diff                      |
 | `Ctrl-e` / `Ctrl-y` | Scroll one line down / up                    |
 | `Ctrl-f` / `Ctrl-b` | Scroll page down / up                        |
 | `Ctrl-d` / `Ctrl-u` | Scroll half-page down / up                   |
