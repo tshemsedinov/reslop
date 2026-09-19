@@ -1338,9 +1338,13 @@ test('branch pane lists names and marks the default branch', () => {
     undefined,
   );
   assert.equal(mainRow.indexOf('aaa1111'), featRow.indexOf('bbb2222'));
-  assert.equal(mainRow.indexOf('2 days ago'), featRow.indexOf('3 weeks ago'));
-  assert.match(featRow, /⇣2 {3}3 weeks ago/);
+  assert.ok(mainRow.endsWith('2 days ago   '));
   assert.ok(featRow.endsWith('3 weeks ago   '));
+  assert.equal(
+    mainRow.indexOf('2 days ago') + '2 days ago'.length,
+    featRow.indexOf('3 weeks ago') + '3 weeks ago'.length,
+  );
+  assert.match(featRow, /⇣2 {3}3 weeks ago/);
   assert.ok(!featRow.endsWith('3 weeks ago    '));
   assert.equal(visibleWidth(featRow), 80);
   assert.equal(visibleWidth(mainRow), 80);
@@ -1396,7 +1400,7 @@ test('branch pane lists names and marks the default branch', () => {
   const ontoMain = onto.rows.find((row) => row.includes('aaa1111'));
   assert.ok(ontoFeat.includes(currentBg));
   const selectDate = ansi.paint(
-    '2 days ago ',
+    ' 2 days ago',
     THEME.mutedFg,
     THEME.buttonBg,
     true,
