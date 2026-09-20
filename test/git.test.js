@@ -1097,3 +1097,69 @@ test('editItem updates staged added lines in the index', () => {
     repo.cleanup();
   }
 });
+
+test('listFiles includes tracked and untracked paths', () => {
+  const repo = makeRepo();
+  try {
+    repo.write('b.js', 'b\n');
+    repo.write('a.js', 'a\n');
+    repo.git(['add', '.']);
+    repo.git(['commit', '-m', 'init']);
+    repo.write('z.js', 'z\n');
+    const names = createGitRepo().listFiles(repo.dir);
+    assert.deepEqual(names, ['a.js', 'b.js', 'z.js']);
+    assert.equal(createGitRepo().fileText(repo.dir, 'a.js'), 'a\n');
+    createGitRepo().writeFile(repo.dir, 'nested/x.js', 'x\n');
+    assert.equal(repo.read('nested/x.js'), 'x\n');
+  } finally {
+    repo.cleanup();
+  }
+});
+
+test('file edit save stages new context lines', () => {
+  const repo = makeRepo();
+  try {
+    repo.write(
+      'a.js',
+      'alpha\nbeta\nkeep1\nkeep2\nkeep3\nkeep4\nkeep5\ngamma\n',
+    );
+    repo.git(['add', 'a.js']);
+    repo.git(['commit', '-m', 'init']);
+    repo.write(
+      'a.js',
+      'alpha\nBETA\nkeep1\nkeep2\nkeep3\nkeep4\nkeep5\ngamma\n',
+    );
+    const stdout = sink();
+    const session = new Session({
+      repo: createGitRepo(),
+      cwd: repo.dir,
+      stdout,
+      color: false,
+      startPane: 'files',
+      getSize: () => ({ width: 80, height: 24 }),
+    });
+    session.load();
+    session.dispatch('file');
+    session.dispatch('next');
+    session.dispatch('open');
+    session.dispatch('code');
+    session.editor.replace(
+      'alpha\nBETA\nkeep1\nkeep2\nkeep3\nkeep4\nkeep5\nGAMMA\n',
+    );
+    session.composer.saveCompose();
+    const cached = repo.git(['diff', '--cached', '--', 'a.js']);
+    const work = repo.git(['diff', '--', 'a.js']);
+    assert.match(cached, /GAMMA/);
+    assert.equal(cached.includes('BETA'), false);
+    assert.match(work, /BETA/);
+    assert.equal(work.includes('GAMMA'), false);
+    const staged = session.items.find(
+      (entry) =>
+        entry.origin === 'staged' &&
+        entry.hunk.lines.some((line) => line.text === 'GAMMA'),
+    );
+    assert.ok(staged);
+  } finally {
+    repo.cleanup();
+  }
+});
