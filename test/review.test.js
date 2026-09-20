@@ -6,7 +6,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 
-const review = require('../lib/review.js');
+const review = require('../lib/review/review.js');
 const { allocateReviewPath, rankedTemplates } = review;
 const { prefixTemplates, upsertTemplate, createStore } = review;
 const { hasNotes, setFeedback, setCode, noteCounts, rememberTemplate } = review;
@@ -42,43 +42,43 @@ test('latestReviewName picks the newest date then index', () => {
 });
 
 test('resolveReviewPath resumes editing and starts new otherwise', () => {
-  const dir = '/repo';
-  const date = new Date(2026, 8, 7);
-  const names = ['2026-09-07-00.md'];
-  const editing = resolveReviewPath(dir, date, names, {
-    readFileSync: () => '---\nstatus: editing\n---\n',
-  });
-  assert.equal(editing.resume, true);
-  assert.equal(
-    editing.reviewPath,
-    path.join(dir, '.review', '2026-09-07-00.md'),
-  );
-  const ready = resolveReviewPath(dir, date, names, {
-    readFileSync: () => '---\nstatus: ready\n---\n',
-  });
-  assert.equal(ready.resume, false);
-  assert.equal(ready.reviewPath, path.join(dir, '.review', '2026-09-07-01.md'));
-  const pending = resolveReviewPath(dir, date, names, {
-    readFileSync: () => '---\nstatus: pending\n---\n',
-  });
-  assert.equal(pending.resume, false);
-  const partial = resolveReviewPath(dir, date, names, {
-    readFileSync: () => '---\nstatus: partial\n---\n',
-  });
-  assert.equal(partial.resume, false);
-  const done = resolveReviewPath(dir, date, names, {
-    readFileSync: () => '---\nstatus: done\n---\n',
-  });
-  assert.equal(done.resume, false);
-  const forced = resolveReviewPath(dir, date, names, {
-    forceNew: true,
-    readFileSync: () => '---\nstatus: editing\n---\n',
-  });
-  assert.equal(forced.resume, false);
-  assert.equal(
-    forced.reviewPath,
-    path.join(dir, '.review', '2026-09-07-01.md'),
-  );
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'reslop-review-'));
+  try {
+    const date = new Date(2026, 8, 7);
+    const folder = path.join(dir, '.review');
+    fs.mkdirSync(folder);
+    const current = path.join(folder, '2026-09-07-00.md');
+    const names = ['2026-09-07-00.md'];
+    const writeStatus = (status) => {
+      fs.writeFileSync(current, `---\nstatus: ${status}\n---\n`);
+    };
+    writeStatus('editing');
+    const editing = resolveReviewPath(dir, date, names);
+    assert.equal(editing.resume, true);
+    assert.equal(editing.reviewPath, current);
+    writeStatus('ready');
+    const ready = resolveReviewPath(dir, date, names);
+    assert.equal(ready.resume, false);
+    assert.equal(
+      ready.reviewPath,
+      path.join(dir, '.review', '2026-09-07-01.md'),
+    );
+    writeStatus('pending');
+    assert.equal(resolveReviewPath(dir, date, names).resume, false);
+    writeStatus('partial');
+    assert.equal(resolveReviewPath(dir, date, names).resume, false);
+    writeStatus('done');
+    assert.equal(resolveReviewPath(dir, date, names).resume, false);
+    writeStatus('editing');
+    const forced = resolveReviewPath(dir, date, names, { forceNew: true });
+    assert.equal(forced.resume, false);
+    assert.equal(
+      forced.reviewPath,
+      path.join(dir, '.review', '2026-09-07-01.md'),
+    );
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
 });
 
 test('rankedTemplates sorts by frequency then text', () => {
@@ -371,10 +371,7 @@ test('flushReview writes markdown and templates when notes exist', () => {
       header: '@@ -3,1 +3,1 @@',
       text: 'rename this',
     });
-    const wrote = flushReview(store, {
-      writeFileSync: fs.writeFileSync,
-      mkdirSync: fs.mkdirSync,
-    });
+    const wrote = flushReview(store);
     assert.equal(wrote, true);
     assert.equal(store.dirty, false);
     const md = fs.readFileSync(reviewPath, 'utf8');
@@ -387,16 +384,18 @@ test('flushReview writes markdown and templates when notes exist', () => {
 });
 
 test('flushReview skips write when there are no notes', () => {
-  const writes = [];
-  const store = createStore('/repo/.review/2026-09-07-00.md');
-  store.dirty = true;
-  const wrote = flushReview(store, {
-    writeFileSync: (file, body) => writes.push({ file, body }),
-    mkdirSync: () => {},
-  });
-  assert.equal(wrote, false);
-  assert.equal(writes.length, 0);
-  assert.equal(store.dirty, false);
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'reslop-review-'));
+  try {
+    const reviewPath = path.join(dir, '.review', '2026-09-07-00.md');
+    const store = createStore(reviewPath);
+    store.dirty = true;
+    const wrote = flushReview(store);
+    assert.equal(wrote, false);
+    assert.equal(store.dirty, false);
+    assert.equal(fs.existsSync(reviewPath), false);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
 });
 
 test('serializeReview collects todos under TODOs not file headings', () => {

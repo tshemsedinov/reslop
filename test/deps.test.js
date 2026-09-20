@@ -4,12 +4,12 @@ const { test } = require('node:test');
 const assert = require('node:assert/strict');
 
 const deps = require('../lib/deps.js');
-const diff = require('../lib/diff.js');
+const diff = require('../lib/diff/diff.js');
 const git = require('../lib/git.js');
 const gitDeps = require('../lib/git/dependencies.js');
-const render = require('../lib/render.js');
+const render = require('../lib/render/render.js');
 const { Session } = require('../lib/session.js');
-const { samePath } = require('../lib/sys.js');
+const { realpathSync } = require('node:fs');
 const { proposedNpmPlan } = require('../lib/npm/commands.js');
 const { makeRepo, sink } = require('./helpers.js');
 const { stripAnsi, THEME, bg } = require('../lib/ansi.js');
@@ -132,7 +132,6 @@ const sessionFor = (dir) => {
     stdout,
     color: false,
     startPane: 'diff',
-    getSize: () => ({ width: 80, height: 16 }),
   });
   session.load();
   return session;
@@ -1258,7 +1257,7 @@ test('add on a proposed update writes package.json and runs npm i', () => {
       return { status: 0 };
     };
     addItem(loaded.top, item);
-    assert.equal(samePath(installed, repo.dir), true);
+    assert.equal(realpathSync(installed), realpathSync(repo.dir));
     const pkg = JSON.parse(repo.read('package.json'));
     assert.equal(pkg.dependencies.lodash, '^4.17.21');
     const lock = JSON.parse(repo.read('package-lock.json'));
@@ -1300,7 +1299,7 @@ test('add on an unused dependency runs npm uninstall', () => {
       return { status: 0 };
     };
     addItem(loaded.top, item);
-    assert.equal(samePath(removed, repo.dir), true);
+    assert.equal(realpathSync(removed), realpathSync(repo.dir));
     const pkg = JSON.parse(repo.read('package.json'));
     assert.equal(pkg.dependencies.leftpad, undefined);
     const lock = JSON.parse(repo.read('package-lock.json'));
@@ -1335,7 +1334,6 @@ test('session add applies a proposed outdated update', () => {
       audit: true,
       outdatedMap: outdated,
       auditMap: null,
-      getSize: () => ({ width: 80, height: 16 }),
     });
     session.load();
     const item = depByName(session.items, 'lodash');
@@ -1381,7 +1379,6 @@ test('session revert dismisses a proposed outdated update', () => {
       audit: true,
       outdatedMap: outdated,
       auditMap: null,
-      getSize: () => ({ width: 80, height: 16 }),
     });
     session.load();
     assert.ok(depByName(session.items, 'lodash'));

@@ -3,7 +3,7 @@
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 
-const diff = require('../lib/diff.js');
+const diff = require('../lib/diff/diff.js');
 const { unitLines, blockLineIndex, blockLineRange, fileOffset } = diff;
 const { itemsForPath, mergeEditRows, splitFile } = diff;
 

@@ -8,7 +8,7 @@ const { selectChangeSource, createLoadedSource } = require('../lib/source.js');
 test('selectChangeSource recognizes a GitHub pull request URL', () => {
   const url = 'https://github.com/acme/app/pull/123';
   const selected = selectChangeSource([url]);
-  assert.equal(selected.kind, 'github-pr');
+  assert.equal(selected.kind, 'pr');
   assert.deepEqual(selected.pr, { owner: 'acme', repo: 'app', number: 123 });
   assert.deepEqual(selected.paths, []);
 });
@@ -16,7 +16,7 @@ test('selectChangeSource recognizes a GitHub pull request URL', () => {
 test('selectChangeSource recognizes a GitLab merge request URL', () => {
   const url = 'https://gitlab.com/acme/app/-/merge_requests/123';
   const selected = selectChangeSource([url]);
-  assert.equal(selected.kind, 'gitlab-mr');
+  assert.equal(selected.kind, 'mr');
   assert.deepEqual(selected.mr, {
     host: 'gitlab.com',
     project: 'acme/app',

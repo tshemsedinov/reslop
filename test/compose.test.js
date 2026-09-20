@@ -5,13 +5,14 @@ const assert = require('node:assert/strict');
 
 const { createComposer } = require('../lib/session/compose.js');
 const { createNavigation } = require('../lib/session/navigation.js');
-const { createStore } = require('../lib/review.js');
+const { createStore } = require('../lib/review/review.js');
 
 const setup = (extra = {}) => {
   const notes = extra.notes ?? createStore('/tmp/review.md');
   const nav = extra.nav ?? createNavigation({ startPane: 'diff' });
   const flushed = [];
   const ui = {
+    nav,
     mode: 'review',
     status: '',
     layout: 'unified',

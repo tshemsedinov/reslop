@@ -59,10 +59,47 @@ const sink = () => {
   };
 };
 
+const uiSink = () => {
+  const stdout = sink();
+  stdout.rows = 16;
+  return stdout;
+};
+
+const tempDir = (prefix = 'reslop-') =>
+  fs.mkdtempSync(path.join(os.tmpdir(), prefix));
+
 const ttySink = () => {
   const stream = sink();
   stream.isTTY = true;
   return stream;
 };
 
-module.exports = { makeRepo, sink, ttySink };
+const sampleHunk = (lines) => ({
+  oldStart: 1,
+  oldCount: 1,
+  newStart: 1,
+  newCount: 1,
+  header: '@@ -1,1 +1,1 @@',
+  lines,
+});
+
+const reviewView = (item, extra = {}) => ({
+  item,
+  index: 0,
+  total: 1,
+  scroll: 0,
+  status: '',
+  counts: { staged: 0, unstaged: 1, untracked: 0 },
+  repoName: 'demo',
+  ...extra,
+});
+
+module.exports = {
+  makeRepo,
+  sink,
+  uiSink,
+  tempDir,
+  ttySink,
+  sampleHunk,
+  reviewView,
+};

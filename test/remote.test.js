@@ -6,7 +6,7 @@ const assert = require('node:assert/strict');
 const { createTransport } = require('../lib/remote/http.js');
 const { parseLinkNext, parseNextPage } = require('../lib/remote/headers.js');
 const { noteFromLocation } = require('../lib/remote/notes.js');
-const diff = require('../lib/diff.js');
+const diff = require('../lib/diff/diff.js');
 const { parseDiff, itemsFromFiles } = diff;
 
 const DIFF = `diff --git a/lib/parser.js b/lib/parser.js
