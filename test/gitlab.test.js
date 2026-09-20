@@ -4,7 +4,7 @@ const { test } = require('node:test');
 const assert = require('node:assert/strict');
 
 const gitlab = require('../lib/gitlab.js');
-const diff = require('../lib/diff.js');
+const diff = require('../lib/diff/diff.js');
 const { parseGitlabMrUrl, gitlabToken, loadMergeRequest } = gitlab;
 const { filterChangeFiles, mrApiUrl, discussionToNotes } = gitlab;
 const { formatImportedText } = gitlab;
@@ -186,7 +186,7 @@ test('loadMergeRequest converts a GitLab patch into pr items', async () => {
   assert.equal(loaded.change.base, 'main');
   assert.equal(loaded.change.head, 'fix-parser');
   assert.equal(loaded.change.number, 123);
-  assert.equal(loaded.change.source, 'gitlab-mr');
+  assert.equal(loaded.change.source, 'mr');
   assert.deepEqual(loaded.change.files, ['lib/parser.js', 'README.md']);
   assert.equal(loaded.items.length, 2);
   assert.equal(loaded.items[0].origin, 'pr');

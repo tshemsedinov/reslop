@@ -4,7 +4,7 @@ const { test } = require('node:test');
 const assert = require('node:assert/strict');
 
 const github = require('../lib/github.js');
-const diff = require('../lib/diff.js');
+const diff = require('../lib/diff/diff.js');
 const { parseGithubPrUrl, githubToken, loadPullRequest } = github;
 const { filterChangeFiles, prApiUrl, discussionToNotes } = github;
 const { formatImportedText } = github;
@@ -182,7 +182,7 @@ test('loadPullRequest converts a GitHub patch into pr items', async () => {
   assert.equal(loaded.change.base, 'main');
   assert.equal(loaded.change.head, 'fix-parser');
   assert.equal(loaded.change.number, 123);
-  assert.equal(loaded.change.source, 'github-pr');
+  assert.equal(loaded.change.source, 'pr');
   assert.deepEqual(loaded.change.files, ['lib/parser.js', 'README.md']);
   assert.equal(loaded.items.length, 2);
   assert.equal(loaded.items[0].origin, 'pr');

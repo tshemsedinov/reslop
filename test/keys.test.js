@@ -11,7 +11,7 @@ const { COMMITS_DISABLED, UNIT_DISABLED } = keys;
 const { decodeChunk, actionFromKey, hitAction } = keys;
 const { disabledActions } = keys;
 const { actionLetter, buttonWord } = keys;
-const { layoutButtons } = require('../lib/render.js');
+const { layoutButtons } = require('../lib/render/render.js');
 
 test('decodeChunk maps letters and arrows', () => {
   const keys = decodeChunk('ar').events.map((event) => event.key);

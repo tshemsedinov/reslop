@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 'use strict';
 
-const { run, failLine } = require('../lib/cli.js');
+const { run, errorMessage } = require('../lib/cli.js');
 const { LEAVE_TERM } = require('../lib/session.js');
 
 const fail = (reason) => {
@@ -10,7 +10,7 @@ const fail = (reason) => {
   } catch {
     // ignore
   }
-  process.stderr.write(failLine(reason));
+  process.stderr.write(`reslop: ${errorMessage(reason)}\n`);
   process.exit(1);
 };
 

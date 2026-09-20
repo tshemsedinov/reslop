@@ -5,7 +5,7 @@ const assert = require('node:assert/strict');
 const { EventEmitter } = require('node:events');
 
 const { sink } = require('./helpers.js');
-const sys = require('../lib/sys.js');
+const sys = require('../lib/utilities.js');
 const { watchResize } = sys;
 const terminal = require('../lib/session/terminal.js');
 const { createTerminal, ENTER_TERM, LEAVE_TERM } = terminal;
@@ -24,21 +24,17 @@ const fakeStdin = () => {
   return stdin;
 };
 
-const fakeTimers = () => {
-  const timers = new Map();
-  let nextId = 1;
-  const setIntervalFn = (fn) => {
-    const id = nextId;
-    nextId += 1;
-    timers.set(id, fn);
-    return id;
-  };
-  const clearIntervalFn = (id) => {
-    timers.delete(id);
-  };
-  return { timers, setInterval: setIntervalFn, clearInterval: clearIntervalFn };
+const openTerm = (extra = {}) => {
+  const stdin = extra.stdin ?? fakeStdin();
+  const stdout = extra.stdout ?? sink();
+  const proc = extra.proc ?? new EventEmitter();
+  const term = createTerminal({
+    stdin,
+    stdout,
+    proc,
+  });
+  return { term, stdin, stdout, proc };
 };
-
 const emitSink = () => {
   const stdout = new EventEmitter();
   let text = '';
@@ -48,21 +44,6 @@ const emitSink = () => {
   };
   stdout.dump = () => text;
   return stdout;
-};
-
-const openTerm = (extra = {}) => {
-  const stdin = extra.stdin ?? fakeStdin();
-  const stdout = extra.stdout ?? sink();
-  const proc = extra.proc ?? new EventEmitter();
-  const clock = extra.clock ?? fakeTimers();
-  const term = createTerminal({
-    stdin,
-    stdout,
-    proc,
-    setInterval: clock.setInterval,
-    clearInterval: clock.clearInterval,
-  });
-  return { term, stdin, stdout, proc, clock };
 };
 
 test('watchResize removes listeners from stdout and process', () => {
@@ -111,14 +92,7 @@ test('repeated listen and close restore listener and timer counts', () => {
   const stdin = fakeStdin();
   const stdout = emitSink();
   const proc = new EventEmitter();
-  const clock = fakeTimers();
-  const term = createTerminal({
-    stdin,
-    stdout,
-    proc,
-    setInterval: clock.setInterval,
-    clearInterval: clock.clearInterval,
-  });
+  const term = createTerminal({ stdin, stdout, proc });
   const start = () => {
     term.startListening({
       onData: () => {},
@@ -131,25 +105,28 @@ test('repeated listen and close restore listener and timer counts', () => {
   assert.equal(stdin.listenerCount('data'), 1);
   assert.equal(stdout.listenerCount('resize'), 1);
   assert.equal(proc.listenerCount('SIGWINCH'), 1);
-  assert.equal(clock.timers.size, 2);
+  assert.equal(term.hasTimer('save'), true);
+  assert.equal(term.hasTimer('blink'), true);
   term.stopListening();
   term.clearTimers();
   assert.equal(stdin.listenerCount('data'), 0);
   assert.equal(stdout.listenerCount('resize'), 0);
   assert.equal(proc.listenerCount('SIGWINCH'), 0);
-  assert.equal(clock.timers.size, 0);
+  assert.equal(term.hasTimer('save'), false);
+  assert.equal(term.hasTimer('blink'), false);
   term.enter();
   start();
   term.close();
   assert.equal(stdin.listenerCount('data'), 0);
   assert.equal(stdout.listenerCount('resize'), 0);
   assert.equal(proc.listenerCount('SIGWINCH'), 0);
-  assert.equal(clock.timers.size, 0);
+  assert.equal(term.hasTimer('save'), false);
+  assert.equal(term.disposed, true);
   assert.equal(stdin.raw, false);
 });
 
 test('startup failure cleanup restores acquired terminal state', () => {
-  const { term, stdin, stdout, proc, clock } = openTerm({ stdout: emitSink() });
+  const { term, stdin, stdout, proc } = openTerm({ stdout: emitSink() });
   const run = () => {
     term.enter();
     term.startListening({
@@ -169,7 +146,7 @@ test('startup failure cleanup restores acquired terminal state', () => {
   assert.ok(stdout.dump().includes(LEAVE_TERM));
   assert.equal(stdin.listenerCount('data'), 0);
   assert.equal(proc.listenerCount('SIGWINCH'), 0);
-  assert.equal(clock.timers.size, 0);
+  assert.equal(term.hasTimer('save'), false);
   assert.equal(term.disposed, true);
 });
 

@@ -8,7 +8,7 @@ const {
   createLoadCoordinator,
 } = require('../lib/session/load.js');
 const { Session } = require('../lib/session.js');
-const { sink } = require('./helpers.js');
+const { uiSink, sampleHunk, tempDir } = require('./helpers.js');
 
 const sampleItem = (name) => ({
   origin: 'unstaged',
@@ -21,28 +21,9 @@ const sampleItem = (name) => ({
     preamble: [`diff --git a/${name} b/${name}`],
     hunks: [],
   },
-  hunk: {
-    oldStart: 1,
-    oldCount: 1,
-    newStart: 1,
-    newCount: 1,
-    header: '@@ -1,1 +1,1 @@',
-    lines: [{ type: 'add', text: 'x', noNl: false, blockId: 0 }],
-  },
+  hunk: sampleHunk([{ type: 'add', text: 'x', noNl: false, blockId: 0 }]),
   blockId: 0,
 });
-
-const reviewFs = {
-  readdirSync: () => [],
-  readFileSync: () => {
-    const error = new Error('ENOENT');
-    error.code = 'ENOENT';
-    throw error;
-  },
-  writeFileSync: () => {},
-  mkdirSync: () => {},
-  now: () => new Date(2026, 8, 7),
-};
 
 test('isAbortError recognizes ABORT codes', () => {
   assert.equal(isAbortError({ code: 'ABORT' }), true);
@@ -77,24 +58,21 @@ test('a slow load cannot replace a newer load', async () => {
   let calls = 0;
   const oldItem = sampleItem('old.js');
   const newItem = sampleItem('new.js');
+  const cwd = tempDir('reslop-ui-');
   const session = new Session({
-    cwd: '/tmp',
-    stdout: sink(),
+    cwd,
+    stdout: uiSink(),
     color: false,
-    getSize: () => ({ width: 80, height: 16 }),
     startPane: 'files',
-    setInterval: () => 1,
-    clearInterval: () => {},
-    ...reviewFs,
     repo: {
-      load: () => ({ top: '/tmp', items: [newItem] }),
+      load: () => ({ top: cwd, items: [newItem] }),
       loadAsync: async () => {
         calls += 1;
         if (calls === 1) {
           await gateA;
-          return { top: '/tmp', items: [oldItem] };
+          return { top: cwd, items: [oldItem] };
         }
-        return { top: '/tmp', items: [newItem] };
+        return { top: cwd, items: [newItem] };
       },
     },
   });
@@ -126,20 +104,17 @@ test('reset invalidates generations without reusing them', () => {
 test('resetState allows a second openLoad after a completed load', async () => {
   let calls = 0;
   const item = sampleItem('a.js');
+  const cwd = tempDir('reslop-ui-');
   const session = new Session({
-    cwd: '/tmp',
-    stdout: sink(),
+    cwd,
+    stdout: uiSink(),
     color: false,
-    getSize: () => ({ width: 80, height: 16 }),
     startPane: 'files',
-    setInterval: () => 1,
-    clearInterval: () => {},
-    ...reviewFs,
     repo: {
-      load: () => ({ top: '/tmp', items: [item] }),
+      load: () => ({ top: cwd, items: [item] }),
       loadAsync: async () => {
         calls += 1;
-        return { top: '/tmp', items: [item] };
+        return { top: cwd, items: [item] };
       },
     },
   });
@@ -163,20 +138,17 @@ test('openLoad shares one in-flight promise without reset', async () => {
   });
   let calls = 0;
   const item = sampleItem('a.js');
+  const cwd = tempDir('reslop-ui-');
   const session = new Session({
-    cwd: '/tmp',
-    stdout: sink(),
+    cwd,
+    stdout: uiSink(),
     color: false,
-    getSize: () => ({ width: 80, height: 16 }),
-    setInterval: () => 1,
-    clearInterval: () => {},
-    ...reviewFs,
     repo: {
-      load: () => ({ top: '/tmp', items: [item] }),
+      load: () => ({ top: cwd, items: [item] }),
       loadAsync: async () => {
         calls += 1;
         await gate;
-        return { top: '/tmp', items: [item] };
+        return { top: cwd, items: [item] };
       },
     },
   });
@@ -198,23 +170,20 @@ test('reset rejects a late snapshot that ignores abort', async () => {
   let calls = 0;
   const oldItem = sampleItem('old.js');
   const newItem = sampleItem('new.js');
+  const cwd = tempDir('reslop-ui-');
   const session = new Session({
-    cwd: '/tmp',
-    stdout: sink(),
+    cwd,
+    stdout: uiSink(),
     color: false,
-    getSize: () => ({ width: 80, height: 16 }),
-    setInterval: () => 1,
-    clearInterval: () => {},
-    ...reviewFs,
     repo: {
-      load: () => ({ top: '/tmp', items: [newItem] }),
+      load: () => ({ top: cwd, items: [newItem] }),
       loadAsync: async () => {
         calls += 1;
         if (calls === 1) {
           await gateA;
-          return { top: '/tmp', items: [oldItem] };
+          return { top: cwd, items: [oldItem] };
         }
-        return { top: '/tmp', items: [newItem] };
+        return { top: cwd, items: [newItem] };
       },
     },
   });
@@ -241,34 +210,31 @@ test('reset ignores extras from a previous load', async () => {
   });
   let extrasStarted = false;
   let calls = 0;
+  const cwd = tempDir('reslop-ui-');
   const session = new Session({
-    cwd: '/tmp',
-    stdout: sink(),
+    cwd,
+    stdout: uiSink(),
     color: false,
     audit: true,
-    getSize: () => ({ width: 80, height: 16 }),
-    setInterval: () => 1,
-    clearInterval: () => {},
-    ...reviewFs,
     repo: {
-      load: () => ({ top: '/tmp', items: [gitItem] }),
+      load: () => ({ top: cwd, items: [gitItem] }),
       loadAsync: async () => {
         calls += 1;
         if (calls === 1) {
           return {
-            top: '/tmp',
+            top: cwd,
             items: [gitItem],
             parsed: [gitItem],
             pending: true,
           };
         }
-        return { top: '/tmp', items: [newItem], pending: false };
+        return { top: cwd, items: [newItem], pending: false };
       },
       loadExtras: async () => {
         extrasStarted = true;
         await extras;
         return {
-          top: '/tmp',
+          top: cwd,
           items: [gitItem, extraItem],
           pending: false,
         };
@@ -309,19 +275,16 @@ test('close while loading ignores the late snapshot', async () => {
     finish = resolve;
   });
   const item = sampleItem('late.js');
+  const cwd = tempDir('reslop-ui-');
   const session = new Session({
-    cwd: '/tmp',
-    stdout: sink(),
+    cwd,
+    stdout: uiSink(),
     color: false,
-    getSize: () => ({ width: 80, height: 16 }),
-    setInterval: () => 1,
-    clearInterval: () => {},
-    ...reviewFs,
     repo: {
-      load: () => ({ top: '/tmp', items: [] }),
+      load: () => ({ top: cwd, items: [] }),
       loadAsync: async () => {
         await gate;
-        return { top: '/tmp', items: [item] };
+        return { top: cwd, items: [item] };
       },
     },
   });
@@ -335,19 +298,16 @@ test('close while loading ignores the late snapshot', async () => {
 });
 
 const emptySession = (asyncLoad = false, extra = {}) => {
-  const load = () => ({ top: '/tmp', items: [] });
+  const cwd = extra.cwd ?? tempDir('reslop-ui-');
+  const load = () => ({ top: cwd, items: [] });
   const repo = extra.repo ?? { load };
   if (asyncLoad && !repo.loadAsync) repo.loadAsync = async () => load();
   return new Session({
-    cwd: '/tmp',
-    stdout: sink(),
+    stdout: uiSink(),
     color: false,
-    getSize: () => ({ width: 80, height: 16 }),
-    setInterval: () => 1,
-    clearInterval: () => {},
-    ...reviewFs,
-    repo,
     ...extra,
+    cwd,
+    repo,
   });
 };
 
@@ -431,7 +391,7 @@ test('deferred extras keep an empty branch review open', async () => {
     startExtras = resolve;
   });
   session.repo.loadAsync = async () => ({
-    top: '/tmp',
+    top: session.cwd,
     items: [],
     pending: true,
   });
@@ -445,7 +405,7 @@ test('deferred extras keep an empty branch review open', async () => {
   assert.equal(session.done, false);
   assert.equal(session.busy, 'checking npm');
   assert.equal(session.pendingExtras, true);
-  finishExtras({ top: '/tmp', items: [], pending: false });
+  finishExtras({ top: session.cwd, items: [], pending: false });
   await new Promise((resolve) => {
     setImmediate(resolve);
   });

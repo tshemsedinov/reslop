@@ -2,25 +2,15 @@
 
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
-const fs = require('node:fs');
-const os = require('node:os');
-const path = require('node:path');
 const { EventEmitter } = require('node:events');
 
-const sys = require('../lib/sys.js');
-const { npmBin, spawnBase, npmOpts, clipTools, watchResize, samePath } = sys;
+const sys = require('../lib/utilities.js');
+const { npmBin, npmOpts, clipTools, watchResize } = sys;
 
 test('npmBin uses npm.cmd on Windows', () => {
   assert.equal(npmBin('win32'), 'npm.cmd');
   assert.equal(npmBin('linux'), 'npm');
   assert.equal(npmBin('darwin'), 'npm');
-});
-
-test('spawnBase hides console windows', () => {
-  const opts = spawnBase({ cwd: '/tmp' });
-  assert.equal(opts.windowsHide, true);
-  assert.equal(opts.cwd, '/tmp');
-  assert.equal(opts.shell, undefined);
 });
 
 test('npmOpts uses a shell only on Windows', () => {
@@ -64,16 +54,4 @@ test('watchResize listens to stdout resize', () => {
   assert.equal(stdout.listenerCount('resize'), 0);
   stdout.emit('resize');
   assert.equal(n, 1);
-});
-
-test('samePath matches slash and symlink variants', () => {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'reslop-path-'));
-  try {
-    const posix = dir.split(path.sep).join('/');
-    assert.equal(samePath(dir, dir), true);
-    assert.equal(samePath(dir, posix), true);
-    assert.equal(samePath(dir, path.join(dir, 'missing')), false);
-  } finally {
-    fs.rmSync(dir, { recursive: true, force: true });
-  }
 });

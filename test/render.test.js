@@ -1,10 +1,12 @@
 'use strict';
 
+const { sampleHunk, reviewView } = require('./helpers.js');
+
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 
-const { displayLines } = require('../lib/diff.js');
-const render = require('../lib/render.js');
+const { displayLines } = require('../lib/diff/diff.js');
+const render = require('../lib/render/render.js');
 const wrap = require('../lib/wrap.js');
 const ansi = require('../lib/ansi.js');
 const { THEME, CODE_FG, fg, bg, stripAnsi, BOLD, seq } = ansi;
@@ -15,17 +17,10 @@ test('AC2 muted line color differs from strong char color', () => {
   assert.notDeepEqual(THEME.addLineBg, THEME.addCharBg);
   assert.notDeepEqual(THEME.delLineFg, THEME.delCharFg);
   assert.notDeepEqual(THEME.addLineFg, THEME.addCharFg);
-  const hunk = {
-    oldStart: 1,
-    oldCount: 1,
-    newStart: 1,
-    newCount: 1,
-    header: '@@ -1,1 +1,1 @@',
-    lines: [
-      { type: 'del', text: 'hello world', noNl: false, blockId: 0 },
-      { type: 'add', text: 'hello World', noNl: false, blockId: 0 },
-    ],
-  };
+  const hunk = sampleHunk([
+    { type: 'del', text: 'hello world', noNl: false, blockId: 0 },
+    { type: 'add', text: 'hello World', noNl: false, blockId: 0 },
+  ]);
   const lines = displayLines(hunk, 0);
   const del = render.paintDiffLine(lines[0], 40, true, 'unstaged', 'txt');
   const add = render.paintDiffLine(lines[1], 40, true, 'unstaged', 'txt');
@@ -36,20 +31,12 @@ test('AC2 muted line color differs from strong char color', () => {
   assert.ok(del.includes(fg(CODE_FG.plain)));
   assert.ok(!del.includes(fg(THEME.delLineFg)));
   assert.ok(!add.includes(fg(THEME.addLineFg)));
-  const view = {
-    item: {
-      origin: 'unstaged',
-      file: { newPath: 'f.js', oldPath: 'f.js', isBinary: false },
-      hunk,
-      blockId: 0,
-    },
-    index: 0,
-    total: 1,
-    scroll: 0,
-    status: '',
-    counts: { staged: 0, unstaged: 1, untracked: 0 },
-    repoName: 'demo',
-  };
+  const view = reviewView({
+    origin: 'unstaged',
+    file: { newPath: 'f.js', oldPath: 'f.js', isBinary: false },
+    hunk,
+    blockId: 0,
+  });
   const frame = render.renderFrame(view, {
     width: 80,
     height: 16,
@@ -65,33 +52,19 @@ test('AC2 muted line color differs from strong char color', () => {
 });
 
 test('AC27 side layout paints old left and new right', () => {
-  const hunk = {
-    oldStart: 1,
-    oldCount: 1,
-    newStart: 1,
-    newCount: 1,
-    header: '@@ -1,1 +1,1 @@',
-    lines: [
-      { type: 'del', text: 'hello world', noNl: false, blockId: 0 },
-      { type: 'add', text: 'hello World', noNl: false, blockId: 0 },
-    ],
-  };
-  const view = {
-    pane: 'diff',
-    item: {
+  const hunk = sampleHunk([
+    { type: 'del', text: 'hello world', noNl: false, blockId: 0 },
+    { type: 'add', text: 'hello World', noNl: false, blockId: 0 },
+  ]);
+  const view = reviewView(
+    {
       origin: 'unstaged',
       file: { newPath: 'f.js', oldPath: 'f.js', isBinary: false },
       hunk,
       blockId: 0,
     },
-    index: 0,
-    total: 1,
-    scroll: 0,
-    status: '',
-    layout: 'side',
-    counts: { staged: 0, unstaged: 1, untracked: 0 },
-    repoName: 'demo',
-  };
+    { pane: 'diff', layout: 'side' },
+  );
   const width = 80;
   const frame = render.renderFrame(view, { width, height: 8, color: true });
   const gap = frame.rows[1];
@@ -117,33 +90,19 @@ test('AC27 side layout paints old left and new right', () => {
 });
 
 test('js toString paints in side layout', () => {
-  const hunk = {
-    oldStart: 1,
-    oldCount: 1,
-    newStart: 1,
-    newCount: 1,
-    header: '@@ -1,1 +1,1 @@',
-    lines: [
-      { type: 'del', text: 'foo.toString()', noNl: false, blockId: 0 },
-      { type: 'add', text: 'bar.toString()', noNl: false, blockId: 0 },
-    ],
-  };
-  const view = {
-    pane: 'diff',
-    item: {
+  const hunk = sampleHunk([
+    { type: 'del', text: 'foo.toString()', noNl: false, blockId: 0 },
+    { type: 'add', text: 'bar.toString()', noNl: false, blockId: 0 },
+  ]);
+  const view = reviewView(
+    {
       origin: 'unstaged',
       file: { newPath: 'f.js', oldPath: 'f.js', isBinary: false },
       hunk,
       blockId: 0,
     },
-    index: 0,
-    total: 1,
-    scroll: 0,
-    status: '',
-    layout: 'side',
-    counts: { staged: 0, unstaged: 1, untracked: 0 },
-    repoName: 'demo',
-  };
+    { pane: 'diff', layout: 'side' },
+  );
   const frame = render.renderFrame(view, { width: 80, height: 8, color: true });
   const plain = stripAnsi(frame.rows[2]);
   assert.ok(plain.includes('foo.toString()'));
@@ -284,22 +243,15 @@ test('AC30 diff lines keep a two-column left gutter', () => {
   assert.equal(ctx.startsWith('  hold'), true);
   assert.equal(del.startsWith('- hello world'), true);
   assert.equal(add.startsWith('+ hello World'), true);
-  const view = {
-    pane: 'diff',
-    item: {
+  const view = reviewView(
+    {
       origin: 'unstaged',
       file: { newPath: 'f.js', oldPath: 'f.js', isBinary: false },
       hunk,
       blockId: 0,
     },
-    index: 0,
-    total: 1,
-    scroll: 0,
-    status: '',
-    layout: 'side',
-    counts: { staged: 0, unstaged: 1, untracked: 0 },
-    repoName: 'demo',
-  };
+    { pane: 'diff', layout: 'side' },
+  );
   const frame = render.renderFrame(view, {
     width: 80,
     height: 8,
@@ -314,17 +266,10 @@ test('AC30 diff lines keep a two-column left gutter', () => {
 });
 
 test('AC23 staged lines are grey with plus and minus marks', () => {
-  const hunk = {
-    oldStart: 1,
-    oldCount: 1,
-    newStart: 1,
-    newCount: 1,
-    header: '@@ -1,1 +1,1 @@',
-    lines: [
-      { type: 'del', text: 'hello world', noNl: false, blockId: 0 },
-      { type: 'add', text: 'hello World', noNl: false, blockId: 0 },
-    ],
-  };
+  const hunk = sampleHunk([
+    { type: 'del', text: 'hello world', noNl: false, blockId: 0 },
+    { type: 'add', text: 'hello World', noNl: false, blockId: 0 },
+  ]);
   const lines = displayLines(hunk, 0);
   const del = render.paintDiffLine(lines[0], 40, true, 'staged', 'txt');
   const add = render.paintDiffLine(lines[1], 40, true, 'staged', 'txt');
@@ -372,14 +317,9 @@ test('AC23 staged lines are grey with plus and minus marks', () => {
 });
 
 test('footer keeps info status on the counts line', () => {
-  const hunk = {
-    oldStart: 1,
-    oldCount: 1,
-    newStart: 1,
-    newCount: 1,
-    header: '@@ -1,1 +1,1 @@',
-    lines: [{ type: 'add', text: 'x', noNl: false, blockId: 0 }],
-  };
+  const hunk = sampleHunk([
+    { type: 'add', text: 'x', noNl: false, blockId: 0 },
+  ]);
   const view = {
     item: {
       origin: 'unstaged',
@@ -414,14 +354,9 @@ test('footer keeps info status on the counts line', () => {
 });
 
 test('status line includes feedback todo and code counts', () => {
-  const hunk = {
-    oldStart: 1,
-    oldCount: 1,
-    newStart: 1,
-    newCount: 1,
-    header: '@@ -1,1 +1,1 @@',
-    lines: [{ type: 'add', text: 'x', noNl: false, blockId: 0 }],
-  };
+  const hunk = sampleHunk([
+    { type: 'add', text: 'x', noNl: false, blockId: 0 },
+  ]);
   const view = {
     item: {
       origin: 'unstaged',
@@ -595,29 +530,18 @@ test('long operations paint an infinite progress bar', () => {
 });
 
 test('quit prompt paints f and c yellow on grey copy', () => {
-  const hunk = {
-    oldStart: 1,
-    oldCount: 1,
-    newStart: 1,
-    newCount: 1,
-    header: '@@ -1,1 +1,1 @@',
-    lines: [{ type: 'add', text: 'x', noNl: false, blockId: 0 }],
-  };
-  const view = {
-    item: {
+  const hunk = sampleHunk([
+    { type: 'add', text: 'x', noNl: false, blockId: 0 },
+  ]);
+  const view = reviewView(
+    {
       origin: 'unstaged',
       file: { newPath: 'f.js', oldPath: 'f.js', isBinary: false },
       hunk,
       blockId: 0,
     },
-    index: 0,
-    total: 1,
-    scroll: 0,
-    status: '',
-    mode: 'confirmQuit',
-    counts: { staged: 0, unstaged: 1, untracked: 0 },
-    repoName: 'demo',
-  };
+    { mode: 'confirmQuit' },
+  );
   const colored = render.renderFrame(view, {
     width: 80,
     height: 16,
@@ -1210,14 +1134,9 @@ test('files pane todos row dims add unstage drop', () => {
 });
 
 test('diff pane dims add on staged and unstage on unstaged', () => {
-  const hunk = {
-    oldStart: 1,
-    oldCount: 1,
-    newStart: 1,
-    newCount: 1,
-    header: '@@ -1,1 +1,1 @@',
-    lines: [{ type: 'add', text: 'x', noNl: false, blockId: 0 }],
-  };
+  const hunk = sampleHunk([
+    { type: 'add', text: 'x', noNl: false, blockId: 0 },
+  ]);
   const item = {
     origin: 'staged',
     file: { newPath: 'f.js', oldPath: 'f.js', isBinary: false },
@@ -1742,14 +1661,7 @@ test('AC25 header path roles use distinct greys', () => {
         oldPath: 'lib/database.js',
         isBinary: false,
       },
-      hunk: {
-        oldStart: 1,
-        oldCount: 1,
-        newStart: 1,
-        newCount: 1,
-        header: '@@ -1,1 +1,1 @@',
-        lines: [{ type: 'add', text: 'x', noNl: false, blockId: 0 }],
-      },
+      hunk: sampleHunk([{ type: 'add', text: 'x', noNl: false, blockId: 0 }]),
       blockId: 0,
     },
     index: 0,
@@ -1831,14 +1743,9 @@ test('presentCursor hides or shows at the edit cell', () => {
 });
 
 test('commit review header and counts use short sha', () => {
-  const hunk = {
-    oldStart: 1,
-    oldCount: 1,
-    newStart: 1,
-    newCount: 1,
-    header: '@@ -1,1 +1,1 @@',
-    lines: [{ type: 'add', text: 'x', noNl: false, blockId: 0 }],
-  };
+  const hunk = sampleHunk([
+    { type: 'add', text: 'x', noNl: false, blockId: 0 },
+  ]);
   const view = {
     item: {
       origin: 'commit',
@@ -1867,14 +1774,9 @@ test('commit review header and counts use short sha', () => {
 });
 
 test('PR review header and counts use pull request label', () => {
-  const hunk = {
-    oldStart: 1,
-    oldCount: 1,
-    newStart: 1,
-    newCount: 1,
-    header: '@@ -1,1 +1,1 @@',
-    lines: [{ type: 'add', text: 'x', noNl: false, blockId: 0 }],
-  };
+  const hunk = sampleHunk([
+    { type: 'add', text: 'x', noNl: false, blockId: 0 },
+  ]);
   const view = {
     item: {
       origin: 'pr',
@@ -1901,14 +1803,9 @@ test('PR review header and counts use pull request label', () => {
 });
 
 test('MR review header and counts use merge request label', () => {
-  const hunk = {
-    oldStart: 1,
-    oldCount: 1,
-    newStart: 1,
-    newCount: 1,
-    header: '@@ -1,1 +1,1 @@',
-    lines: [{ type: 'add', text: 'x', noNl: false, blockId: 0 }],
-  };
+  const hunk = sampleHunk([
+    { type: 'add', text: 'x', noNl: false, blockId: 0 },
+  ]);
   const view = {
     item: {
       origin: 'pr',
@@ -1935,30 +1832,21 @@ test('MR review header and counts use merge request label', () => {
 });
 
 test('compose panel sits above status and buttons', () => {
-  const hunk = {
-    oldStart: 1,
-    oldCount: 1,
-    newStart: 1,
-    newCount: 1,
-    header: '@@ -1,1 +1,1 @@',
-    lines: [{ type: 'add', text: 'x', noNl: false, blockId: 0 }],
-  };
-  const view = {
-    pane: 'diff',
-    item: {
+  const hunk = sampleHunk([
+    { type: 'add', text: 'x', noNl: false, blockId: 0 },
+  ]);
+  const view = reviewView(
+    {
       origin: 'unstaged',
       file: { newPath: 'f.js', oldPath: 'f.js', isBinary: false },
       hunk,
       blockId: 0,
     },
-    index: 0,
-    total: 1,
-    scroll: 0,
-    status: '',
-    counts: { staged: 0, unstaged: 1, untracked: 0 },
-    repoName: 'demo',
-    compose: { kind: 'feedback', text: 'extract helper', cursor: 14 },
-  };
+    {
+      pane: 'diff',
+      compose: { kind: 'feedback', text: 'extract helper', cursor: 14 },
+    },
+  );
   const frame = render.renderFrame(view, {
     width: 80,
     height: 16,
@@ -1982,35 +1870,26 @@ test('compose panel sits above status and buttons', () => {
 });
 
 test('feedback compose paints templates above the input', () => {
-  const hunk = {
-    oldStart: 1,
-    oldCount: 1,
-    newStart: 1,
-    newCount: 1,
-    header: '@@ -1,1 +1,1 @@',
-    lines: [{ type: 'add', text: 'x', noNl: false, blockId: 0 }],
-  };
-  const view = {
-    pane: 'diff',
-    item: {
+  const hunk = sampleHunk([
+    { type: 'add', text: 'x', noNl: false, blockId: 0 },
+  ]);
+  const view = reviewView(
+    {
       origin: 'unstaged',
       file: { newPath: 'f.js', oldPath: 'f.js', isBinary: false },
       hunk,
       blockId: 0,
     },
-    index: 0,
-    total: 1,
-    scroll: 0,
-    status: '',
-    counts: { staged: 0, unstaged: 1, untracked: 0 },
-    repoName: 'demo',
-    compose: { kind: 'feedback', text: 'new note', cursor: 0 },
-    templates: [
-      { text: 'extract helper', count: 2 },
-      { text: 'add tests', count: 1 },
-    ],
-    templateIndex: 0,
-  };
+    {
+      pane: 'diff',
+      compose: { kind: 'feedback', text: 'new note', cursor: 0 },
+      templates: [
+        { text: 'extract helper', count: 2 },
+        { text: 'add tests', count: 1 },
+      ],
+      templateIndex: 0,
+    },
+  );
   const frame = render.renderFrame(view, {
     width: 80,
     height: 16,
@@ -2067,29 +1946,18 @@ test('todo compose does not paint feedback templates', () => {
 });
 
 test('compose and idle notes keep one-char side margins', () => {
-  const hunk = {
-    oldStart: 1,
-    oldCount: 1,
-    newStart: 1,
-    newCount: 1,
-    header: '@@ -1,1 +1,1 @@',
-    lines: [{ type: 'add', text: 'x', noNl: false, blockId: 0 }],
-  };
-  const base = {
-    pane: 'diff',
-    item: {
+  const hunk = sampleHunk([
+    { type: 'add', text: 'x', noNl: false, blockId: 0 },
+  ]);
+  const base = reviewView(
+    {
       origin: 'unstaged',
       file: { newPath: 'f.js', oldPath: 'f.js', isBinary: false },
       hunk,
       blockId: 0,
     },
-    index: 0,
-    total: 1,
-    scroll: 0,
-    status: '',
-    counts: { staged: 0, unstaged: 1, untracked: 0 },
-    repoName: 'demo',
-  };
+    { pane: 'diff' },
+  );
   const opt = { width: 80, height: 16, color: false };
   const compose = render.renderFrame(
     { ...base, compose: { kind: 'feedback', text: 'hi', cursor: 0 } },
@@ -2104,14 +1972,9 @@ test('compose and idle notes keep one-char side margins', () => {
 });
 
 test('idle feedback note sits above the footer', () => {
-  const hunk = {
-    oldStart: 1,
-    oldCount: 1,
-    newStart: 1,
-    newCount: 1,
-    header: '@@ -1,1 +1,1 @@',
-    lines: [{ type: 'add', text: 'x', noNl: false, blockId: 0 }],
-  };
+  const hunk = sampleHunk([
+    { type: 'add', text: 'x', noNl: false, blockId: 0 },
+  ]);
   const view = {
     pane: 'diff',
     item: {
@@ -2142,29 +2005,18 @@ test('idle feedback note sits above the footer', () => {
 });
 
 test('note panel is lighter than the status line', () => {
-  const hunk = {
-    oldStart: 1,
-    oldCount: 1,
-    newStart: 1,
-    newCount: 1,
-    header: '@@ -1,1 +1,1 @@',
-    lines: [{ type: 'add', text: 'x', noNl: false, blockId: 0 }],
-  };
-  const base = {
-    pane: 'diff',
-    item: {
+  const hunk = sampleHunk([
+    { type: 'add', text: 'x', noNl: false, blockId: 0 },
+  ]);
+  const base = reviewView(
+    {
       origin: 'unstaged',
       file: { newPath: 'f.js', oldPath: 'f.js', isBinary: false },
       hunk,
       blockId: 0,
     },
-    index: 0,
-    total: 1,
-    scroll: 0,
-    status: '',
-    counts: { staged: 0, unstaged: 1, untracked: 0 },
-    repoName: 'demo',
-  };
+    { pane: 'diff' },
+  );
   const opt = { width: 80, height: 16, color: true };
   const idle = render.renderFrame({ ...base, noteText: 'extract helper' }, opt);
   const compose = render.renderFrame(
@@ -2324,14 +2176,9 @@ test('todo list paints the focused row on the selection bar', () => {
 });
 
 test('checkbox marks use a contrast chip on todo and note rows', () => {
-  const hunk = {
-    oldStart: 1,
-    oldCount: 1,
-    newStart: 1,
-    newCount: 1,
-    header: '@@ -1,1 +1,1 @@',
-    lines: [{ type: 'add', text: 'x', noNl: false, blockId: 0 }],
-  };
+  const hunk = sampleHunk([
+    { type: 'add', text: 'x', noNl: false, blockId: 0 },
+  ]);
   const todoView = {
     pane: 'diff',
     item: {
@@ -2350,22 +2197,15 @@ test('checkbox marks use a contrast chip on todo and note rows', () => {
     todos: ['[ ] rewrite this', '[x] already done'],
     todoFocus: 0,
   };
-  const noteView = {
-    pane: 'diff',
-    item: {
+  const noteView = reviewView(
+    {
       origin: 'unstaged',
       file: { newPath: 'f.js', oldPath: 'f.js', isBinary: false },
       hunk,
       blockId: 0,
     },
-    index: 0,
-    total: 1,
-    scroll: 0,
-    status: '',
-    counts: { staged: 0, unstaged: 1, untracked: 0 },
-    repoName: 'demo',
-    noteText: '[x] extract helper',
-  };
+    { pane: 'diff', noteText: '[x] extract helper' },
+  );
   const opt = { width: 80, height: 16, color: true };
   const todos = render.renderFrame(todoView, opt);
   const note = render.renderFrame(noteView, opt);
@@ -2515,29 +2355,18 @@ test('wrapMove keeps a column across a short visual row', () => {
 });
 
 test('compose and idle notes wrap on word boundaries', () => {
-  const hunk = {
-    oldStart: 1,
-    oldCount: 1,
-    newStart: 1,
-    newCount: 1,
-    header: '@@ -1,1 +1,1 @@',
-    lines: [{ type: 'add', text: 'x', noNl: false, blockId: 0 }],
-  };
-  const base = {
-    pane: 'diff',
-    item: {
+  const hunk = sampleHunk([
+    { type: 'add', text: 'x', noNl: false, blockId: 0 },
+  ]);
+  const base = reviewView(
+    {
       origin: 'unstaged',
       file: { newPath: 'f.js', oldPath: 'f.js', isBinary: false },
       hunk,
       blockId: 0,
     },
-    index: 0,
-    total: 1,
-    scroll: 0,
-    status: '',
-    counts: { staged: 0, unstaged: 1, untracked: 0 },
-    repoName: 'demo',
-  };
+    { pane: 'diff' },
+  );
   const opt = { width: 20, height: 16, color: false };
   const compose = render.renderFrame(
     {
@@ -2607,33 +2436,22 @@ test('compose and idle notes wrap on word boundaries', () => {
 });
 
 test('code overlay paints proposed adds and an in-place cursor', () => {
-  const hunk = {
-    oldStart: 1,
-    oldCount: 1,
-    newStart: 1,
-    newCount: 1,
-    header: '@@ -1,1 +1,1 @@',
-    lines: [
-      { type: 'del', text: 'a', noNl: false, blockId: 0 },
-      { type: 'add', text: 'b', noNl: false, blockId: 0 },
-    ],
-  };
-  const view = {
-    pane: 'diff',
-    item: {
+  const hunk = sampleHunk([
+    { type: 'del', text: 'a', noNl: false, blockId: 0 },
+    { type: 'add', text: 'b', noNl: false, blockId: 0 },
+  ]);
+  const view = reviewView(
+    {
       origin: 'unstaged',
       file: { newPath: 'f.js', oldPath: 'f.js', isBinary: false },
       hunk,
       blockId: 0,
     },
-    index: 0,
-    total: 1,
-    scroll: 0,
-    status: '',
-    counts: { staged: 0, unstaged: 1, untracked: 0 },
-    repoName: 'demo',
-    codeOverlay: { text: 'hello', keepEmpty: true, cursor: 0 },
-  };
+    {
+      pane: 'diff',
+      codeOverlay: { text: 'hello', keepEmpty: true, cursor: 0 },
+    },
+  );
   const frame = render.renderFrame(view, {
     width: 80,
     height: 16,
@@ -2801,10 +2619,9 @@ test('unit edit hides plus minus marks and keeps the line-end cursor', () => {
     file: { newPath: 'a.js', oldPath: 'a.js', isBinary: false },
     blockId: 0,
   };
-  const view = {
+  const view = reviewView(current, {
     pane: 'unit',
     mode: 'compose',
-    item: current,
     reviewPath: 'a.js',
     unitLine: 0,
     unitLines: [
@@ -2838,14 +2655,8 @@ test('unit edit hides plus minus marks and keeps the line-end cursor', () => {
         editLast: true,
       },
     ],
-    index: 0,
-    total: 1,
-    scroll: 0,
-    status: '',
-    counts: { staged: 0, unstaged: 1, untracked: 0 },
-    repoName: 'demo',
     codeOverlay: { text: 'hello\nz', keepEmpty: true, cursor: 5 },
-  };
+  });
   const frame = render.renderFrame(view, {
     width: 80,
     height: 12,

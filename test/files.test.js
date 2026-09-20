@@ -5,7 +5,7 @@ const assert = require('node:assert/strict');
 
 const files = require('../lib/files.js');
 const { fileEntries, fileStatus, itemPath, relativeAge } = files;
-const { TODO_FILE, repoTodosLabel, isTodosEntry, isTodoItem } = files;
+const { TODO_FILE, REPO_TODOS_LABEL, isTodosEntry, isTodoItem } = files;
 const { fileTotals, isTotalEntry, TOTAL_LABEL } = files;
 
 const item = (name, origin, indexHint) => ({
@@ -57,13 +57,6 @@ test('fileEntries skips todo items', () => {
   assert.equal(isTodoItem(items[1]), false);
 });
 
-test('repoTodosLabel names the global todos row', () => {
-  assert.equal(repoTodosLabel(), 'Repository TODOs and Issues');
-  assert.equal(repoTodosLabel('reslop'), 'Repository TODOs and Issues');
-  assert.equal(isTodosEntry({ kind: 'todos' }), true);
-  assert.equal(isTodosEntry({ path: 'a.js' }), false);
-});
-
 test('fileEntries counts lines and mixed staged blocks', () => {
   const hunk = {
     lines: [
@@ -95,7 +88,7 @@ test('fileEntries counts lines and mixed staged blocks', () => {
 
 test('fileTotals sums line and origin counts across files', () => {
   const todos = {
-    path: repoTodosLabel(),
+    path: REPO_TODOS_LABEL,
     kind: 'todos',
     status: 'todos',
     remaining: 5,

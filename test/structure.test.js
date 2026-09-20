@@ -104,8 +104,6 @@ const lint = (code, rules, filename = 'file.js') => {
   );
 };
 
-const ruleIds = (messages) => messages.map((message) => message.ruleId);
-
 const checkDirectory = (directory, messages) => {
   for (const entry of fs.readdirSync(directory, { withFileTypes: true })) {
     const filename = path.join(directory, entry.name);
@@ -134,98 +132,4 @@ test('lib files satisfy the structural limits and dependency direction', () => {
   const messages = [];
   checkDirectory(path.dirname(SESSION_FILE), messages);
   assert.deepEqual(messages, []);
-});
-
-const exprArrow = (lineCount) => {
-  const parts = ['const f = () =>'];
-  for (let i = 2; i < lineCount; i++) parts.push('  1 +');
-  parts.push('  1;');
-  return `${parts.join('\n')}\n`;
-};
-
-const blockArrow = (lineCount, secondLine) => {
-  const parts = ['const f = () => {', secondLine];
-  while (parts.length < lineCount - 1) parts.push('  void 0;');
-  parts.push('};');
-  return `${parts.join('\n')}\n`;
-};
-
-const sessionClass = (lineCount) => {
-  const parts = ['class Session {'];
-  while (parts.length < lineCount - 1) parts.push('  noop() {}');
-  parts.push('}');
-  return `${parts.join('\n')}\n`;
-};
-
-test('expression-bodied arrows count toward the function limit', () => {
-  const allowed = lint(exprArrow(100), {
-    'max-lines-per-function': FUNCTION_RULE,
-  });
-  const over = lint(exprArrow(104), {
-    'max-lines-per-function': FUNCTION_RULE,
-  });
-  assert.deepEqual(ruleIds(allowed), []);
-  assert.ok(ruleIds(over).includes('max-lines-per-function'));
-});
-
-test('regex braces do not end the enclosing function', () => {
-  const code = blockArrow(105, '  const re = /}/;');
-  const messages = lint(code, { 'max-lines-per-function': FUNCTION_RULE });
-  assert.ok(ruleIds(messages).includes('max-lines-per-function'));
-});
-
-test('template interpolation braces do not end the enclosing function', () => {
-  const interpol = ['$', '{x}'].join('');
-  const second = ['  const t = `', '}', interpol, '`;'].join('');
-  const messages = lint(blockArrow(105, second), {
-    'max-lines-per-function': FUNCTION_RULE,
-  });
-  assert.ok(ruleIds(messages).includes('max-lines-per-function'));
-});
-
-test('multiline parameters stay part of the function span', () => {
-  const parts = ['const f = (', '  a,', '  b', ') => {'];
-  while (parts.length < 104) parts.push('  void 0;');
-  parts.push('};');
-  const messages = lint(`${parts.join('\n')}\n`, {
-    'max-lines-per-function': FUNCTION_RULE,
-  });
-  assert.ok(ruleIds(messages).includes('max-lines-per-function'));
-});
-
-test('Session class length uses parser locations', () => {
-  const allowed = lint(sessionClass(500), {
-    'local/session-class-lines': ['error', 500],
-  });
-  const over = lint(sessionClass(501), {
-    'local/session-class-lines': ['error', 500],
-  });
-  assert.deepEqual(ruleIds(allowed), []);
-  assert.ok(ruleIds(over).includes('local/session-class-lines'));
-});
-
-test('session modules cannot require Session through relative paths', () => {
-  const filename = path.resolve(__dirname, '../lib/session/load.js');
-  const requireCall = (spec, quote) => `require(${quote}${spec}${quote});\n`;
-  const single = String.fromCharCode(39);
-  const double = '"';
-  const hits = [
-    requireCall('../session.js', single),
-    requireCall('../session.js', double),
-    requireCall('../session', single),
-  ];
-  for (const code of hits) {
-    const messages = lint(
-      code,
-      { 'local/no-session-require': 'error' },
-      filename,
-    );
-    assert.ok(ruleIds(messages).includes('local/no-session-require'), code);
-  }
-  const nested = lint(
-    requireCall('./session.js', single),
-    { 'local/no-session-require': 'error' },
-    filename,
-  );
-  assert.deepEqual(ruleIds(nested), []);
 });

@@ -14,9 +14,9 @@ const { currentBranch, listBranches, checkoutBranch } = git;
 const { createBranch, rebaseBranch, dropBranch, pullChanges } = git;
 const { listCommits, dropCommit } = git;
 const { pushChanges, editItem } = git;
-const { runProc } = require('../lib/git/proc.js');
+const { runProc } = require('../lib/utilities.js');
 const { Session } = require('../lib/session.js');
-const { blockAddText } = require('../lib/diff.js');
+const { blockAddText } = require('../lib/diff/diff.js');
 const { makeRepo, sink } = require('./helpers.js');
 
 const sessionFor = (dir) => {
@@ -27,7 +27,6 @@ const sessionFor = (dir) => {
     stdout,
     color: false,
     startPane: 'diff',
-    getSize: () => ({ width: 80, height: 16 }),
   });
   session.load();
   return session;
@@ -400,7 +399,6 @@ test('AC15 file argv loads only that file', () => {
       stdout: sink(),
       color: false,
       startPane: 'diff',
-      getSize: () => ({ width: 80, height: 16 }),
     });
     session.load();
     assert.equal(session.pane, 'diff');
@@ -1136,7 +1134,6 @@ test('file edit save stages new context lines', () => {
       stdout,
       color: false,
       startPane: 'files',
-      getSize: () => ({ width: 80, height: 24 }),
     });
     session.load();
     session.dispatch('file');

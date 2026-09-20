@@ -8,7 +8,8 @@ const path = require('node:path');
 
 const cli = require('../lib/cli.js');
 const { run, parseArgv, resolveScope } = cli;
-const { makeRepo, sink } = require('./helpers.js');
+const { createGitRepo } = require('../lib/git.js');
+const { makeRepo, sink, sampleHunk } = require('./helpers.js');
 
 const fakeProc = (cwd, extra = {}) => {
   const stdout = sink();
@@ -82,32 +83,30 @@ test('unknown option exits 1', async () => {
   assert.doesNotMatch(err, /--help/);
 });
 
-test('AC22 resolveScope peels a commit from argv', () => {
-  const missing = () => {
-    const err = new Error('enoent');
-    err.code = 'ENOENT';
-    throw err;
-  };
-  const repo = {
-    resolveRev: (cwd, spec) => {
-      if (spec === '7ac260c') return '7ac260c3023283715b94337991458667b6c2a14d';
-      return null;
-    },
-  };
-  const peeled = resolveScope('/repo', ['7ac260c'], repo, missing);
-  assert.equal(peeled.rev, '7ac260c3023283715b94337991458667b6c2a14d');
-  assert.deepEqual(peeled.paths, []);
-  assert.throws(
-    () => resolveScope('/repo', ['7ac260c', 'lib'], repo, missing),
-    /commit or a path/,
-  );
-  const exists = (full) => {
-    if (full.endsWith(`${path.sep}src`)) return { isFile: () => false };
-    throw Object.assign(new Error('enoent'), { code: 'ENOENT' });
-  };
-  const pathWins = resolveScope('/repo', ['src'], repo, exists);
-  assert.equal(pathWins.rev, null);
-  assert.deepEqual(pathWins.paths, ['src']);
+test('AC22 resolveScope peels a commit from argv', async () => {
+  const repo = makeRepo();
+  try {
+    repo.write('src/a.txt', 'ok\n');
+    repo.git(['add', '.']);
+    repo.git(['commit', '-m', 'init']);
+    const sha = repo.git(['rev-parse', 'HEAD']).trim();
+    const peeled = await resolveScope(
+      repo.dir,
+      [sha.slice(0, 7)],
+      createGitRepo(),
+    );
+    assert.equal(peeled.rev, sha);
+    assert.deepEqual(peeled.paths, []);
+    await assert.rejects(
+      () => resolveScope(repo.dir, [sha.slice(0, 7), 'lib'], createGitRepo()),
+      /commit or a path/,
+    );
+    const pathWins = await resolveScope(repo.dir, ['src'], createGitRepo());
+    assert.equal(pathWins.rev, null);
+    assert.deepEqual(pathWins.paths, ['src']);
+  } finally {
+    repo.cleanup();
+  }
 });
 
 test('AC22 unknown sha exits 1', async () => {
@@ -180,17 +179,10 @@ const prItem = () => ({
     preamble: ['diff --git a/lib/a.js b/lib/a.js'],
     hunks: [],
   },
-  hunk: {
-    oldStart: 1,
-    oldCount: 1,
-    newStart: 1,
-    newCount: 1,
-    header: '@@ -1,1 +1,1 @@',
-    lines: [
-      { type: 'del', text: 'a', noNl: false, blockId: 0 },
-      { type: 'add', text: 'b', noNl: false, blockId: 0 },
-    ],
-  },
+  hunk: sampleHunk([
+    { type: 'del', text: 'a', noNl: false, blockId: 0 },
+    { type: 'add', text: 'b', noNl: false, blockId: 0 },
+  ]),
   blockId: 0,
   patchAdd: '',
   patchRevert: '',
@@ -203,7 +195,7 @@ const mockPrLoad =
     items: extra.items ?? [prItem()],
     sourceLabel: extra.sourceLabel ?? '#123',
     change: {
-      source: 'github-pr',
+      source: 'pr',
       title: extra.title ?? 'Fix parser',
       author: extra.author ?? 'alice',
       repository: extra.repository ?? 'acme/app',
@@ -297,7 +289,7 @@ const mockMrLoad =
     items: extra.items ?? [prItem()],
     sourceLabel: extra.sourceLabel ?? '!123',
     change: {
-      source: 'gitlab-mr',
+      source: 'mr',
       title: extra.title ?? 'Fix parser',
       author: extra.author ?? 'alice',
       repository: extra.repository ?? 'acme/app',

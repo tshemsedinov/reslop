@@ -6,7 +6,7 @@ const os = require('node:os');
 const path = require('node:path');
 const { spawnSync } = require('node:child_process');
 
-const { IS_WIN, spawnBase } = require('../lib/sys.js');
+const { IS_WIN, spawnBase } = require('../lib/utilities.js');
 
 const root = path.resolve(__dirname, '..');
 const binSrc = path.join(root, 'bin', 'reslop.js');

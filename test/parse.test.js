@@ -1,9 +1,11 @@
 'use strict';
 
+const { sampleHunk } = require('./helpers.js');
+
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 
-const diff = require('../lib/diff.js');
+const diff = require('../lib/diff/diff.js');
 const { parseDiff, splitHunk, formatPatch, flattenBlock } = diff;
 const { displayLines, itemsFromFiles, DISPLAY_CONTEXT } = diff;
 const { replaceBlockAdds, addBlockRange } = diff;
@@ -129,17 +131,10 @@ test('itemsFromFiles staged index patch uses new-side context', () => {
 });
 
 test('displayLines overlay replaces added lines', () => {
-  const hunk = {
-    oldStart: 1,
-    oldCount: 1,
-    newStart: 1,
-    newCount: 1,
-    header: '@@ -1,1 +1,1 @@',
-    lines: [
-      { type: 'del', text: 'OLD', noNl: false, blockId: 0 },
-      { type: 'add', text: 'NEW', noNl: false, blockId: 0 },
-    ],
-  };
+  const hunk = sampleHunk([
+    { type: 'del', text: 'OLD', noNl: false, blockId: 0 },
+    { type: 'add', text: 'NEW', noNl: false, blockId: 0 },
+  ]);
   const lines = displayLines(hunk, 0, 'unified', undefined, {
     text: 'NEXT\nMORE',
   });

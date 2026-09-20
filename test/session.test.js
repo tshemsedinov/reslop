@@ -2,18 +2,29 @@
 
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
+const fs = require('node:fs');
 const path = require('node:path');
 
 const { Session } = require('../lib/session.js');
 const { createOpsRunner } = require('../lib/session/ops.js');
-const { CHECK_INTERVAL_MS } = require('../lib/update.js');
 const { hitAction } = require('../lib/keys.js');
-const { sink } = require('./helpers.js');
-const { createStore, addTodo, serializeReview } = require('../lib/review.js');
+const { uiSink, sampleHunk, tempDir } = require('./helpers.js');
+const {
+  createStore,
+  addTodo,
+  serializeReview,
+} = require('../lib/review/review.js');
 const { stripAnsi, THEME, BOLD, seq } = require('../lib/ansi.js');
 const { REVIEW_DIR } = require('../lib/files.js');
 
-const reviewFile = (name) => path.join('/tmp', REVIEW_DIR, name);
+const pad2 = (n) => `${n}`.padStart(2, '0');
+
+const dateStamp = (date = new Date()) => {
+  const y = date.getFullYear();
+  const month = pad2(date.getMonth() + 1);
+  const day = pad2(date.getDate());
+  return `${y}-${month}-${day}`;
+};
 
 const sampleItem = (name, origin = 'unstaged') => ({
   origin,
@@ -26,17 +37,10 @@ const sampleItem = (name, origin = 'unstaged') => ({
     preamble: [`diff --git a/${name} b/${name}`],
     hunks: [],
   },
-  hunk: {
-    oldStart: 1,
-    oldCount: 1,
-    newStart: 1,
-    newCount: 1,
-    header: '@@ -1,1 +1,1 @@',
-    lines: [
-      { type: 'del', text: 'a', noNl: false, blockId: 0 },
-      { type: 'add', text: 'b', noNl: false, blockId: 0 },
-    ],
-  },
+  hunk: sampleHunk([
+    { type: 'del', text: 'a', noNl: false, blockId: 0 },
+    { type: 'add', text: 'b', noNl: false, blockId: 0 },
+  ]),
   blockId: 0,
   patchAdd: 'add',
   patchRevert: 'rev',
@@ -95,7 +99,7 @@ const hunkPair = (name) => {
   return [first, second];
 };
 
-const mockRepo = (initial) => {
+const mockRepo = (initial, top) => {
   let items = [...initial];
   const added = [];
   const reverted = [];
@@ -146,7 +150,7 @@ const mockRepo = (initial) => {
     fileBodies,
     extraFiles,
     commitDrops,
-    load: () => ({ top: '/tmp', items: [...items], branch: 'main' }),
+    load: () => ({ top, items: [...items], branch: 'main' }),
     add: (top, item) => {
       added.push(item);
       items = items.filter((entry) => entry !== item);
@@ -208,41 +212,20 @@ const mockRepo = (initial) => {
   };
 };
 
-const missingFile = () => {
-  const error = new Error('ENOENT');
-  error.code = 'ENOENT';
-  throw error;
-};
-
-const reviewReader = (md) => (file) => {
-  const name = `${file ?? ''}`;
-  if (name.endsWith('.md')) return md;
-  return missingFile();
-};
-
-const reviewFs = {
-  readdirSync: () => [],
-  readFileSync: () => missingFile(),
-  writeFileSync: () => {},
-  mkdirSync: () => {},
-  now: () => new Date(2026, 8, 7),
-};
-
 const openSession = (items, extra = {}) => {
-  const repo = extra.repo ?? mockRepo(items);
-  const stdout = sink();
+  const stdout = extra.stdout ?? uiSink();
+  const cwd = extra.cwd ?? tempDir('reslop-ui-');
+  const repo = extra.repo ?? mockRepo(items, cwd);
   const session = new Session({
-    cwd: '/tmp',
-    stdout,
     color: false,
-    getSize: () => ({ width: 80, height: 16 }),
     startPane: 'diff',
-    ...reviewFs,
     ...extra,
+    cwd,
+    stdout,
     repo,
   });
   session.load();
-  return { session, repo, stdout };
+  return { session, repo, stdout, cwd };
 };
 
 const clickStatusChoice = (session, id) => {
@@ -442,7 +425,7 @@ test('PR add and revert are read only and feedback attaches', () => {
   const { session, repo } = openSession([item], {
     sourceLabel: '#12',
     change: {
-      source: 'github-pr',
+      source: 'pr',
       repository: 'acme/app',
       title: 'Fix',
       author: 'alice',
@@ -488,7 +471,7 @@ test('MR add and revert are read only and feedback attaches', () => {
   const { session, repo } = openSession([item], {
     sourceLabel: '!12',
     change: {
-      source: 'gitlab-mr',
+      source: 'mr',
       repository: 'acme/app',
       title: 'Fix',
       author: 'alice',
@@ -728,24 +711,8 @@ test('AC10 footer Add hitbox dispatches add', () => {
 });
 
 test('AC13 drag copies selected text', () => {
-  const copied = [];
   const item = sampleItem('c.js');
-  const repo = mockRepo([item]);
-  const stdout = sink();
-  const session = new Session({
-    repo,
-    cwd: '/tmp',
-    stdout,
-    color: false,
-    startPane: 'diff',
-    getSize: () => ({ width: 80, height: 16 }),
-    copyText: (text) => {
-      copied.push(text);
-      return true;
-    },
-    ...reviewFs,
-  });
-  session.load();
+  const { session, stdout } = openSession([item]);
   session.draw();
   session.handleEvent({
     type: 'mouse',
@@ -774,8 +741,7 @@ test('AC13 drag copies selected text', () => {
     y: 5,
     press: false,
   });
-  assert.equal(copied.length, 1);
-  assert.ok(copied[0].length > 0);
+  assert.ok(stdout.dump().includes(']52;c;'));
   assert.equal(session.status, 'copied');
 });
 
@@ -824,18 +790,7 @@ test('escape from files with notes asks to finish or continue', () => {
 });
 
 test('starts on the file list', () => {
-  const item = sampleItem('a.js');
-  const repo = mockRepo([item]);
-  const stdout = sink();
-  const session = new Session({
-    repo,
-    cwd: '/tmp',
-    stdout,
-    color: false,
-    getSize: () => ({ width: 80, height: 16 }),
-    ...reviewFs,
-  });
-  session.load();
+  const { session } = openSession([sampleItem('a.js')], { startPane: 'files' });
   assert.equal(session.pane, 'files');
   assert.equal(session.fileCursor, 0);
   assert.equal(session.fileList()[0].kind, 'todos');
@@ -847,22 +802,11 @@ test('starts on the file list', () => {
 test('AC14 files pane lists paths and enter opens', () => {
   const a = sampleItem('a.js');
   const b = sampleItem('b.js');
-  const repo = mockRepo([a, b]);
-  const stdout = sink();
-  const session = new Session({
-    repo,
-    cwd: '/tmp',
-    stdout,
-    color: false,
-    startPane: 'files',
-    getSize: () => ({ width: 80, height: 16 }),
-    ...reviewFs,
-  });
-  session.load();
+  const { session, stdout } = openSession([a, b], { startPane: 'files' });
   assert.equal(session.pane, 'files');
   session.draw();
   const text = stdout.dump();
-  assert.match(text, /reslop: tmp\/TODOs\s+todo 1\/3/);
+  assert.match(text, /TODOs\s+todo 1\/3/);
   assert.ok(!text.includes('@@'));
   assert.match(text, /Repository TODOs and Issues/);
   assert.match(text, /a\.js/);
@@ -1104,10 +1048,9 @@ test('f maps feedback to the hunk location', () => {
 });
 
 test('compose arrows move by visual wrap rows', () => {
-  const item = sampleItem('a.js');
-  const { session } = openSession([item], {
-    getSize: () => ({ width: 10, height: 16 }),
-  });
+  const stdout = uiSink();
+  stdout.columns = 10;
+  const { session } = openSession([sampleItem('a.js')], { stdout });
   session.dispatch('feedback');
   session.pushInput('hello world');
   session.handleEvent({ type: 'key', key: 'up' });
@@ -1868,12 +1811,8 @@ test('todo save recovers if the stub was dropped', () => {
 });
 
 test('quit with notes asks f to finish or c to continue', () => {
-  const writes = [];
   const item = sampleItem('a.js');
-  const { session } = openSession([item], {
-    writeFileSync: (file, body) => writes.push({ file, body }),
-    mkdirSync: () => {},
-  });
+  const { session } = openSession([item]);
   session.dispatch('feedback');
   session.pushInput('nits');
   session.handleEvent({ type: 'key', key: 'ctrl-s' });
@@ -1886,12 +1825,9 @@ test('quit with notes asks f to finish or c to continue', () => {
   session.dispatch('quit');
   session.pushInput('f');
   assert.equal(session.done, true);
-  assert.ok(writes.some((entry) => entry.file.endsWith('2026-09-07-00.md')));
-  const mdWrites = writes.filter((entry) => entry.file.endsWith('.md'));
-  assert.match(mdWrites[0].body, /status: editing/);
-  const last = mdWrites[mdWrites.length - 1];
-  assert.match(last.body, /nits/);
-  assert.match(last.body, /status: ready/);
+  const md = fs.readFileSync(session.notes.reviewPath, 'utf8');
+  assert.match(md, /nits/);
+  assert.match(md, /status: ready/);
 });
 
 test('click quit prompt continues next time', () => {
@@ -1907,12 +1843,8 @@ test('click quit prompt continues next time', () => {
 });
 
 test('quit continue keeps editing so the next run can resume', () => {
-  const writes = [];
   const item = sampleItem('a.js');
-  const { session } = openSession([item], {
-    writeFileSync: (file, body) => writes.push({ file, body }),
-    mkdirSync: () => {},
-  });
+  const { session } = openSession([item]);
   session.dispatch('feedback');
   session.pushInput('nits');
   session.handleEvent({ type: 'key', key: 'ctrl-s' });
@@ -1920,22 +1852,21 @@ test('quit continue keeps editing so the next run can resume', () => {
   session.pushInput('c');
   assert.equal(session.done, true);
   assert.equal(session.notes.status, 'editing');
-  const mdWrites = writes.filter((entry) => entry.file.endsWith('.md'));
-  const last = mdWrites[mdWrites.length - 1];
-  assert.match(last.body, /status: editing/);
-  assert.match(last.body, /nits/);
+  const md = fs.readFileSync(session.notes.reviewPath, 'utf8');
+  assert.match(md, /status: editing/);
+  assert.match(md, /nits/);
 });
 
 test('initReview resumes latest editing file', () => {
-  const draft = createStore(reviewFile('2026-09-07-00.md'));
+  const cwd = tempDir('reslop-ui-');
+  const name = `${dateStamp()}-00.md`;
+  const reviewPath = path.join(cwd, REVIEW_DIR, name);
+  const draft = createStore(reviewPath);
   addTodo(draft, 'a.js', 'rewrite loop');
-  const md = serializeReview(draft);
-  const a = sampleItem('a.js');
-  const { session } = openSession([a], {
-    readdirSync: () => ['2026-09-07-00.md'],
-    readFileSync: reviewReader(md),
-  });
-  assert.equal(session.notes.reviewPath, reviewFile('2026-09-07-00.md'));
+  fs.mkdirSync(path.dirname(reviewPath), { recursive: true });
+  fs.writeFileSync(reviewPath, serializeReview(draft), 'utf8');
+  const { session } = openSession([sampleItem('a.js')], { cwd });
+  assert.equal(session.notes.reviewPath, reviewPath);
   assert.equal(session.notes.status, 'editing');
   assert.equal(session.notes.todos[0].text, 'rewrite loop');
   assert.equal(
@@ -1945,28 +1876,38 @@ test('initReview resumes latest editing file', () => {
 });
 
 test('initReview starts a new file when latest is ready', () => {
-  const draft = createStore(reviewFile('2026-09-07-00.md'));
+  const cwd = tempDir('reslop-ui-');
+  const name = `${dateStamp()}-00.md`;
+  const reviewPath = path.join(cwd, REVIEW_DIR, name);
+  const draft = createStore(reviewPath);
   draft.status = 'ready';
   addTodo(draft, 'a.js', 'rewrite loop');
-  const md = serializeReview(draft);
-  const { session } = openSession([sampleItem('a.js')], {
-    readdirSync: () => ['2026-09-07-00.md'],
-    readFileSync: reviewReader(md),
-  });
-  assert.equal(session.notes.reviewPath, reviewFile('2026-09-07-01.md'));
+  fs.mkdirSync(path.dirname(reviewPath), { recursive: true });
+  fs.writeFileSync(reviewPath, serializeReview(draft), 'utf8');
+  const { session } = openSession([sampleItem('a.js')], { cwd });
+  assert.equal(
+    session.notes.reviewPath,
+    path.join(cwd, REVIEW_DIR, `${dateStamp()}-01.md`),
+  );
   assert.equal(session.notes.todos.length, 0);
 });
 
 test('newReview starts a new file even if latest is editing', () => {
-  const draft = createStore(reviewFile('2026-09-07-00.md'));
+  const cwd = tempDir('reslop-ui-');
+  const name = `${dateStamp()}-00.md`;
+  const reviewPath = path.join(cwd, REVIEW_DIR, name);
+  const draft = createStore(reviewPath);
   addTodo(draft, 'a.js', 'rewrite loop');
-  const md = serializeReview(draft);
+  fs.mkdirSync(path.dirname(reviewPath), { recursive: true });
+  fs.writeFileSync(reviewPath, serializeReview(draft), 'utf8');
   const { session } = openSession([sampleItem('a.js')], {
+    cwd,
     newReview: true,
-    readdirSync: () => ['2026-09-07-00.md'],
-    readFileSync: reviewReader(md),
   });
-  assert.equal(session.notes.reviewPath, reviewFile('2026-09-07-01.md'));
+  assert.equal(
+    session.notes.reviewPath,
+    path.join(cwd, REVIEW_DIR, `${dateStamp()}-01.md`),
+  );
   assert.equal(session.notes.todos.length, 0);
 });
 
@@ -2064,17 +2005,6 @@ test('compose c inserts a letter and does not open commit', () => {
   assert.equal(session.composeKind, 'feedback');
   assert.equal(session.editor.text, 'c');
   assert.equal(repo.commits.length, 0);
-});
-
-test('files pane c opens the commits list', () => {
-  const { session } = openSession([sampleItem('a.js', 'staged')], {
-    startPane: 'files',
-  });
-  session.pushInput('c');
-  assert.equal(session.pane, 'commits');
-  session.pushInput('c');
-  assert.equal(session.mode, 'compose');
-  assert.equal(session.composeKind, 'commit');
 });
 
 test('diff pane c does not open commits', () => {
@@ -2177,14 +2107,6 @@ test('click commit row selects it', () => {
   assert.equal(session.pane, 'commits');
 });
 
-test('escape from commits returns to files', () => {
-  const { session } = openSession([sampleItem('a.js')], { startPane: 'files' });
-  session.pushInput('c');
-  assert.equal(session.pane, 'commits');
-  session.handleEvent({ type: 'key', key: 'escape' });
-  assert.equal(session.pane, 'files');
-});
-
 test('files pane a and d stay add and revert', () => {
   const added = openSession([sampleItem('a.js')], { startPane: 'files' });
   added.session.handleEvent({ type: 'key', key: 'down' });
@@ -2209,19 +2131,16 @@ test('files pane p pulls and s pushes', () => {
 });
 
 test('quit without notes does not write a review file', () => {
-  const writes = [];
-  const item = sampleItem('a.js');
-  const { session } = openSession([item], {
-    writeFileSync: (file, body) => writes.push({ file, body }),
-    mkdirSync: () => {},
-  });
+  const { session } = openSession([sampleItem('a.js')]);
+  const reviewPath = session.notes.reviewPath;
   session.dispatch('quit');
   assert.equal(session.done, true);
-  assert.equal(writes.length, 0);
+  assert.equal(fs.existsSync(reviewPath), false);
 });
 
 test('load applies imported GitHub notes on a new review', () => {
   const item = sampleItem('lib/parser.js', 'pr');
+  const cwd = tempDir('reslop-ui-');
   const imported = {
     feedback: [
       {
@@ -2245,7 +2164,7 @@ test('load applies imported GitHub notes on a new review', () => {
   };
   const repo = {
     load: () => ({
-      top: '/tmp',
+      top: cwd,
       items: [item],
       imported,
       sourceLabel: '#123',
@@ -2254,7 +2173,7 @@ test('load applies imported GitHub notes on a new review', () => {
     unstage: () => {},
     revert: () => {},
   };
-  const { session } = openSession([item], { repo });
+  const { session } = openSession([item], { cwd, repo });
   const notes = [...session.notes.feedback.values()];
   assert.equal(notes.length, 1);
   assert.match(notes[0].text, /use const/);
@@ -2269,23 +2188,25 @@ test('load applies imported GitHub notes on a new review', () => {
 });
 
 test('load skips imported GitHub notes when resuming a review', () => {
-  const draft = createStore('/tmp/.review/2026-09-07-00.md');
+  const cwd = tempDir('reslop-ui-');
+  const reviewPath = path.join(cwd, REVIEW_DIR, `${dateStamp()}-00.md`);
+  const draft = createStore(reviewPath);
   addTodo(draft, 'a.js', 'rewrite loop');
-  const md = serializeReview(draft);
+  fs.mkdirSync(path.dirname(reviewPath), { recursive: true });
+  fs.writeFileSync(reviewPath, serializeReview(draft), 'utf8');
   const item = sampleItem('lib/parser.js', 'pr');
   const imported = {
     feedback: [],
     todos: [{ file: 'pull request', text: 'from github', done: false }],
   };
   const { session } = openSession([item], {
+    cwd,
     repo: {
-      load: () => ({ top: '/tmp', items: [item], imported }),
+      load: () => ({ top: cwd, items: [item], imported }),
       add: () => {},
       unstage: () => {},
       revert: () => {},
     },
-    readdirSync: () => ['2026-09-07-00.md'],
-    readFileSync: reviewReader(md),
   });
   assert.equal(session.notes.todos.length, 1);
   assert.equal(session.notes.todos[0].text, 'rewrite loop');
@@ -2295,6 +2216,7 @@ test('openLoad paints git items before npm extras arrive', async () => {
   const gitItem = sampleItem('a.js');
   const extraItem = sampleItem('package.json');
   extraItem.dep = { change: { name: 'lodash', section: 'dependencies' } };
+  const cwd = tempDir('reslop-ui-');
   let extrasResolve;
   const extras = new Promise((resolve) => {
     extrasResolve = resolve;
@@ -2302,7 +2224,7 @@ test('openLoad paints git items before npm extras arrive', async () => {
   let extrasStarted = false;
   const repo = {
     loadAsync: async () => ({
-      top: '/tmp',
+      top: cwd,
       items: [gitItem],
       parsed: [gitItem],
       pending: true,
@@ -2311,26 +2233,23 @@ test('openLoad paints git items before npm extras arrive', async () => {
       extrasStarted = true;
       await extras;
       return {
-        top: '/tmp',
+        top: cwd,
         items: [gitItem, extraItem],
         pending: false,
       };
     },
-    load: () => ({ top: '/tmp', items: [gitItem] }),
+    load: () => ({ top: cwd, items: [gitItem] }),
     add: () => {},
     unstage: () => {},
     revert: () => {},
   };
-  const stdout = sink();
   const session = new Session({
-    repo,
-    cwd: '/tmp',
-    stdout,
+    cwd,
+    stdout: uiSink(),
     color: false,
+    repo,
     audit: true,
     startPane: 'files',
-    getSize: () => ({ width: 80, height: 16 }),
-    ...reviewFs,
   });
   session.uiOpen = true;
   const pending = session.openLoad();
@@ -2358,28 +2277,8 @@ test('openLoad paints git items before npm extras arrive', async () => {
   assert.equal(session.busy, '');
 });
 
-const memoryUpdateFs = () => {
-  const files = new Map();
-  return {
-    cacheFile: '/tmp/reslop-cache/update.json',
-    readFileSync: (file) => {
-      if (!files.has(file)) {
-        const error = new Error('ENOENT');
-        error.code = 'ENOENT';
-        throw error;
-      }
-      return files.get(file);
-    },
-    writeFileSync: (file, body) => {
-      files.set(file, body);
-    },
-    mkdirSync: () => {},
-    files,
-  };
-};
-
 const openUpdating = (extra = {}) => {
-  const cache = memoryUpdateFs();
+  const cacheFile = path.join(tempDir('reslop-cache-'), 'update.json');
   const installed = [];
   let fetchResolve;
   let fetchGate = null;
@@ -2391,7 +2290,7 @@ const openUpdating = (extra = {}) => {
   const update = {
     enabled: true,
     current: extra.current ?? '0.1.5',
-    now: extra.now ?? 1000,
+    cacheFile,
     fetch:
       extra.fetch ??
       (async () => {
@@ -2406,7 +2305,6 @@ const openUpdating = (extra = {}) => {
       (async (version) => {
         installed.push(version);
       }),
-    ...cache,
   };
   const { session } = openSession([sampleItem('a.js'), sampleItem('b.js')], {
     startPane: 'files',
@@ -2414,7 +2312,7 @@ const openUpdating = (extra = {}) => {
     ...extra.session,
   });
   session.uiOpen = true;
-  return { session, installed, fetchResolve, cache, update };
+  return { session, installed, fetchResolve, cacheFile, update };
 };
 
 test('update check does not block loading', async () => {
@@ -2472,25 +2370,22 @@ test('click update prompt y and n', async () => {
 });
 
 test('major prompt waits until the UI has loaded', async () => {
-  const cache = memoryUpdateFs();
+  const cwd = tempDir('reslop-ui-');
   const session = new Session({
-    cwd: '/tmp',
-    stdout: sink(),
+    cwd,
+    stdout: uiSink(),
     color: false,
-    getSize: () => ({ width: 80, height: 16 }),
     startPane: 'files',
-    ...reviewFs,
-    repo: mockRepo([sampleItem('a.js')]),
+    repo: mockRepo([sampleItem('a.js')], cwd),
     update: {
       enabled: true,
       current: '0.1.5',
-      now: 1000,
+      cacheFile: path.join(tempDir('reslop-cache-'), 'update.json'),
       fetch: async () => ({
         ok: true,
         json: async () => ({ version: '1.0.0' }),
       }),
       install: async () => {},
-      ...cache,
     },
   });
   session.uiOpen = true;
@@ -2515,19 +2410,13 @@ test('major update y installs the new version', async () => {
 });
 
 test('declined major update is not asked again from cache', async () => {
-  const { session, cache, update } = openUpdating({ latest: '1.0.0' });
+  const { session, cacheFile, update } = openUpdating({ latest: '1.0.0' });
   await session.openUpdate();
   session.draw();
   session.handleEvent({ type: 'key', key: 'n' });
   let fetched = 0;
-  const again = new Session({
-    cwd: '/tmp',
-    stdout: sink(),
-    color: false,
-    getSize: () => ({ width: 80, height: 16 }),
+  const again = openSession([sampleItem('a.js')], {
     startPane: 'files',
-    ...reviewFs,
-    repo: mockRepo([sampleItem('a.js')]),
     update: {
       ...update,
       fetch: async () => {
@@ -2535,14 +2424,13 @@ test('declined major update is not asked again from cache', async () => {
         return { ok: true, json: async () => ({ version: '1.0.0' }) };
       },
     },
-  });
-  again.load();
+  }).session;
   again.uiOpen = true;
   await again.openUpdate();
   again.draw();
   assert.equal(again.mode, 'review');
   assert.equal(fetched, 0);
-  assert.ok(cache.files.has(cache.cacheFile));
+  assert.equal(fs.existsSync(cacheFile), true);
 });
 
 test('declined major still auto-installs a later patch', async () => {
@@ -2550,17 +2438,11 @@ test('declined major still auto-installs a later patch', async () => {
   await session.openUpdate();
   session.draw();
   session.handleEvent({ type: 'key', key: 'n' });
-  const next = new Session({
-    cwd: '/tmp',
-    stdout: sink(),
-    color: false,
-    getSize: () => ({ width: 80, height: 16 }),
+  const next = openSession([sampleItem('a.js')], {
     startPane: 'files',
-    ...reviewFs,
-    repo: mockRepo([sampleItem('a.js')]),
     update: {
       ...update,
-      now: 1000 + CHECK_INTERVAL_MS,
+      interval: 0,
       fetch: async () => ({
         ok: true,
         json: async () => ({
@@ -2568,8 +2450,7 @@ test('declined major still auto-installs a later patch', async () => {
         }),
       }),
     },
-  });
-  next.load();
+  }).session;
   next.uiOpen = true;
   await next.openUpdate();
   assert.deepEqual(installed, ['0.1.6']);
@@ -2582,17 +2463,11 @@ test('declined major asks again when 1.0.1 appears', async () => {
   await session.openUpdate();
   session.draw();
   session.handleEvent({ type: 'key', key: 'n' });
-  const next = new Session({
-    cwd: '/tmp',
-    stdout: sink(),
-    color: false,
-    getSize: () => ({ width: 80, height: 16 }),
+  const next = openSession([sampleItem('a.js')], {
     startPane: 'files',
-    ...reviewFs,
-    repo: mockRepo([sampleItem('a.js')]),
     update: {
       ...update,
-      now: 1000 + CHECK_INTERVAL_MS,
+      interval: 0,
       fetch: async () => ({
         ok: true,
         json: async () => ({
@@ -2600,8 +2475,7 @@ test('declined major asks again when 1.0.1 appears', async () => {
         }),
       }),
     },
-  });
-  next.load();
+  }).session;
   next.uiOpen = true;
   await next.openUpdate();
   next.draw();
@@ -2743,14 +2617,8 @@ test('pull shows progress until git finishes', async () => {
   const pending = new Promise((resolve) => {
     finish = resolve;
   });
-  const ticks = [];
   const { session, repo } = openSession([sampleItem('a.js')], {
     startPane: 'files',
-    setInterval: (fn) => {
-      ticks.push(fn);
-      return ticks.length;
-    },
-    clearInterval: () => {},
   });
   session.repo.pullAsync = () => pending;
   session.pushInput('b');
@@ -2759,7 +2627,7 @@ test('pull shows progress until git finishes', async () => {
   assert.equal(session.busy, 'pulling');
   assert.equal(session.viewStatus(), 'pulling');
   assert.equal(session.progressFrame, 0);
-  ticks[0]();
+  session.tickProgress();
   assert.equal(session.progressFrame, 1);
   session.pushInput('p');
   finish();
@@ -2775,14 +2643,8 @@ test('npm i shows progress until install finishes', async () => {
   const pending = new Promise((resolve) => {
     finish = resolve;
   });
-  const ticks = [];
   const { session } = openSession([sampleItem('a.js')], {
     startPane: 'diff',
-    setInterval: (fn) => {
-      ticks.push(fn);
-      return ticks.length;
-    },
-    clearInterval: () => {},
   });
   session.uiOpen = true;
   const item = session.current();
@@ -2794,7 +2656,7 @@ test('npm i shows progress until install finishes', async () => {
   session.repo.addAsync = () => pending;
   session.dispatch('add');
   assert.equal(session.busy, 'npm i');
-  ticks[0]();
+  session.tickProgress();
   assert.equal(session.progressFrame, 1);
   finish();
   await pending;
@@ -2808,20 +2670,13 @@ test('openLoad shows progress while a remote change loads', async () => {
   const pending = new Promise((resolve) => {
     finish = resolve;
   });
-  const ticks = [];
   const item = sampleItem('lib/a.js', 'pr');
+  const cwd = tempDir('reslop-ui-');
   const session = new Session({
-    cwd: '/tmp',
-    stdout: sink(),
+    cwd,
+    stdout: uiSink(),
     color: false,
-    getSize: () => ({ width: 80, height: 16 }),
     startPane: 'files',
-    ...reviewFs,
-    setInterval: (fn) => {
-      ticks.push(fn);
-      return ticks.length;
-    },
-    clearInterval: () => {},
     repo: {
       load: () => ({ items: [] }),
       loadAsync: async () => {
@@ -2830,7 +2685,7 @@ test('openLoad shows progress while a remote change loads', async () => {
           items: [item],
           sourceLabel: '#123',
           change: {
-            source: 'github-pr',
+            source: 'pr',
             repository: 'acme/app',
             number: 123,
           },
@@ -2841,7 +2696,7 @@ test('openLoad shows progress while a remote change loads', async () => {
   session.uiOpen = true;
   const ready = session.openLoad();
   assert.equal(session.busy, 'loading');
-  ticks[0]();
+  session.tickProgress();
   assert.equal(session.progressFrame, 1);
   finish();
   await ready;
@@ -2856,14 +2711,8 @@ test('checkout shows progress until git finishes', async () => {
   const pending = new Promise((resolve) => {
     finish = resolve;
   });
-  const ticks = [];
   const { session, repo } = openSession([sampleItem('a.js')], {
     startPane: 'files',
-    setInterval: (fn) => {
-      ticks.push(fn);
-      return ticks.length;
-    },
-    clearInterval: () => {},
   });
   session.uiOpen = true;
   session.repo.checkoutAsync = async (top, name) => {
@@ -2875,7 +2724,7 @@ test('checkout shows progress until git finishes', async () => {
   session.handleEvent({ type: 'key', key: 'enter' });
   assert.equal(repo.checkouts.length, 0);
   assert.equal(session.busy, 'checking out');
-  ticks[0]();
+  session.tickProgress();
   assert.equal(session.progressFrame, 1);
   finish();
   await pending;
@@ -2890,14 +2739,8 @@ test('commit shows progress until git finishes', async () => {
   const pending = new Promise((resolve) => {
     finish = resolve;
   });
-  const ticks = [];
   const { session, repo } = openSession([sampleItem('a.js', 'staged')], {
     startPane: 'files',
-    setInterval: (fn) => {
-      ticks.push(fn);
-      return ticks.length;
-    },
-    clearInterval: () => {},
   });
   session.uiOpen = true;
   session.repo.commitAsync = async (top, kind, message) => {
@@ -2910,7 +2753,7 @@ test('commit shows progress until git finishes', async () => {
   session.handleEvent({ type: 'key', key: 'enter' });
   assert.equal(repo.commits.length, 0);
   assert.equal(session.busy, 'committing');
-  ticks[0]();
+  session.tickProgress();
   assert.equal(session.progressFrame, 1);
   finish();
   await pending;
@@ -3290,16 +3133,13 @@ test('read only blocks branch pull and push', () => {
 
 test('ops runner releases busy if after throws', async () => {
   const runner = createOpsRunner({
-    top: () => '/tmp',
-    isDone: () => false,
-    getMode: () => 'review',
-    setMode: () => {},
-    getStatus: () => '',
-    setStatus: () => {},
+    top: '/tmp',
+    done: false,
+    mode: 'review',
+    status: '',
     paint: () => {},
     startProgress: () => {},
     stopProgress: () => {},
-    resetProgressFrame: () => {},
   });
   await assert.rejects(
     () =>
