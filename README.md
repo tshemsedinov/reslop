@@ -20,6 +20,7 @@ Review → Plan → Repair → Verify
 
 - Leave feedback, issues/todos, and in-place code proposals as a repair plan
 - Review uncommitted git diffs, a given commit, a GitHub PR, or a GitLab MR
+- File-scope review mode: not just diffs, with editor mode
 - Stage, unstage, or revert each contiguous block of diff lines
 - Auto-reload local diffs when files change, keeping the current screen
 - Import GitHub PR and GitLab MR review comments into the local plan for AI

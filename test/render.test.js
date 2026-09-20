@@ -1082,10 +1082,8 @@ test('AC10 footer words highlight the bound letter', () => {
   });
   const row = frame.rows[frame.rows.length - 1];
   const plain = stripAnsi(row);
-  assert.match(
-    plain,
-    /add {2}unstage {2}drop {2}todo {2}branch {2}commit {2}pull {2}push {2}q/,
-  );
+  assert.match(plain, /add {2}unstage {2}drop {2}todo {2}branch {2}file {2}/);
+  assert.match(plain, /commit {2}pull {2}push {2}q/);
   assert.ok(!plain.includes('prev'));
   assert.ok(!plain.includes('next'));
   assert.ok(!plain.includes('quit'));
@@ -1105,10 +1103,8 @@ test('AC10 footer words highlight the bound letter', () => {
     color: false,
   });
   const dimRow = dim.rows[dim.rows.length - 1];
-  assert.match(
-    dimRow,
-    /add {2}unstage {2}drop {2}todo {2}branch {2}commit {2}pull {2}push {2}q/,
-  );
+  assert.match(dimRow, /add {2}unstage {2}drop {2}todo {2}branch {2}file {2}/);
+  assert.match(dimRow, /commit {2}pull {2}push {2}q/);
   assert.ok(!dimRow.includes('['));
   const mode = frame.buttons.find((hit) => hit.id === 'layout');
   const feedback = frame.buttons.find((hit) => hit.id === 'feedback');
@@ -1117,6 +1113,12 @@ test('AC10 footer words highlight the bound letter', () => {
   assert.equal(feedback, undefined);
   assert.equal(code, undefined);
   assert.ok(frame.buttons.find((hit) => hit.id === 'add'));
+  assert.ok(frame.buttons.find((hit) => hit.id === 'unstage'));
+  assert.ok(frame.buttons.find((hit) => hit.id === 'file'));
+  assert.equal(
+    frame.buttons.find((hit) => hit.id === 'diff'),
+    undefined,
+  );
   assert.equal(
     frame.buttons.find((hit) => hit.id === 'reload'),
     undefined,
@@ -1127,6 +1129,19 @@ test('AC10 footer words highlight the bound letter', () => {
   );
   assert.ok(frame.buttons.find((hit) => hit.id === 'pull'));
   assert.ok(frame.buttons.find((hit) => hit.id === 'push'));
+  view.fileScope = 'file';
+  const fileScope = render.renderFrame(view, {
+    width: 80,
+    height: 8,
+    color: false,
+  });
+  const fileScopeRow = fileScope.rows[fileScope.rows.length - 1];
+  assert.match(fileScopeRow, /todo {2}branch {2}diff {2}commit {2}pull/);
+  assert.ok(fileScope.buttons.find((hit) => hit.id === 'diff'));
+  assert.equal(
+    fileScope.buttons.find((hit) => hit.id === 'file'),
+    undefined,
+  );
 });
 
 test('files pane todos row dims add unstage drop', () => {
@@ -1155,10 +1170,8 @@ test('files pane todos row dims add unstage drop', () => {
     color: false,
   });
   const footer = frame.rows[frame.rows.length - 1];
-  assert.match(
-    footer,
-    /add {2}unstage {2}drop {2}todo {2}branch {2}commit {2}pull {2}push {2}q/,
-  );
+  assert.match(footer, /add {2}unstage {2}drop {2}todo {2}branch {2}file {2}/);
+  assert.match(footer, /commit {2}pull {2}push {2}q/);
   assert.ok(!footer.includes('←'));
   assert.ok(!footer.includes('→'));
   assert.equal(
@@ -1192,7 +1205,7 @@ test('files pane todos row dims add unstage drop', () => {
     color: false,
   });
   const fileFooter = file.rows[file.rows.length - 1];
-  assert.match(fileFooter, /add {2}unstage {2}drop/);
+  assert.match(fileFooter, /add {2}unstage {2}drop {2}todo {2}branch {2}file/);
   assert.ok(file.buttons.find((hit) => hit.id === 'add'));
 });
 
@@ -2631,4 +2644,216 @@ test('code overlay paints proposed adds and an in-place cursor', () => {
   assert.ok(!body.includes('+ b'));
   assert.ok(frame.cursor);
   assert.equal(frame.cursor.x, 3);
+});
+
+test('unit pane marks the current block and keeps other diffs', () => {
+  const current = {
+    origin: 'unstaged',
+    file: { newPath: 'a.js', oldPath: 'a.js', isBinary: false },
+    blockId: 0,
+  };
+  const other = {
+    origin: 'unstaged',
+    file: { newPath: 'a.js', oldPath: 'a.js', isBinary: false },
+    blockId: 1,
+  };
+  const view = {
+    pane: 'unit',
+    item: current,
+    reviewPath: 'a.js',
+    unitLine: 0,
+    unitLines: [
+      {
+        type: 'del',
+        text: 'old',
+        blockId: 0,
+        item: current,
+        origin: 'unstaged',
+      },
+      {
+        type: 'add',
+        text: 'new',
+        blockId: 0,
+        item: current,
+        origin: 'unstaged',
+      },
+      { type: 'ctx', text: 'keep', blockId: null, item: null, origin: '' },
+      {
+        type: 'add',
+        text: 'later',
+        blockId: 1,
+        item: other,
+        origin: 'unstaged',
+      },
+    ],
+    index: 0,
+    total: 2,
+    scroll: 0,
+    status: '',
+    counts: { staged: 0, unstaged: 2, untracked: 0 },
+    repoName: 'demo',
+  };
+  const frame = render.renderFrame(view, {
+    width: 80,
+    height: 12,
+    color: false,
+  });
+  const body = frame.rows.join('\n');
+  assert.match(body, /- old/);
+  assert.match(body, /\+ new/);
+  assert.match(body, / {2}later/);
+  assert.ok(!body.includes('+ later'));
+  assert.match(render.headerText(view), /reslop: demo\/a\.js unstaged 1\/4/);
+  const footer = frame.rows[frame.rows.length - 1];
+  assert.match(footer, /add {2}unstage {2}drop/);
+  assert.ok(!footer.includes('mode'));
+  assert.ok(frame.buttons.find((hit) => hit.id === 'add'));
+  assert.ok(frame.buttons.find((hit) => hit.id === 'code'));
+  assert.equal(
+    frame.buttons.find((hit) => hit.id === 'layout'),
+    undefined,
+  );
+  assert.equal(
+    frame.buttons.find((hit) => hit.id === 'file'),
+    undefined,
+  );
+  assert.equal(frame.cursor, null);
+});
+
+test('unit pane marks every change in the current hunk', () => {
+  const hunk = {
+    oldStart: 1,
+    oldCount: 3,
+    newStart: 1,
+    newCount: 3,
+    header: '@@ -1,3 +1,3 @@',
+  };
+  const current = {
+    origin: 'unstaged',
+    file: { newPath: 'a.js', oldPath: 'a.js', isBinary: false },
+    hunk,
+    blockId: 0,
+  };
+  const other = {
+    origin: 'unstaged',
+    file: { newPath: 'a.js', oldPath: 'a.js', isBinary: false },
+    hunk,
+    blockId: 1,
+  };
+  const view = {
+    pane: 'unit',
+    item: current,
+    reviewPath: 'a.js',
+    unitLine: 0,
+    unitLines: [
+      {
+        type: 'del',
+        text: 'old',
+        blockId: 0,
+        item: current,
+        origin: 'unstaged',
+      },
+      {
+        type: 'add',
+        text: 'new',
+        blockId: 0,
+        item: current,
+        origin: 'unstaged',
+      },
+      { type: 'ctx', text: 'keep', blockId: null, item: null, origin: '' },
+      {
+        type: 'del',
+        text: 'later',
+        blockId: 1,
+        item: other,
+        origin: 'unstaged',
+      },
+      {
+        type: 'add',
+        text: 'next',
+        blockId: 1,
+        item: other,
+        origin: 'unstaged',
+      },
+    ],
+    index: 0,
+    total: 2,
+    scroll: 0,
+    status: '',
+    counts: { staged: 0, unstaged: 2, untracked: 0 },
+    repoName: 'demo',
+  };
+  const frame = render.renderFrame(view, {
+    width: 80,
+    height: 12,
+    color: false,
+  });
+  const body = frame.rows.join('\n');
+  assert.match(body, /- old/);
+  assert.match(body, /\+ new/);
+  assert.match(body, /- later/);
+  assert.match(body, /\+ next/);
+});
+
+test('unit edit hides plus minus marks and keeps the line-end cursor', () => {
+  const current = {
+    origin: 'unstaged',
+    file: { newPath: 'a.js', oldPath: 'a.js', isBinary: false },
+    blockId: 0,
+  };
+  const view = {
+    pane: 'unit',
+    mode: 'compose',
+    item: current,
+    reviewPath: 'a.js',
+    unitLine: 0,
+    unitLines: [
+      {
+        type: 'del',
+        text: 'old',
+        blockId: 0,
+        item: current,
+        origin: 'unstaged',
+      },
+      {
+        type: 'add',
+        text: 'hello',
+        blockId: 0,
+        item: current,
+        origin: 'unstaged',
+        wrap: true,
+        editStart: 0,
+        editEnd: 5,
+        editLast: false,
+      },
+      {
+        type: 'ctx',
+        text: 'z',
+        blockId: null,
+        item: null,
+        origin: '',
+        wrap: true,
+        editStart: 6,
+        editEnd: 7,
+        editLast: true,
+      },
+    ],
+    index: 0,
+    total: 1,
+    scroll: 0,
+    status: '',
+    counts: { staged: 0, unstaged: 1, untracked: 0 },
+    repoName: 'demo',
+    codeOverlay: { text: 'hello\nz', keepEmpty: true, cursor: 5 },
+  };
+  const frame = render.renderFrame(view, {
+    width: 80,
+    height: 12,
+    color: false,
+  });
+  const body = stripAnsi(frame.rows.join('\n'));
+  assert.ok(!body.includes('+ hello'));
+  assert.ok(!body.includes('- old'));
+  assert.match(body, /hello/);
+  assert.ok(frame.cursor);
 });

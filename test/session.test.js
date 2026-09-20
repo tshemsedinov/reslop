@@ -52,6 +52,49 @@ const tallItem = (name, count) => {
   return { ...item, hunk };
 };
 
+const hunkPair = (name) => {
+  const file = {
+    oldPath: name,
+    newPath: name,
+    isNew: false,
+    isDeleted: false,
+    isBinary: false,
+    preamble: [`diff --git a/${name} b/${name}`],
+    hunks: [],
+  };
+  const hunk = {
+    oldStart: 1,
+    oldCount: 3,
+    newStart: 1,
+    newCount: 3,
+    header: '@@ -1,3 +1,3 @@',
+    lines: [
+      { type: 'del', text: 'a', noNl: false, blockId: 0 },
+      { type: 'add', text: 'A', noNl: false, blockId: 0 },
+      { type: 'ctx', text: 'mid', noNl: false, blockId: null },
+      { type: 'del', text: 'c', noNl: false, blockId: 1 },
+      { type: 'add', text: 'C', noNl: false, blockId: 1 },
+    ],
+  };
+  const first = {
+    origin: 'unstaged',
+    file,
+    hunk,
+    blockId: 0,
+    patchAdd: 'add0',
+    patchRevert: 'rev0',
+  };
+  const second = {
+    origin: 'unstaged',
+    file,
+    hunk,
+    blockId: 1,
+    patchAdd: 'add1',
+    patchRevert: 'rev1',
+  };
+  return [first, second];
+};
+
 const mockRepo = (initial) => {
   let items = [...initial];
   const added = [];
@@ -67,6 +110,9 @@ const mockRepo = (initial) => {
   const drops = [];
   const edited = [];
   const listed = [];
+  const writes = [];
+  const fileBodies = Object.create(null);
+  const extraFiles = [];
   let commitList = [
     {
       sha: 'aaa1111aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
@@ -96,6 +142,9 @@ const mockRepo = (initial) => {
     drops,
     edited,
     listed,
+    writes,
+    fileBodies,
+    extraFiles,
     commitDrops,
     load: () => ({ top: '/tmp', items: [...items], branch: 'main' }),
     add: (top, item) => {
@@ -142,6 +191,19 @@ const mockRepo = (initial) => {
     push: () => pushes.push(true),
     edit: (top, item, text) => {
       edited.push({ top, item, text });
+    },
+    listFiles: () => {
+      const names = new Set(extraFiles);
+      for (const item of items) names.add(item.file.newPath);
+      return [...names].sort();
+    },
+    fileText: (top, rel) => {
+      if (Object.hasOwn(fileBodies, rel)) return fileBodies[rel];
+      return 'b\n';
+    },
+    writeFile: (top, rel, text) => {
+      fileBodies[rel] = text;
+      writes.push({ top, rel, text });
     },
   };
 };
@@ -2865,6 +2927,269 @@ test('files pane u unstages', () => {
   session.pushInput('u');
   assert.equal(repo.unstageCalls.length, 1);
   assert.equal(session.status, 'unstaged');
+});
+
+test('files pane f and d switch file and diff scope', () => {
+  const item = sampleItem('a.js', 'staged');
+  const { session, repo } = openSession([item], { startPane: 'files' });
+  session.dispatch('next');
+  session.pushInput('f');
+  assert.equal(session.fileScope, 'file');
+  assert.equal(session.status, 'file scope');
+  assert.equal(repo.unstageCalls.length, 0);
+  session.pushInput('d');
+  assert.equal(session.fileScope, 'diff');
+  assert.equal(session.status, 'diff mode');
+  assert.equal(repo.unstageCalls.length, 0);
+  assert.equal(repo.reverted.length, 0);
+});
+
+test('unit scope lists every file sorted by path', () => {
+  const { session, repo } = openSession([sampleItem('b.js')], {
+    startPane: 'files',
+  });
+  repo.extraFiles.push('a.js', 'z.js');
+  session.dispatch('file');
+  const names = session.fileList().map((entry) => entry.path);
+  assert.deepEqual(names, [
+    'Repository TODOs and Issues',
+    'a.js',
+    'b.js',
+    'z.js',
+  ]);
+});
+
+test('unit view shows the file with current block marks', () => {
+  const first = sampleItem('a.js');
+  const second = sampleItem('a.js');
+  second.blockId = 1;
+  second.hunk = {
+    oldStart: 3,
+    oldCount: 1,
+    newStart: 3,
+    newCount: 1,
+    header: '@@ -3,1 +3,1 @@',
+    lines: [
+      { type: 'del', text: 'c', noNl: false, blockId: 1 },
+      { type: 'add', text: 'd', noNl: false, blockId: 1 },
+    ],
+  };
+  const { session, repo } = openSession([first, second], {
+    startPane: 'files',
+  });
+  repo.fileBodies['a.js'] = 'b\nkeep\nd\n';
+  session.dispatch('file');
+  session.dispatch('next');
+  session.dispatch('open');
+  assert.equal(session.pane, 'unit');
+  const view = session.view();
+  const types = view.unitLines.map((line) => `${line.type}:${line.text}`);
+  assert.deepEqual(types, ['del:a', 'add:b', 'ctx:keep', 'del:c', 'add:d']);
+  assert.equal(session.unitLine, 0);
+  session.dispatch('next');
+  assert.equal(session.unitLine, 3);
+  assert.equal(session.current(), second);
+  session.dispatch('prev');
+  assert.equal(session.unitLine, 0);
+  session.scroll = 5;
+  session.handleEvent({ type: 'key', key: 'up' });
+  assert.equal(session.scroll, 4);
+  session.handleEvent({ type: 'key', key: 'down' });
+  assert.equal(session.scroll, 5);
+});
+
+test('unit view marks every block in the current hunk', () => {
+  const [first, second] = hunkPair('a.js');
+  const { session, repo } = openSession([first, second], {
+    startPane: 'files',
+  });
+  repo.fileBodies['a.js'] = 'A\nmid\nC\n';
+  session.dispatch('file');
+  session.dispatch('next');
+  session.dispatch('open');
+  session.draw();
+  const body = stripAnsi(session.lastFrame.rows.join('\n'));
+  assert.match(body, /- a/);
+  assert.match(body, /\+ A/);
+  assert.match(body, /- c/);
+  assert.match(body, /\+ C/);
+  session.dispatch('add');
+  assert.equal(repo.added.length, 2);
+  assert.equal(session.items[0].origin, 'staged');
+  assert.equal(session.items[1].origin, 'staged');
+});
+
+test('file scope next scrolls the whole block into view', () => {
+  const first = sampleItem('a.js');
+  const second = sampleItem('a.js');
+  second.blockId = 1;
+  const adds = [];
+  for (let i = 0; i < 5; i++) {
+    adds.push({ type: 'add', text: `chg${i}`, noNl: false, blockId: 1 });
+  }
+  second.hunk = {
+    oldStart: 40,
+    oldCount: 0,
+    newStart: 40,
+    newCount: 5,
+    header: '@@ -40,0 +40,5 @@',
+    lines: adds,
+  };
+  const rows = ['b'];
+  for (let i = 2; i < 40; i++) rows.push(`keep${i}`);
+  for (let i = 0; i < 5; i++) rows.push(`chg${i}`);
+  rows.push('tail');
+  const { session, repo } = openSession([first, second], {
+    startPane: 'files',
+  });
+  repo.fileBodies['a.js'] = `${rows.join('\n')}\n`;
+  session.dispatch('file');
+  session.dispatch('next');
+  session.dispatch('open');
+  session.draw();
+  session.dispatch('next');
+  session.draw();
+  const body = stripAnsi(session.lastFrame.rows.join('\n'));
+  assert.match(body, /chg0/);
+  assert.match(body, /chg4/);
+  const page = session.lastFrame.bodyH;
+  assert.equal(session.scroll, 46 - page + 1);
+  assert.match(body, /keep39/);
+  assert.match(body, /tail/);
+});
+
+test('file scope next pins an oversized block at its start', () => {
+  const first = sampleItem('a.js');
+  const second = sampleItem('a.js');
+  second.blockId = 1;
+  const adds = [];
+  for (let i = 0; i < 40; i++) {
+    adds.push({ type: 'add', text: `chg${i}`, noNl: false, blockId: 1 });
+  }
+  second.hunk = {
+    oldStart: 40,
+    oldCount: 0,
+    newStart: 40,
+    newCount: 40,
+    header: '@@ -40,0 +40,40 @@',
+    lines: adds,
+  };
+  const rows = ['b'];
+  for (let i = 2; i < 40; i++) rows.push(`keep${i}`);
+  for (let i = 0; i < 40; i++) rows.push(`chg${i}`);
+  rows.push('tail');
+  const { session, repo } = openSession([first, second], {
+    startPane: 'files',
+  });
+  repo.fileBodies['a.js'] = `${rows.join('\n')}\n`;
+  session.dispatch('file');
+  session.dispatch('next');
+  session.dispatch('open');
+  session.draw();
+  session.dispatch('next');
+  session.draw();
+  const body = stripAnsi(session.lastFrame.rows.join('\n'));
+  assert.match(body, /chg0/);
+  assert.equal(body.includes('chg39'), false);
+  assert.equal(session.scroll, 41);
+});
+
+test('unit view e edits the whole file and autosaves', () => {
+  const { session, repo } = openSession([sampleItem('a.js')], {
+    startPane: 'files',
+  });
+  repo.fileBodies['a.js'] = 'b\n';
+  session.dispatch('file');
+  session.dispatch('next');
+  session.dispatch('open');
+  session.dispatch('code');
+  assert.equal(session.composeKind, 'file');
+  session.editor.replace('edited\n');
+  session.autosave();
+  assert.equal(repo.writes.length, 1);
+  assert.equal(repo.writes[0].text, 'edited\n');
+  assert.equal(repo.fileBodies['a.js'], 'edited\n');
+});
+
+test('file compose keeps del and add highlighting', () => {
+  const { session, repo } = openSession([sampleItem('a.js')], {
+    startPane: 'files',
+  });
+  repo.fileBodies['a.js'] = 'b\nkeep\n';
+  session.dispatch('file');
+  session.dispatch('next');
+  session.dispatch('open');
+  session.dispatch('code');
+  const types = session
+    .view()
+    .unitLines.map((line) => `${line.type}:${line.text}`);
+  assert.deepEqual(types, ['del:a', 'add:b', 'ctx:keep', 'ctx:']);
+  const del = session.view().unitLines[0];
+  const add = session.view().unitLines[1];
+  assert.equal(del.editStart, undefined);
+  assert.equal(add.editStart, 0);
+  session.editor.insert('x');
+  const after = session
+    .view()
+    .unitLines.map((line) => `${line.type}:${line.text}`);
+  assert.deepEqual(after, ['del:a', 'add:xb', 'ctx:keep', 'ctx:']);
+});
+
+test('file compose cursor stays on a trailing empty line', () => {
+  const { session, repo } = openSession([sampleItem('a.js')], {
+    startPane: 'files',
+  });
+  repo.fileBodies['a.js'] = 'b\nkeep\n';
+  session.dispatch('file');
+  session.dispatch('next');
+  session.dispatch('open');
+  session.dispatch('code');
+  session.editor.cursor = session.editor.text.length;
+  session.draw();
+  assert.ok(session.lastFrame.cursor);
+  const lines = session.view().unitLines;
+  const last = lines[lines.length - 1];
+  assert.equal(last.text, '');
+  assert.equal(last.editLast, true);
+});
+
+test('file compose scroll follows the editor cursor', () => {
+  const { session, repo } = openSession([sampleItem('a.js')], {
+    startPane: 'files',
+  });
+  const rows = [];
+  for (let i = 0; i < 40; i++) rows.push(`line${i}`);
+  repo.fileBodies['a.js'] = `${rows.join('\n')}\n`;
+  session.dispatch('file');
+  session.dispatch('next');
+  session.dispatch('open');
+  session.dispatch('code');
+  session.scroll = 0;
+  session.editor.cursor = 0;
+  for (let i = 0; i < 30; i++) session.composer.handleKey('down');
+  const downScroll = session.scroll;
+  assert.ok(downScroll > 0);
+  session.editor.cursor = 0;
+  session.composer.handleKey('up');
+  assert.ok(session.scroll < downScroll);
+  assert.ok(session.unitLine + 1 >= session.scroll);
+});
+
+test('unit view reloads disk text in view and edit', () => {
+  const { session, repo } = openSession([sampleItem('a.js')], {
+    startPane: 'files',
+  });
+  repo.fileBodies['a.js'] = 'b\n';
+  session.dispatch('file');
+  session.dispatch('next');
+  session.dispatch('open');
+  repo.fileBodies['a.js'] = 'from-disk\n';
+  const view = session.view();
+  assert.ok(view.unitLines.some((line) => line.text === 'from-disk'));
+  session.dispatch('code');
+  repo.fileBodies['a.js'] = 'later\n';
+  session.composer.applyDiskText('later\n');
+  assert.equal(session.editor.text, 'later\n');
 });
 
 test('branch list n creates a new branch', () => {
