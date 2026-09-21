@@ -3,9 +3,12 @@
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 
-const { createTransport } = require('../lib/remote/http.js');
-const { parseLinkNext, parseNextPage } = require('../lib/remote/headers.js');
-const { noteFromLocation } = require('../lib/remote/notes.js');
+const {
+  createTransport,
+  parseLinkNext,
+  parseNextPage,
+  noteFromLocation,
+} = require('../lib/remote.js');
 const diff = require('../lib/diff/diff.js');
 const { parseDiff, itemsFromFiles } = diff;
 

@@ -9,11 +9,7 @@ const { Session } = require('../lib/session.js');
 const { createOpsRunner } = require('../lib/session/ops.js');
 const { hitAction } = require('../lib/keys.js');
 const { uiSink, sampleHunk, tempDir } = require('./helpers.js');
-const {
-  createStore,
-  addTodo,
-  serializeReview,
-} = require('../lib/review/review.js');
+const { createStore, addTodo, serializeReview } = require('../lib/review.js');
 const { stripAnsi, THEME, BOLD, seq } = require('../lib/ansi.js');
 const { REVIEW_DIR } = require('../lib/files.js');
 
