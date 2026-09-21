@@ -86,7 +86,8 @@ test('disk watcher watches nested files when recursive is off', async () => {
   const cwd = tempDir('reslop-watch-');
   fs.mkdirSync(path.join(cwd, 'src'));
   fs.mkdirSync(path.join(cwd, '.git'));
-  fs.writeFileSync(path.join(cwd, 'src', 'nested.js'), 'x\n');
+  const nested = path.join(cwd, 'src', 'nested.js');
+  fs.writeFileSync(nested, 'x\n');
   let n = 0;
   const watcher = createDiskWatcher({
     root: cwd,
@@ -96,9 +97,13 @@ test('disk watcher watches nested files when recursive is off', async () => {
       n += 1;
     },
   });
-  fs.writeFileSync(path.join(cwd, 'src', 'nested.js'), 'y\n');
-  assert.equal(await waitUntil(() => n >= 1), true);
-  watcher.close();
+  try {
+    await wait(60);
+    fs.writeFileSync(nested, 'y\n');
+    assert.equal(await waitUntil(() => n >= 1, 1000), true);
+  } finally {
+    watcher.close();
+  }
 });
 
 test('ignoredRel skips review, modules, and git internals', () => {
