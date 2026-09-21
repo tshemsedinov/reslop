@@ -1257,7 +1257,7 @@ test('add on a proposed update writes package.json and runs npm i', () => {
       return { status: 0 };
     };
     addItem(loaded.top, item);
-    assert.equal(realpathSync(installed), realpathSync(repo.dir));
+    assert.equal(realpathSync.native(installed), realpathSync.native(repo.dir));
     const pkg = JSON.parse(repo.read('package.json'));
     assert.equal(pkg.dependencies.lodash, '^4.17.21');
     const lock = JSON.parse(repo.read('package-lock.json'));
@@ -1299,7 +1299,7 @@ test('add on an unused dependency runs npm uninstall', () => {
       return { status: 0 };
     };
     addItem(loaded.top, item);
-    assert.equal(realpathSync(removed), realpathSync(repo.dir));
+    assert.equal(realpathSync.native(removed), realpathSync.native(repo.dir));
     const pkg = JSON.parse(repo.read('package.json'));
     assert.equal(pkg.dependencies.leftpad, undefined);
     const lock = JSON.parse(repo.read('package-lock.json'));
