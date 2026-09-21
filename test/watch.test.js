@@ -345,15 +345,15 @@ test('diff pane poll reloads when the current file changes', () => {
   const file = path.join(cwd, 'a.js');
   fs.writeFileSync(file, 'old\n');
   const before = sampleItem('a.js', { text: 'old' });
-  const after = sampleItem('a.js', { text: 'new' });
+  const after = sampleItem('a.js', { text: 'newer' });
   const { session, repo } = openWatched([before], { cwd });
   session.uiOpen = true;
   session.lifecycle.pollCurrentFile();
   assert.equal(session.current().hunk.lines[0].text, 'old');
   repo.setItems([after]);
-  fs.writeFileSync(file, 'new\n');
+  fs.writeFileSync(file, 'newer\n');
   session.lifecycle.pollCurrentFile();
-  assert.equal(session.current().hunk.lines[0].text, 'new');
+  assert.equal(session.current().hunk.lines[0].text, 'newer');
   assert.equal(session.pane, 'diff');
   assert.equal(session.busy, '');
 });
