@@ -3,6 +3,7 @@
 ## [Unreleased][unreleased]
 
 - Flatten npm, remote, review, git, and dependency modules at the lib root
+- Add pull and push on the commits list screen
 
 ## [0.1.9][] - 2026-09-19
 

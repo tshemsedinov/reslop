@@ -136,6 +136,8 @@ test('actionFromKey maps aliases and ignores unbound keys', () => {
   assert.equal(actionFromKey('f', 'commits'), 'fixup');
   assert.equal(actionFromKey('d', 'commits'), 'drop');
   assert.equal(actionFromKey('c', 'commits'), 'commit');
+  assert.equal(actionFromKey('p', 'commits'), 'pull');
+  assert.equal(actionFromKey('s', 'commits'), 'push');
   assert.equal(actionFromKey('left', 'commits'), null);
   assert.equal(actionFromKey('right', 'commits'), null);
   assert.equal(actionFromKey('left', 'files'), null);
@@ -318,11 +320,13 @@ test('disabledActions hides add unstage drop on files todos', () => {
   );
   assert.ok(ontoLayout.hits.some((hit) => hit.id === 'rebase'));
   assert.ok(ontoLayout.hits.some((hit) => hit.id === 'drop'));
-  const commitIds = ['amend', 'fixup', 'drop'];
+  const commitIds = ['amend', 'fixup', 'drop', 'pull', 'push'];
   const head = { sha: 'aaa', canCommit: true };
   const commitOff = disabledActions('commits', head);
   assert.equal(commitOff.includes('amend'), false);
   assert.equal(commitOff.includes('commit'), false);
+  assert.equal(commitOff.includes('pull'), false);
+  assert.equal(commitOff.includes('push'), false);
   assert.equal(commitOff.includes('prev'), true);
   assert.equal(commitOff.includes('layout'), true);
   const emptyOff = disabledActions('commits', { canCommit: true });
@@ -335,6 +339,8 @@ test('disabledActions hides add unstage drop on files todos', () => {
   assert.ok(commitLayout.parts.some((part) => part.action.id === 'commit'));
   assert.ok(commitLayout.parts.some((part) => part.action.id === 'amend'));
   assert.ok(commitLayout.parts.some((part) => part.action.id === 'drop'));
+  assert.ok(commitLayout.parts.some((part) => part.action.id === 'pull'));
+  assert.ok(commitLayout.parts.some((part) => part.action.id === 'push'));
   assert.ok(!commitLayout.parts.some((part) => part.action.id === 'prev'));
   assert.ok(!commitLayout.parts.some((part) => part.action.id === 'layout'));
   assert.equal(
@@ -342,6 +348,8 @@ test('disabledActions hides add unstage drop on files todos', () => {
     undefined,
   );
   assert.ok(commitLayout.hits.some((hit) => hit.id === 'amend'));
+  assert.ok(commitLayout.hits.some((hit) => hit.id === 'pull'));
+  assert.ok(commitLayout.hits.some((hit) => hit.id === 'push'));
 });
 
 test('buttonWord is the footer hint including the bound mark', () => {

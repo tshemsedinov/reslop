@@ -24,7 +24,7 @@ Review → Plan → Repair → Verify
 - Stage, unstage, or revert each contiguous block of diff lines
 - Auto-reload local diffs when files change, keeping the current screen
 - Import GitHub PR and GitLab MR review comments into the local plan for AI
-- Commits list: commit, amend, fixup, and drop
+- Commits list: commit, amend, fixup, drop, pull, and push
 - Branches: checkout, create, rebase, drop, pull, and push
 - Review each npm dependency once across `package.json` and the lockfile
 - Propose unused removals, npm audit fixes, and outdated updates as diffs
