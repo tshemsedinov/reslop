@@ -632,6 +632,8 @@ test('commit pane lists subject author date and hash', () => {
   assert.match(footer, /amend/);
   assert.match(footer, /fixup/);
   assert.match(footer, /drop/);
+  assert.match(footer, /pull/);
+  assert.match(footer, /push/);
   assert.ok(!footer.includes('add'));
   assert.ok(!footer.includes('←'));
   assert.ok(!footer.includes('mode'));
@@ -639,6 +641,8 @@ test('commit pane lists subject author date and hash', () => {
   assert.ok(frame.buttons.find((hit) => hit.id === 'amend'));
   assert.ok(frame.buttons.find((hit) => hit.id === 'fixup'));
   assert.ok(frame.buttons.find((hit) => hit.id === 'drop'));
+  assert.ok(frame.buttons.find((hit) => hit.id === 'pull'));
+  assert.ok(frame.buttons.find((hit) => hit.id === 'push'));
   const colored = render.renderFrame(view, {
     width: 80,
     height: 12,

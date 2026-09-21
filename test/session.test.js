@@ -2126,6 +2126,26 @@ test('files pane p pulls and s pushes', () => {
   assert.equal(session.status, 'pushed');
 });
 
+test('commits pane p pulls and s pushes', () => {
+  const { session, repo } = openSession([sampleItem('a.js')], {
+    startPane: 'files',
+  });
+  session.pushInput('c');
+  assert.equal(session.pane, 'commits');
+  session.pushInput('p');
+  assert.equal(repo.pulls.length, 1);
+  assert.equal(session.status, 'pulled');
+  assert.equal(session.pane, 'commits');
+  session.pushInput('s');
+  assert.equal(repo.pushes.length, 1);
+  assert.equal(session.status, 'pushed');
+  assert.equal(session.pane, 'commits');
+  clickFooter(session, 'pull');
+  assert.equal(repo.pulls.length, 2);
+  clickFooter(session, 'push');
+  assert.equal(repo.pushes.length, 2);
+});
+
 test('quit without notes does not write a review file', () => {
   const { session } = openSession([sampleItem('a.js')]);
   const reviewPath = session.notes.reviewPath;
