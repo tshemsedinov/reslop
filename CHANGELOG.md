@@ -2,8 +2,13 @@
 
 ## [Unreleased][unreleased]
 
-- Flatten npm, remote, review, git, and dependency modules at the lib root
+## [0.2.0][] - 2026-09-22
+
+- Add a full-size file editor
+- Optimize codebase and reorganize code structure
 - Add pull and push on the commits list screen
+- Fix disk watcher startup on macOS
+- Fix Windows temp-path comparison and same-size file reload polling
 
 ## [0.1.9][] - 2026-09-19
 
@@ -100,7 +105,8 @@
 - Feedback and todos that produce a repair plan for an agent
 - Intra-line highlighting in unified, mixed, and side-by-side layouts
 
-[unreleased]: https://github.com/tshemsedinov/reslop/compare/v0.1.9...HEAD
+[unreleased]: https://github.com/tshemsedinov/reslop/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/tshemsedinov/reslop/compare/v0.1.9...v0.2.0
 [0.1.9]: https://github.com/tshemsedinov/reslop/compare/v0.1.8...v0.1.9
 [0.1.8]: https://github.com/tshemsedinov/reslop/compare/v0.1.7...v0.1.8
 [0.1.7]: https://github.com/tshemsedinov/reslop/compare/v0.1.6...v0.1.7

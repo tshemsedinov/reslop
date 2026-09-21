@@ -1,6 +1,6 @@
 {
   "name": "reslop",
-  "version": "0.1.9",
+  "version": "0.2.0",
   "description": "Interactive code review and repair planning for AI-assisted changes",
   "keywords": [
     "code-review",
