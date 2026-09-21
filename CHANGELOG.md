@@ -2,6 +2,10 @@
 
 ## [Unreleased][unreleased]
 
+- Flatten npm, remote, review, git, and dependency modules at the lib root
+
+## [0.1.9][] - 2026-09-19
+
 - Remove `r` reload hotkey and hint; auto-reload covers disk changes
 - Improve branch list TUI/TUX
 - Right-align the time column in the branch list
