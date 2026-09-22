@@ -12,7 +12,7 @@ const { load, addItem, unstageItem, revertItem } = git;
 const { commitChanges, hasStaged, lastMessage, createGitRepo } = git;
 const { currentBranch, listBranches, checkoutBranch } = git;
 const { createBranch, rebaseBranch, dropBranch, pullChanges } = git;
-const { listCommits, dropCommit, applyFixup } = git;
+const { listCommits, dropCommit, applyFixup, rewordCommit } = git;
 const { pushChanges, editItem } = git;
 const { runProc } = require('../lib/utilities.js');
 const { Session } = require('../lib/session.js');
@@ -799,6 +799,54 @@ test('applyFixup refuses a non-fixup commit', () => {
     repo.git(['commit', '-m', 'init']);
     const sha = listCommits(repo.dir)[0].sha;
     assert.throws(() => applyFixup(repo.dir, sha), /not a fixup commit/);
+  } finally {
+    repo.cleanup();
+  }
+});
+
+test('rewordCommit changes HEAD message without taking the index', () => {
+  const repo = makeRepo();
+  try {
+    repo.write('a.txt', 'a\n');
+    repo.git(['add', 'a.txt']);
+    repo.git(['commit', '-m', 'one']);
+    repo.write('b.txt', 'b\n');
+    repo.git(['add', 'b.txt']);
+    repo.git(['commit', '-m', 'two']);
+    repo.write('s.txt', 'staged\n');
+    repo.git(['add', 's.txt']);
+    const head = listCommits(repo.dir)[0].sha;
+    rewordCommit(repo.dir, head, 'TWO');
+    const listed = listCommits(repo.dir).map((entry) => entry.subject);
+    assert.deepEqual(listed, ['TWO', 'one']);
+    assert.equal(hasStaged(repo.dir), true);
+    assert.equal(repo.exists('s.txt'), true);
+    const cached = repo.git(['diff', '--cached', '--', 's.txt']);
+    assert.match(cached, /staged/);
+  } finally {
+    repo.cleanup();
+  }
+});
+
+test('rewordCommit rewrites an older commit message', () => {
+  const repo = makeRepo();
+  try {
+    repo.write('a.txt', 'a\n');
+    repo.git(['add', 'a.txt']);
+    repo.git(['commit', '-m', 'one']);
+    repo.write('b.txt', 'b\n');
+    repo.git(['add', 'b.txt']);
+    repo.git(['commit', '-m', 'two']);
+    repo.write('c.txt', 'c\n');
+    repo.git(['add', 'c.txt']);
+    repo.git(['commit', '-m', 'three']);
+    const older = listCommits(repo.dir)[1].sha;
+    rewordCommit(repo.dir, older, 'TWO');
+    const listed = listCommits(repo.dir).map((entry) => entry.subject);
+    assert.deepEqual(listed, ['three', 'TWO', 'one']);
+    assert.equal(repo.read('a.txt'), 'a\n');
+    assert.equal(repo.read('b.txt'), 'b\n');
+    assert.equal(repo.read('c.txt'), 'c\n');
   } finally {
     repo.cleanup();
   }
