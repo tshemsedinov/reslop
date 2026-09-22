@@ -85,8 +85,12 @@ test('unknown option exits 1', async () => {
   assert.equal(code, 1);
   const err = proc.stderrText();
   assert.match(err, /unknown option/);
-  const usage =
-    /Usage: reslop \[-n\] \[-r\] \[-light\] \[path \| commit \| pr-url \| mr-url\]/;
+  const usage = new RegExp(
+    [
+      'Usage: reslop \\[-n\\] \\[-r\\] \\[-light\\]',
+      '\\[path \\| commit \\| pr-url \\| mr-url\\]',
+    ].join(' '),
+  );
   assert.match(err, usage);
   assert.doesNotMatch(err, /--help/);
 });
