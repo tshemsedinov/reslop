@@ -2,6 +2,9 @@
 
 ## [Unreleased][unreleased]
 
+- Type a new commit message at the top of the list
+- Improve `fixup!` functions: create and apply
+
 ## [0.2.0][] - 2026-09-22
 
 - Add a full-size file editor

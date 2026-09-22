@@ -102,6 +102,7 @@ const mockRepo = (initial, top) => {
   const unstageCalls = [];
   const commits = [];
   const commitDrops = [];
+  const applyFixups = [];
   const pulls = [];
   const pushes = [];
   const checkouts = [];
@@ -111,6 +112,7 @@ const mockRepo = (initial, top) => {
   const edited = [];
   const listed = [];
   const writes = [];
+  const stagedPaths = [];
   const fileBodies = Object.create(null);
   const extraFiles = [];
   let commitList = [
@@ -143,9 +145,11 @@ const mockRepo = (initial, top) => {
     edited,
     listed,
     writes,
+    stagedPaths,
     fileBodies,
     extraFiles,
     commitDrops,
+    applyFixups,
     load: () => ({ top, items: [...items], branch: 'main' }),
     add: (top, item) => {
       added.push(item);
@@ -187,6 +191,13 @@ const mockRepo = (initial, top) => {
       commitDrops.push(sha);
       commitList = commitList.filter((entry) => entry.sha !== sha);
     },
+    applyFixup: (top, sha) => {
+      applyFixups.push(sha);
+      commitList = commitList.filter((entry) => entry.sha !== sha);
+    },
+    setCommits: (next) => {
+      commitList = next;
+    },
     pull: () => pulls.push(true),
     push: () => pushes.push(true),
     edit: (top, item, text) => {
@@ -204,6 +215,9 @@ const mockRepo = (initial, top) => {
     writeFile: (top, rel, text) => {
       fileBodies[rel] = text;
       writes.push({ top, rel, text });
+    },
+    stagePath: (top, rel) => {
+      stagedPaths.push(rel);
     },
   };
 };
@@ -1289,6 +1303,7 @@ test('e edits added lines in the reviewed file', () => {
   assert.equal(repo.edited.length, 1);
   assert.equal(repo.edited[0].text, 'b2\n');
   assert.equal(repo.edited[0].item.file.newPath, 'a.js');
+  assert.deepEqual(repo.stagedPaths, ['a.js']);
 });
 
 test('e on a read-only commit keeps a code proposal', () => {
@@ -1305,11 +1320,12 @@ test('e on a read-only commit keeps a code proposal', () => {
 
 test('code save equal to original drops the proposal', () => {
   const item = sampleItem('a.js');
-  const { session } = openSession([item]);
+  const { session, repo } = openSession([item]);
   session.dispatch('code');
   session.handleEvent({ type: 'key', key: 'escape' });
   assert.equal(session.notes.code.size, 0);
   assert.equal(session.counts().code, 0);
+  assert.equal(repo.stagedPaths.length, 0);
 });
 
 test('todos screen ignores commit and todo hotkeys', () => {
@@ -1958,7 +1974,9 @@ test('commits pane a amends with the previous message', () => {
     startPane: 'files',
   });
   session.pushInput('c');
+  session.dispatch('next');
   session.pushInput('a');
+  assert.equal(session.commitCursor, 0);
   assert.equal(session.composeKind, 'commit');
   assert.equal(session.commitKind, 'amend');
   assert.equal(session.editor.text, 'previous message');
@@ -1968,17 +1986,83 @@ test('commits pane a amends with the previous message', () => {
   assert.equal(repo.commits[0].message, 'previous message');
 });
 
+test('commits pane a applies a selected fixup', () => {
+  const { session, repo } = openSession([sampleItem('a.js')], {
+    startPane: 'files',
+  });
+  session.pushInput('c');
+  repo.setCommits([
+    {
+      sha: 'fff0000fffffffffffffffffffffffffffffff',
+      shortSha: 'fff0000',
+      author: 'Ada',
+      date: 'now',
+      subject: 'fixup! land the change',
+    },
+    {
+      sha: 'aaa1111aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+      shortSha: 'aaa1111',
+      author: 'Ada',
+      date: '2 hours ago',
+      subject: 'land the change',
+    },
+  ]);
+  session.commits.refresh();
+  session.draw();
+  assert.ok(session.lastFrame.buttons.find((hit) => hit.id === 'apply'));
+  session.pushInput('a');
+  assert.deepEqual(repo.applyFixups, [
+    'fff0000fffffffffffffffffffffffffffffff',
+  ]);
+  assert.equal(session.status, 'applied');
+  assert.equal(session.mode, 'review');
+  assert.equal(session.composeKind, null);
+});
+
+test('click apply footer squashes the selected fixup', () => {
+  const { session, repo } = openSession([sampleItem('a.js')], {
+    startPane: 'files',
+  });
+  session.pushInput('c');
+  repo.setCommits([
+    {
+      sha: 'fff0000fffffffffffffffffffffffffffffff',
+      shortSha: 'fff0000',
+      author: 'Ada',
+      date: 'now',
+      subject: 'fixup! land the change',
+    },
+    {
+      sha: 'aaa1111aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+      shortSha: 'aaa1111',
+      author: 'Ada',
+      date: '2 hours ago',
+      subject: 'land the change',
+    },
+  ]);
+  session.commits.refresh();
+  clickFooter(session, 'apply');
+  assert.deepEqual(repo.applyFixups, [
+    'fff0000fffffffffffffffffffffffffffffff',
+  ]);
+  assert.equal(session.status, 'applied');
+});
+
 test('commits pane f fixups the selected commit', () => {
   const { session, repo } = openSession([sampleItem('a.js', 'staged')], {
     startPane: 'files',
   });
   session.pushInput('c');
   session.pushInput('f');
-  assert.equal(session.editor.text, 'aaa1111');
+  assert.equal(session.editor.text, 'fixup! land the change');
+  session.handleEvent({ type: 'key', key: 'escape' });
+  session.dispatch('next');
+  session.pushInput('f');
+  assert.equal(session.editor.text, 'fixup! init');
   session.handleEvent({ type: 'key', key: 'enter' });
   assert.equal(session.status, 'fixup');
   assert.equal(repo.commits[0].kind, 'fixup');
-  assert.equal(repo.commits[0].message, 'aaa1111');
+  assert.equal(repo.commits[0].message, 'fixup! init');
 });
 
 test('escape from commit message does not run git', () => {
@@ -2968,6 +3052,10 @@ test('unit view e edits the whole file and autosaves', () => {
   assert.equal(repo.writes.length, 1);
   assert.equal(repo.writes[0].text, 'edited\n');
   assert.equal(repo.fileBodies['a.js'], 'edited\n');
+  assert.equal(repo.stagedPaths.length, 0);
+  session.composer.saveCompose();
+  assert.deepEqual(repo.stagedPaths, ['a.js']);
+  assert.equal(session.status, 'staged');
 });
 
 test('file compose keeps del and add highlighting', () => {

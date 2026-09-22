@@ -132,7 +132,7 @@ test('actionFromKey maps aliases and ignores unbound keys', () => {
   assert.equal(actionFromKey('k', 'branches'), 'prev');
   assert.equal(actionFromKey('up', 'branches'), 'scrollUp');
   assert.equal(actionFromKey('down', 'branches'), 'scrollDown');
-  assert.equal(actionFromKey('a', 'commits'), 'amend');
+  assert.equal(actionFromKey('a', 'commits'), 'apply');
   assert.equal(actionFromKey('f', 'commits'), 'fixup');
   assert.equal(actionFromKey('d', 'commits'), 'drop');
   assert.equal(actionFromKey('c', 'commits'), 'commit');
@@ -320,10 +320,11 @@ test('disabledActions hides add unstage drop on files todos', () => {
   );
   assert.ok(ontoLayout.hits.some((hit) => hit.id === 'rebase'));
   assert.ok(ontoLayout.hits.some((hit) => hit.id === 'drop'));
-  const commitIds = ['amend', 'fixup', 'drop', 'pull', 'push'];
+  const commitIds = ['amend', 'apply', 'fixup', 'drop', 'pull', 'push'];
   const head = { sha: 'aaa', canCommit: true };
   const commitOff = disabledActions('commits', head);
   assert.equal(commitOff.includes('amend'), false);
+  assert.equal(commitOff.includes('apply'), false);
   assert.equal(commitOff.includes('commit'), false);
   assert.equal(commitOff.includes('pull'), false);
   assert.equal(commitOff.includes('push'), false);
@@ -331,13 +332,21 @@ test('disabledActions hides add unstage drop on files todos', () => {
   assert.equal(commitOff.includes('layout'), true);
   const emptyOff = disabledActions('commits', { canCommit: true });
   assert.equal(emptyOff.includes('amend'), true);
+  assert.equal(emptyOff.includes('apply'), true);
   assert.equal(emptyOff.includes('commit'), false);
+  const fixup = { sha: 'aaa', subject: 'fixup! init', canCommit: true };
+  const fixupDim = keys.commitGitDisabled(fixup);
+  assert.equal(fixupDim.includes('apply'), false);
+  const headDim = keys.commitGitDisabled(head);
+  assert.equal(headDim.includes('apply'), true);
   const commitLayout = layoutButtons(160, false, COMMITS_DISABLED, commitIds, [
     'commit',
     'fixup',
+    'apply',
   ]);
   assert.ok(commitLayout.parts.some((part) => part.action.id === 'commit'));
   assert.ok(commitLayout.parts.some((part) => part.action.id === 'amend'));
+  assert.ok(commitLayout.parts.some((part) => part.action.id === 'apply'));
   assert.ok(commitLayout.parts.some((part) => part.action.id === 'drop'));
   assert.ok(commitLayout.parts.some((part) => part.action.id === 'pull'));
   assert.ok(commitLayout.parts.some((part) => part.action.id === 'push'));
@@ -345,6 +354,10 @@ test('disabledActions hides add unstage drop on files todos', () => {
   assert.ok(!commitLayout.parts.some((part) => part.action.id === 'layout'));
   assert.equal(
     commitLayout.hits.find((hit) => hit.id === 'commit'),
+    undefined,
+  );
+  assert.equal(
+    commitLayout.hits.find((hit) => hit.id === 'apply'),
     undefined,
   );
   assert.ok(commitLayout.hits.some((hit) => hit.id === 'amend'));

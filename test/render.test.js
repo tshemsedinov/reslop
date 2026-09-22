@@ -629,6 +629,7 @@ test('commit pane lists subject author date and hash', () => {
   assert.match(render.headerText(view), /land the change HEAD 1\/2/);
   const footer = frame.rows[frame.rows.length - 1];
   assert.match(footer, /commit/);
+  assert.match(footer, /apply/);
   assert.match(footer, /amend/);
   assert.match(footer, /fixup/);
   assert.match(footer, /drop/);
@@ -638,8 +639,23 @@ test('commit pane lists subject author date and hash', () => {
   assert.ok(!footer.includes('←'));
   assert.ok(!footer.includes('mode'));
   assert.ok(frame.buttons.find((hit) => hit.id === 'commit'));
+  assert.ok(!frame.buttons.find((hit) => hit.id === 'apply'));
   assert.ok(frame.buttons.find((hit) => hit.id === 'amend'));
   assert.ok(frame.buttons.find((hit) => hit.id === 'fixup'));
+  view.commits[0] = {
+    ...view.commits[0],
+    subject: 'fixup! land the change',
+  };
+  const fixupFrame = render.renderFrame(view, {
+    width: 80,
+    height: 12,
+    color: false,
+  });
+  assert.ok(fixupFrame.buttons.find((hit) => hit.id === 'apply'));
+  view.commits[0] = {
+    ...view.commits[0],
+    subject: 'land the change',
+  };
   assert.ok(frame.buttons.find((hit) => hit.id === 'drop'));
   assert.ok(frame.buttons.find((hit) => hit.id === 'pull'));
   assert.ok(frame.buttons.find((hit) => hit.id === 'push'));
@@ -682,6 +698,106 @@ test('commit pane lists subject author date and hash', () => {
     true,
   );
   assert.ok(selectedRow.includes(`${selectedLead}${selectedSubject}`));
+});
+
+test('commit pane types a message on a row at the top of the list', () => {
+  const view = {
+    pane: 'commits',
+    commits: [
+      {
+        sha: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+        shortSha: 'aaa1111',
+        author: 'Ada',
+        date: '2 hours ago',
+        subject: 'land the change',
+        head: true,
+      },
+      {
+        sha: 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
+        shortSha: 'bbb2222',
+        author: 'Bob',
+        date: 'yesterday',
+        subject: 'init',
+        head: false,
+      },
+    ],
+    commitCursor: 0,
+    compose: { kind: 'commit', text: 'ship it', cursor: 7 },
+    repoName: 'demo',
+    counts: { staged: 1, unstaged: 0, untracked: 0 },
+    branch: 'main',
+    status: '',
+    scroll: 0,
+  };
+  const frame = render.renderFrame(view, {
+    width: 80,
+    height: 12,
+    color: false,
+  });
+  const rows = frame.rows.map((row) => stripAnsi(row));
+  const editAt = rows.findIndex(
+    (row) => row.includes('▶') && row.includes('ship it'),
+  );
+  const headAt = rows.findIndex((row) => row.includes('aaa1111'));
+  assert.ok(editAt >= 0);
+  assert.ok(headAt > editAt);
+  assert.ok(rows[editAt].includes('▶  ship it'));
+  assert.ok(!rows[editAt].includes('[ship it]'));
+  assert.equal(frame.cursor.y, editAt + 1);
+  assert.match(render.headerText(view), /ship it new 1\/3/);
+});
+
+test('amend types over the current commit row', () => {
+  const view = {
+    pane: 'commits',
+    commits: [
+      {
+        sha: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+        shortSha: 'aaa1111',
+        author: 'Ada',
+        date: '2 hours ago',
+        subject: 'land the change',
+        head: true,
+      },
+      {
+        sha: 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
+        shortSha: 'bbb2222',
+        author: 'Bob',
+        date: 'yesterday',
+        subject: 'init',
+        head: false,
+      },
+    ],
+    commitCursor: 0,
+    compose: {
+      kind: 'commit',
+      commitKind: 'amend',
+      text: 'rewritten',
+      cursor: 9,
+    },
+    repoName: 'demo',
+    counts: { staged: 1, unstaged: 0, untracked: 0 },
+    branch: 'main',
+    status: '',
+    scroll: 0,
+  };
+  const frame = render.renderFrame(view, {
+    width: 80,
+    height: 12,
+    color: false,
+  });
+  const rows = frame.rows.map((row) => stripAnsi(row));
+  const editAt = rows.findIndex(
+    (row) => row.includes('▶') && row.includes('rewritten'),
+  );
+  const oldAt = rows.findIndex((row) => row.includes('bbb2222'));
+  assert.ok(editAt >= 0);
+  assert.ok(oldAt > editAt);
+  assert.ok(rows[editAt].includes('aaa1111'));
+  assert.ok(!rows[editAt].includes('land the change'));
+  assert.equal(rows.filter((row) => row.includes('▶')).length, 1);
+  assert.equal(frame.cursor.y, editAt + 1);
+  assert.match(render.headerText(view), /rewritten HEAD 1\/2/);
 });
 
 test('update prompt paints y and n on the status line', () => {

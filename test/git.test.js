@@ -12,7 +12,7 @@ const { load, addItem, unstageItem, revertItem } = git;
 const { commitChanges, hasStaged, lastMessage, createGitRepo } = git;
 const { currentBranch, listBranches, checkoutBranch } = git;
 const { createBranch, rebaseBranch, dropBranch, pullChanges } = git;
-const { listCommits, dropCommit } = git;
+const { listCommits, dropCommit, applyFixup } = git;
 const { pushChanges, editItem } = git;
 const { runProc } = require('../lib/utilities.js');
 const { Session } = require('../lib/session.js');
@@ -546,7 +546,7 @@ test('hasStaged is false until files are added', () => {
   }
 });
 
-test('commitChanges fixup targets HEAD', () => {
+test('commitChanges fixup writes the given message', () => {
   const repo = makeRepo();
   try {
     repo.write('f.txt', 'a\n');
@@ -554,7 +554,7 @@ test('commitChanges fixup targets HEAD', () => {
     repo.git(['commit', '-m', 'init']);
     repo.write('f.txt', 'b\n');
     repo.git(['add', 'f.txt']);
-    commitChanges(repo.dir, 'fixup', 'HEAD');
+    commitChanges(repo.dir, 'fixup', 'fixup! init');
     const subject = repo.git(['log', '-1', '--format=%s']).trim();
     assert.equal(subject, 'fixup! init');
   } finally {
@@ -760,6 +760,45 @@ test('dropCommit refuses the root commit', () => {
     const root = listCommits(repo.dir)[0].sha;
     assert.throws(() => dropCommit(repo.dir, root));
     assert.equal(listCommits(repo.dir)[0].subject, 'init');
+  } finally {
+    repo.cleanup();
+  }
+});
+
+test('applyFixup squashes a fixup into its target', () => {
+  const repo = makeRepo();
+  try {
+    repo.write('a.txt', 'one\n');
+    repo.git(['add', 'a.txt']);
+    repo.git(['commit', '-m', 'one']);
+    repo.write('b.txt', 'two\n');
+    repo.git(['add', 'b.txt']);
+    repo.git(['commit', '-m', 'two']);
+    repo.write('b.txt', 'two-fix\n');
+    repo.git(['add', 'b.txt']);
+    repo.git(['commit', '-m', 'fixup! two']);
+    const listed = listCommits(repo.dir);
+    assert.deepEqual(
+      listed.map((entry) => entry.subject),
+      ['fixup! two', 'two', 'one'],
+    );
+    applyFixup(repo.dir, listed[0].sha);
+    const after = listCommits(repo.dir).map((entry) => entry.subject);
+    assert.deepEqual(after, ['two', 'one']);
+    assert.equal(repo.read('b.txt'), 'two-fix\n');
+  } finally {
+    repo.cleanup();
+  }
+});
+
+test('applyFixup refuses a non-fixup commit', () => {
+  const repo = makeRepo();
+  try {
+    repo.write('f.txt', 'a\n');
+    repo.git(['add', 'f.txt']);
+    repo.git(['commit', '-m', 'init']);
+    const sha = listCommits(repo.dir)[0].sha;
+    assert.throws(() => applyFixup(repo.dir, sha), /not a fixup commit/);
   } finally {
     repo.cleanup();
   }
@@ -1065,6 +1104,12 @@ test('e saves added lines to the reviewed file and reloads', () => {
     assert.equal(session.mode, 'review');
     assert.equal(repo.read('f.txt'), 'alpha\nBETA-edited\ngamma\n');
     assert.equal(session.notes.code.size, 0);
+    const cached = repo.git(['diff', '--cached', '--', 'f.txt']);
+    const work = repo.git(['diff', '--', 'f.txt']);
+    assert.match(cached, /\+BETA-edited/);
+    assert.equal(work, '');
+    assert.equal(session.current().origin, 'staged');
+    assert.equal(session.status, 'staged');
     const adds = session
       .current()
       .hunk.lines.filter((line) => line.type === 'add');
@@ -1114,7 +1159,7 @@ test('listFiles includes tracked and untracked paths', () => {
   }
 });
 
-test('file edit save stages new context lines', () => {
+test('file edit save stages the whole file', () => {
   const repo = makeRepo();
   try {
     repo.write(
@@ -1146,16 +1191,11 @@ test('file edit save stages new context lines', () => {
     session.composer.saveCompose();
     const cached = repo.git(['diff', '--cached', '--', 'a.js']);
     const work = repo.git(['diff', '--', 'a.js']);
+    assert.match(cached, /BETA/);
     assert.match(cached, /GAMMA/);
-    assert.equal(cached.includes('BETA'), false);
-    assert.match(work, /BETA/);
-    assert.equal(work.includes('GAMMA'), false);
-    const staged = session.items.find(
-      (entry) =>
-        entry.origin === 'staged' &&
-        entry.hunk.lines.some((line) => line.text === 'GAMMA'),
-    );
-    assert.ok(staged);
+    assert.equal(work, '');
+    assert.ok(session.items.every((entry) => entry.origin === 'staged'));
+    assert.equal(session.status, 'staged');
   } finally {
     repo.cleanup();
   }
