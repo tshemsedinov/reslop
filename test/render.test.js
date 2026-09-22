@@ -626,7 +626,7 @@ test('commit pane lists subject author date and hash', () => {
     oldRow.indexOf('yesterday') + 'yesterday'.length,
   );
   assert.match(text, /land the change/);
-  assert.match(render.headerText(view), /land the change HEAD 1\/2/);
+  assert.match(render.headerText(view), /demo: commits HEAD 1\/2/);
   const footer = frame.rows[frame.rows.length - 1];
   assert.match(footer, /commit/);
   assert.match(footer, /apply/);
@@ -744,7 +744,7 @@ test('commit pane types a message on a row at the top of the list', () => {
   assert.ok(rows[editAt].includes('▶  ship it'));
   assert.ok(!rows[editAt].includes('[ship it]'));
   assert.equal(frame.cursor.y, editAt + 1);
-  assert.match(render.headerText(view), /ship it new 1\/3/);
+  assert.match(render.headerText(view), /demo: commits new 1\/3/);
 });
 
 test('amend types over the current commit row', () => {
@@ -797,7 +797,7 @@ test('amend types over the current commit row', () => {
   assert.ok(!rows[editAt].includes('land the change'));
   assert.equal(rows.filter((row) => row.includes('▶')).length, 1);
   assert.equal(frame.cursor.y, editAt + 1);
-  assert.match(render.headerText(view), /rewritten HEAD 1\/2/);
+  assert.match(render.headerText(view), /demo: commits HEAD 1\/2/);
 });
 
 test('update prompt paints y and n on the status line', () => {
@@ -1067,8 +1067,10 @@ test('file list leads with repository TODOs and a count', () => {
     pane: 'files',
     files,
     fileCursor: 0,
+    repoName: 'demo',
   });
-  assert.match(header, /TODOs todo 1\/2/);
+  assert.match(header, /demo: TODOs todo 1\/2/);
+  assert.ok(!header.includes('demo/'));
   const colored = render.renderFrame(
     {
       pane: 'files',
@@ -1368,7 +1370,7 @@ test('branch pane lists names and marks the default branch', () => {
   assert.match(text, /3 weeks ago/);
   assert.match(text, /init/);
   assert.match(text, /wip/);
-  assert.match(render.headerText(view), /feat current 2\/2/);
+  assert.match(render.headerText(view), /demo: branches current 2\/2/);
   const footer = frame.rows[frame.rows.length - 1];
   assert.match(footer, /new/);
   assert.match(footer, /rebase/);
@@ -1530,7 +1532,7 @@ test('branch pane types a new name on a row under the list', () => {
   const mainRow = rows.find((row) => row.includes('aaa1111'));
   assert.match(mainRow, /\[main\]/);
   assert.equal(frame.cursor.y, topicAt + 1);
-  assert.match(render.headerText(view), /topic new 3\/3/);
+  assert.match(render.headerText(view), /demo: branches new 3\/3/);
 });
 
 test('AC26 file list status and counts are column-aligned', () => {
@@ -2191,7 +2193,8 @@ test('todo view paints file todo text not a diff hunk', () => {
   assert.match(body, /\[x\] already done/);
   assert.ok(!stripAnsi(frame.rows[2]).startsWith('+'));
   assert.ok(!stripAnsi(frame.rows[2]).startsWith('-'));
-  assert.match(body, /TODOs\s+todo 1\/1/);
+  assert.match(body, /demo: TODOs\s+todo 1\/1/);
+  assert.ok(!body.includes('demo/TODOs'));
   const footer = frame.rows[frame.rows.length - 1];
   assert.match(footer, /← {2}→ {2}q/);
   assert.ok(!footer.includes('prev'));
