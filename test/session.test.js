@@ -103,6 +103,7 @@ const mockRepo = (initial, top) => {
   const commits = [];
   const commitDrops = [];
   const applyFixups = [];
+  const rewords = [];
   const pulls = [];
   const pushes = [];
   const checkouts = [];
@@ -150,6 +151,7 @@ const mockRepo = (initial, top) => {
     extraFiles,
     commitDrops,
     applyFixups,
+    rewords,
     load: () => ({ top, items: [...items], branch: 'main' }),
     add: (top, item) => {
       added.push(item);
@@ -194,6 +196,19 @@ const mockRepo = (initial, top) => {
     applyFixup: (top, sha) => {
       applyFixups.push(sha);
       commitList = commitList.filter((entry) => entry.sha !== sha);
+    },
+    commitMessage: (top, sha) => {
+      const entry = commitList.find((item) => item.sha === sha);
+      if (entry && entry.subject) return entry.subject;
+      return 'previous message';
+    },
+    reword: (top, sha, message) => {
+      rewords.push({ sha, message });
+      commitList = commitList.map((entry) => {
+        if (entry.sha !== sha) return entry;
+        const subject = `${message}`.split('\n')[0];
+        return { ...entry, subject };
+      });
     },
     setCommits: (next) => {
       commitList = next;
@@ -1966,6 +1981,7 @@ test('click commit footer chooses commit amend or fixup', () => {
   };
   clickKind('commit', 'commit');
   clickKind('amend', 'amend');
+  clickKind('reword', 'reword');
   clickKind('fixup', 'fixup');
 });
 
@@ -1984,6 +2000,29 @@ test('commits pane a amends with the previous message', () => {
   assert.equal(session.status, 'amended');
   assert.equal(repo.commits[0].kind, 'amend');
   assert.equal(repo.commits[0].message, 'previous message');
+});
+
+test('commits pane r rewords the selected commit', () => {
+  const { session, repo } = openSession([sampleItem('a.js')], {
+    startPane: 'files',
+  });
+  session.pushInput('c');
+  session.dispatch('next');
+  session.pushInput('r');
+  assert.equal(session.commitCursor, 1);
+  assert.equal(session.composeKind, 'commit');
+  assert.equal(session.commitKind, 'reword');
+  assert.equal(session.editor.text, 'init');
+  session.editor.replace('rewritten init');
+  session.handleEvent({ type: 'key', key: 'enter' });
+  assert.equal(session.status, 'reworded');
+  assert.deepEqual(repo.rewords, [
+    {
+      sha: 'bbb2222bbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
+      message: 'rewritten init',
+    },
+  ]);
+  assert.equal(session.view().commits[1].subject, 'rewritten init');
 });
 
 test('commits pane a applies a selected fixup', () => {

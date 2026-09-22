@@ -631,6 +631,7 @@ test('commit pane lists subject author date and hash', () => {
   assert.match(footer, /commit/);
   assert.match(footer, /apply/);
   assert.match(footer, /amend/);
+  assert.match(footer, /reword/);
   assert.match(footer, /fixup/);
   assert.match(footer, /drop/);
   assert.match(footer, /pull/);
@@ -641,6 +642,7 @@ test('commit pane lists subject author date and hash', () => {
   assert.ok(frame.buttons.find((hit) => hit.id === 'commit'));
   assert.ok(!frame.buttons.find((hit) => hit.id === 'apply'));
   assert.ok(frame.buttons.find((hit) => hit.id === 'amend'));
+  assert.ok(frame.buttons.find((hit) => hit.id === 'reword'));
   assert.ok(frame.buttons.find((hit) => hit.id === 'fixup'));
   view.commits[0] = {
     ...view.commits[0],

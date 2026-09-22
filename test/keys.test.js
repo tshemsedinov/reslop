@@ -133,6 +133,7 @@ test('actionFromKey maps aliases and ignores unbound keys', () => {
   assert.equal(actionFromKey('up', 'branches'), 'scrollUp');
   assert.equal(actionFromKey('down', 'branches'), 'scrollDown');
   assert.equal(actionFromKey('a', 'commits'), 'apply');
+  assert.equal(actionFromKey('r', 'commits'), 'reword');
   assert.equal(actionFromKey('f', 'commits'), 'fixup');
   assert.equal(actionFromKey('d', 'commits'), 'drop');
   assert.equal(actionFromKey('c', 'commits'), 'commit');
@@ -320,11 +321,20 @@ test('disabledActions hides add unstage drop on files todos', () => {
   );
   assert.ok(ontoLayout.hits.some((hit) => hit.id === 'rebase'));
   assert.ok(ontoLayout.hits.some((hit) => hit.id === 'drop'));
-  const commitIds = ['amend', 'apply', 'fixup', 'drop', 'pull', 'push'];
+  const commitIds = [
+    'amend',
+    'apply',
+    'reword',
+    'fixup',
+    'drop',
+    'pull',
+    'push',
+  ];
   const head = { sha: 'aaa', canCommit: true };
   const commitOff = disabledActions('commits', head);
   assert.equal(commitOff.includes('amend'), false);
   assert.equal(commitOff.includes('apply'), false);
+  assert.equal(commitOff.includes('reword'), false);
   assert.equal(commitOff.includes('commit'), false);
   assert.equal(commitOff.includes('pull'), false);
   assert.equal(commitOff.includes('push'), false);
@@ -333,6 +343,7 @@ test('disabledActions hides add unstage drop on files todos', () => {
   const emptyOff = disabledActions('commits', { canCommit: true });
   assert.equal(emptyOff.includes('amend'), true);
   assert.equal(emptyOff.includes('apply'), true);
+  assert.equal(emptyOff.includes('reword'), true);
   assert.equal(emptyOff.includes('commit'), false);
   const fixup = { sha: 'aaa', subject: 'fixup! init', canCommit: true };
   const fixupDim = keys.commitGitDisabled(fixup);
@@ -347,6 +358,7 @@ test('disabledActions hides add unstage drop on files todos', () => {
   assert.ok(commitLayout.parts.some((part) => part.action.id === 'commit'));
   assert.ok(commitLayout.parts.some((part) => part.action.id === 'amend'));
   assert.ok(commitLayout.parts.some((part) => part.action.id === 'apply'));
+  assert.ok(commitLayout.parts.some((part) => part.action.id === 'reword'));
   assert.ok(commitLayout.parts.some((part) => part.action.id === 'drop'));
   assert.ok(commitLayout.parts.some((part) => part.action.id === 'pull'));
   assert.ok(commitLayout.parts.some((part) => part.action.id === 'push'));
