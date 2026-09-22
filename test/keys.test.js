@@ -97,7 +97,7 @@ test('actionFromKey maps aliases and ignores unbound keys', () => {
   assert.equal(actionFromKey('e'), 'code');
   assert.equal(actionFromKey('d'), 'revert');
   assert.equal(actionFromKey('c'), 'commit');
-  assert.equal(actionFromKey('l'), null);
+  assert.equal(actionFromKey('l'), 'theme');
   assert.equal(actionFromKey('g'), null);
   assert.equal(actionFromKey('r'), null);
   assert.equal(actionFromKey('backspace'), 'removeTodo');

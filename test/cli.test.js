@@ -69,6 +69,14 @@ test('parseArgv accepts -n and -r', () => {
   }
 });
 
+test('parseArgv reads -light', () => {
+  assert.equal(parseArgv([]).theme, 'dark');
+  assert.equal(parseArgv(['-light']).theme, 'light');
+  assert.equal(parseArgv(['-n', '-light']).theme, 'light');
+  assert.deepEqual(parseArgv(['-light', 'lib']).paths, ['lib']);
+  assert.equal(parseArgv(['-light', 'lib']).newReview, false);
+});
+
 test('unknown option exits 1', async () => {
   const proc = fakeProc(process.cwd(), {
     argv: ['node', 'reslop', '--nope'],
@@ -78,7 +86,7 @@ test('unknown option exits 1', async () => {
   const err = proc.stderrText();
   assert.match(err, /unknown option/);
   const usage =
-    /Usage: reslop \[-n\] \[-r\] \[path \| commit \| pr-url \| mr-url\]/;
+    /Usage: reslop \[-n\] \[-r\] \[-light\] \[path \| commit \| pr-url \| mr-url\]/;
   assert.match(err, usage);
   assert.doesNotMatch(err, /--help/);
 });
