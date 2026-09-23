@@ -6,10 +6,11 @@ const fs = require('node:fs');
 const path = require('node:path');
 
 const { Session } = require('../lib/session.js');
+const { addTodo } = require('../lib/review.js');
 const items = require('../lib/session/items.js');
 const { restoredIndex, alignLoadedItems } = items;
 const watch = require('../lib/session/watch.js');
-const { ignoredRel, createDiskWatcher, DEBOUNCE_MS } = watch;
+const { ignoredRel, isOwnDirEvent, createDiskWatcher, DEBOUNCE_MS } = watch;
 const { uiSink, tempDir } = require('./helpers.js');
 
 const wait = (ms) =>
@@ -119,6 +120,43 @@ test('ignoredRel skips review, modules, and git internals', () => {
   assert.equal(ignoredRel('src\\a.js'), false);
   assert.equal(ignoredRel('.git\\index.lock'), true);
   assert.equal(ignoredRel('a.js.swp'), true);
+});
+
+test('own directory event is not a file change', () => {
+  const cwd = tempDir('reslop-watch-');
+  const base = path.basename(cwd);
+  assert.equal(isOwnDirEvent(cwd, base), true);
+  assert.equal(isOwnDirEvent(cwd, `./${base}`), true);
+  fs.writeFileSync(path.join(cwd, 'a.js'), 'x\n');
+  assert.equal(isOwnDirEvent(cwd, 'a.js'), false);
+  assert.equal(isOwnDirEvent(cwd, ''), false);
+});
+
+test('review markdown notifies onReview and not onChange', async () => {
+  const cwd = tempDir('reslop-watch-');
+  fs.mkdirSync(path.join(cwd, '.git'));
+  fs.mkdirSync(path.join(cwd, '.review'));
+  const file = path.join(cwd, '.review', '2026-09-23-00.md');
+  fs.writeFileSync(file, '---\nstatus: editing\n---\n');
+  let changes = 0;
+  let reviews = 0;
+  const watcher = createDiskWatcher({
+    root: cwd,
+    recursive: false,
+    debounceMs: 20,
+    onChange: () => {
+      changes += 1;
+    },
+    onReview: () => {
+      reviews += 1;
+    },
+  });
+  const body = '---\nstatus: editing\n---\n\n## TODOs\n\n- [ ] gamma\n';
+  fs.writeFileSync(file, body);
+  assert.equal(await waitUntil(() => reviews >= 1, 1000), true);
+  await wait(250);
+  assert.equal(changes, 0);
+  watcher.close();
 });
 
 test('disk watcher debounces changes and ignores lock files', async () => {
@@ -417,6 +455,45 @@ test('editing a todo applies a deferred reload on exit', () => {
   session.handleEvent({ type: 'key', key: 'escape' });
   assert.equal(session.pane, 'files');
   assert.equal(session.items.length, 2);
+});
+
+test('review file change merges into the open todo list', () => {
+  const { session } = openWatched([sampleItem('a.js')]);
+  session.uiOpen = true;
+  session.dispatch('todo');
+  session.pushInput('alpha');
+  session.handleEvent({ type: 'key', key: 'escape' });
+  addTodo(session.notes, 'TODOs', 'beta');
+  const file = session.notes.reviewPath;
+  const md = fs.readFileSync(file, 'utf8');
+  const next = md.replace('- [ ] alpha\n', '- [ ] alpha\n- [ ] gamma\n');
+  fs.writeFileSync(file, next);
+  session.lifecycle.applyReviewChange();
+  const texts = session.notes.todos.map((todo) => todo.text);
+  assert.deepEqual(texts, ['alpha', 'gamma', 'beta']);
+});
+
+test('external todo edits replace the line instead of stacking', () => {
+  const { session } = openWatched([sampleItem('a.js')]);
+  session.uiOpen = true;
+  session.dispatch('todo');
+  session.pushInput('one');
+  session.handleEvent({ type: 'key', key: 'escape' });
+  addTodo(session.notes, 'TODOs', 'beta');
+  const edited = session.notes.todos[0].id;
+  const file = session.notes.reviewPath;
+  const writeLine = (text) => {
+    const md = fs.readFileSync(file, 'utf8');
+    const next = md.replace(/- \[ \] one[^\n]*\n/, `- [ ] ${text}\n`);
+    fs.writeFileSync(file, next);
+    session.lifecycle.applyReviewChange();
+  };
+  writeLine('one three');
+  writeLine('one three four');
+  writeLine('one three four five');
+  const texts = session.notes.todos.map((todo) => todo.text);
+  assert.deepEqual(texts, ['one three four five', 'beta']);
+  assert.equal(session.notes.todos[0].id, edited);
 });
 
 test('leaving branches reloads the file list', () => {
