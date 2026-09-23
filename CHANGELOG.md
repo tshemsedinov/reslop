@@ -10,6 +10,7 @@
 - Reload the file list when leaving todos, branches, or commits
 - Let agents run `editing` reviews and leave `done` files unchanged
 - Skip npm audit and outdated unless package files changed
+- Sync and merge TODOs with file instead of overwriting it
 
 ## [0.2.0][] - 2026-09-22
 

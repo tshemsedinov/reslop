@@ -402,6 +402,44 @@ test('flushReview writes markdown and templates when notes exist', () => {
   }
 });
 
+test('flushReview merges disk todos instead of overwriting', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'reslop-review-'));
+  try {
+    const reviewPath = path.join(dir, '.review', '2026-09-07-00.md');
+    const store = createStore(reviewPath);
+    addTodo(store, 'TODOs', 'alpha');
+    const beta = addTodo(store, 'TODOs', 'beta');
+    setFeedback(store, 'a.js:1:1:0', {
+      file: 'a.js',
+      oldStart: 1,
+      newStart: 1,
+      blockId: 0,
+      text: 'rename this',
+    });
+    assert.equal(flushReview(store), true);
+    const md = fs.readFileSync(reviewPath, 'utf8');
+    const edited = md
+      .replace('- [ ] alpha', '- [x] alpha')
+      .replace('rename this', 'rename that')
+      .replace('- [ ] beta\n', '- [ ] beta\n- [ ] gamma\n');
+    fs.writeFileSync(reviewPath, edited);
+    setTodoText(store, beta.id, 'beta two');
+    addTodo(store, 'TODOs', 'delta');
+    assert.equal(flushReview(store), true);
+    const loaded = parseReview(fs.readFileSync(reviewPath, 'utf8'), reviewPath);
+    const texts = loaded.todos.map((todo) => {
+      const mark = todo.done ? 'x' : ' ';
+      return `${mark}:${todo.text}`;
+    });
+    assert.deepEqual(texts, ['x:alpha', ' :gamma', ' :beta two', ' :delta']);
+    const note = loaded.feedback.get('a.js:1:1:0');
+    assert.equal(note.text, 'rename that');
+    assert.equal(store.todos.length, 4);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test('flushReview skips write when there are no notes', () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'reslop-review-'));
   try {
