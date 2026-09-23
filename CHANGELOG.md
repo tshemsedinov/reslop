@@ -6,6 +6,7 @@
 - Improve `fixup!` functions: create and apply
 - Reword the selected commit message with `r`
 - Add light theme: `-light` option and `l` hotkey to switch
+- Support checkbox state in TODOs, UI for state change
 
 ## [0.2.0][] - 2026-09-22
 

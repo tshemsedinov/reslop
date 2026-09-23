@@ -10,7 +10,8 @@ const review = require('../lib/review.js');
 const { allocateReviewPath, rankedTemplates } = review;
 const { prefixTemplates, upsertTemplate, createStore } = review;
 const { hasNotes, setFeedback, setCode, noteCounts, rememberTemplate } = review;
-const { addTodo, removeTodo, setTodoText, serializeReview } = review;
+const { addTodo, removeTodo, setTodoText, setTodoDone } = review;
+const { serializeReview } = review;
 const { applyImportedNotes, flushReview, loadTemplates, parseReview } = review;
 const { resolveReviewPath, latestReviewName, parseFrontmatterStatus } = review;
 
@@ -345,6 +346,19 @@ test('removeTodo drops a todo by id', () => {
   );
   assert.equal(removeTodo(store, 99), false);
   assert.equal(store.todos.length, 1);
+});
+
+test('setTodoDone keeps the text and round-trips through the file', () => {
+  const store = createStore('/tmp/x.md');
+  const todo = addTodo(store, 'a.js', 'ship it');
+  setTodoDone(store, todo.id, true);
+  assert.equal(store.todos[0].done, true);
+  assert.equal(store.todos[0].text, 'ship it');
+  const loaded = parseReview(serializeReview(store), store.reviewPath);
+  assert.equal(loaded.todos[0].done, true);
+  assert.equal(loaded.todos[0].text, 'ship it');
+  setTodoDone(store, todo.id, false);
+  assert.equal(store.todos[0].done, false);
 });
 
 test('setTodoText deletes empty todos without template history', () => {

@@ -10,6 +10,7 @@ const { createOpsRunner } = require('../lib/session/ops.js');
 const { hitAction } = require('../lib/keys.js');
 const { uiSink, sampleHunk, tempDir } = require('./helpers.js');
 const { createStore, addTodo, serializeReview } = require('../lib/review.js');
+const { parseReview } = require('../lib/review.js');
 const { stripAnsi, THEME, BOLD, seq } = require('../lib/ansi.js');
 const { setTheme, themeName } = require('../lib/ansi.js');
 const { REVIEW_DIR } = require('../lib/files.js');
@@ -1530,7 +1531,7 @@ test('enter and click edit the focused todo', () => {
     kind: 'press',
     btn: 0,
     button: 0,
-    x: 2,
+    x: 8,
     y: hit.y,
     press: true,
   });
@@ -1539,7 +1540,7 @@ test('enter and click edit the focused todo', () => {
     kind: 'release',
     btn: 0,
     button: 0,
-    x: 2,
+    x: 8,
     y: hit.y,
     press: false,
   });
@@ -1555,7 +1556,7 @@ test('enter and click edit the focused todo', () => {
     kind: 'press',
     btn: 0,
     button: 0,
-    x: 2,
+    x: 8,
     y: other.y,
     press: true,
   });
@@ -1564,7 +1565,7 @@ test('enter and click edit the focused todo', () => {
     kind: 'release',
     btn: 0,
     button: 0,
-    x: 2,
+    x: 8,
     y: other.y,
     press: false,
   });
@@ -1591,7 +1592,7 @@ test('todo list stays on screen while composing', () => {
     kind: 'press',
     btn: 0,
     button: 0,
-    x: 2,
+    x: 8,
     y: hit.y,
     press: true,
   });
@@ -1600,7 +1601,7 @@ test('todo list stays on screen while composing', () => {
     kind: 'release',
     btn: 0,
     button: 0,
-    x: 2,
+    x: 8,
     y: hit.y,
     press: false,
   });
@@ -1671,10 +1672,10 @@ test('typing a todo starts editing at the end of the line', () => {
   session.handleEvent({ type: 'key', key: 'escape' });
   assert.equal(session.mode, 'review');
   assert.equal(session.todoFocus, 0);
-  session.pushInput(' more');
+  session.pushInput('+more');
   assert.equal(session.mode, 'compose');
-  assert.equal(session.editor.text, 'first more');
-  assert.equal(session.editor.cursor, 'first more'.length);
+  assert.equal(session.editor.text, 'first+more');
+  assert.equal(session.editor.cursor, 'first+more'.length);
 });
 
 test('home end and page keys jump the todo list', () => {
@@ -3347,6 +3348,65 @@ test('partial file add reloads after a later hunk fails', () => {
   assert.equal(session.items[0].origin, 'staged');
   assert.equal(session.items[1].origin, 'unstaged');
   assert.equal(session.items[1].blockId, 1);
+});
+
+const clickAt = (session, x, y) => {
+  session.handleEvent({
+    type: 'mouse',
+    kind: 'press',
+    btn: 0,
+    button: 0,
+    x,
+    y,
+    press: true,
+  });
+  session.handleEvent({
+    type: 'mouse',
+    kind: 'release',
+    btn: 0,
+    button: 0,
+    x,
+    y,
+    press: false,
+  });
+};
+
+test('x and a checkbox click toggle a todo and the file keeps it', () => {
+  const { session } = openSession([sampleItem('a.js')]);
+  session.dispatch('todo');
+  session.pushInput('ship it');
+  session.handleEvent({ type: 'key', key: 'escape' });
+  assert.equal(session.mode, 'review');
+  session.draw();
+  let body = stripAnsi(session.lastFrame.rows.join('\n'));
+  assert.match(body, /\[ \] ship it/);
+  session.pushInput('x');
+  assert.equal(session.notes.todos[0].done, true);
+  session.draw();
+  body = stripAnsi(session.lastFrame.rows.join('\n'));
+  assert.match(body, /\[x\] ship it/);
+  assert.match(body, /→ {2}x {2}q/);
+  session.pushInput(' ');
+  assert.equal(session.notes.todos[0].done, false);
+  session.draw();
+  const box = session.lastFrame.todoHits.find((row) => row.check);
+  assert.ok(box);
+  clickAt(session, box.x0 + 1, box.y);
+  assert.equal(session.mode, 'review');
+  assert.equal(session.notes.todos[0].done, true);
+  assert.equal(session.notes.todos[0].text, 'ship it');
+  const loaded = parseReview(
+    serializeReview(session.notes),
+    session.notes.reviewPath,
+  );
+  assert.equal(loaded.todos[0].done, true);
+  assert.equal(loaded.todos[0].text, 'ship it');
+  session.handleEvent({ type: 'key', key: 'enter' });
+  session.handleEvent({ type: 'key', key: 'x' });
+  session.handleEvent({ type: 'key', key: ' ' });
+  assert.equal(session.mode, 'compose');
+  assert.equal(session.editor.text, 'ship itx ');
+  assert.equal(session.notes.todos[0].done, true);
 });
 
 test('l toggles the theme and is typed as text while composing', () => {
