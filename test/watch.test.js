@@ -369,6 +369,67 @@ test('files pane poll does not reload', () => {
   assert.equal(session.items.length, 1);
 });
 
+test('todo page poll reloads when a worktree file changes', () => {
+  const cwd = tempDir('reslop-watch-');
+  const file = path.join(cwd, 'a.js');
+  fs.writeFileSync(file, 'old\n');
+  const before = sampleItem('a.js', { text: 'old' });
+  const after = sampleItem('a.js', { text: 'newer' });
+  const { session, repo } = openWatched([before], { cwd });
+  session.uiOpen = true;
+  session.composer.openTodoPage();
+  session.lifecycle.pollCurrentFile();
+  assert.equal(session.items[0].hunk.lines[0].text, 'old');
+  repo.setItems([after]);
+  fs.writeFileSync(file, 'newer\n');
+  session.lifecycle.pollCurrentFile();
+  assert.equal(session.todoOpen, true);
+  assert.equal(session.items[0].hunk.lines[0].text, 'newer');
+});
+
+test('leaving todos reloads the file list', () => {
+  const a = sampleItem('a.js');
+  const b = sampleItem('b.js');
+  const { session, repo } = openWatched([a]);
+  session.uiOpen = true;
+  session.composer.openTodoPage();
+  repo.setItems([a, b]);
+  session.handleEvent({ type: 'key', key: 'escape' });
+  assert.equal(session.pane, 'files');
+  assert.equal(session.todoOpen, false);
+  assert.equal(session.items.length, 2);
+});
+
+test('editing a todo applies a deferred reload on exit', () => {
+  const a = sampleItem('a.js');
+  const b = sampleItem('b.js');
+  const { session, repo } = openWatched([a]);
+  session.uiOpen = true;
+  session.composer.openTodoPage();
+  session.composer.editFocusedTodo();
+  assert.equal(session.mode, 'compose');
+  repo.setItems([a, b]);
+  session.lifecycle.onDiskChange();
+  assert.equal(session.items.length, 1);
+  session.handleEvent({ type: 'key', key: 'escape' });
+  assert.equal(session.todoOpen, true);
+  assert.equal(session.items.length, 1);
+  session.handleEvent({ type: 'key', key: 'escape' });
+  assert.equal(session.pane, 'files');
+  assert.equal(session.items.length, 2);
+});
+
+test('leaving branches reloads the file list', () => {
+  const a = sampleItem('a.js');
+  const b = sampleItem('b.js');
+  const { session, repo } = openWatched([a], { startPane: 'branches' });
+  session.uiOpen = true;
+  repo.setItems([a, b]);
+  session.handleEvent({ type: 'key', key: 'escape' });
+  assert.equal(session.pane, 'files');
+  assert.equal(session.items.length, 2);
+});
+
 test('async disk watch does not flash a loading state', async () => {
   const a = sampleItem('a.js');
   const b = sampleItem('b.js');
