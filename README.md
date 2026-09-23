@@ -24,7 +24,7 @@ Review → Plan → Repair → Verify
 - Stage, unstage, or revert each contiguous block of diff lines
 - Auto-reload local diffs when files change, keeping the current screen
 - Import GitHub PR and GitLab MR review comments into the local plan for AI
-- Commits list: commit, amend, fixup, drop, pull, and push
+- Commits list: commit, amend, fixup, reword, drop, pull, and push
 - Branches: checkout, create, rebase, drop, pull, and push
 - Review each npm dependency once across `package.json` and the lockfile
 - Propose unused removals, npm audit fixes, and outdated updates as diffs
@@ -48,6 +48,7 @@ Works on Linux, macOS, and Windows. On Windows use Windows Terminal.
 - `reslop https://github.com/metarhia/metacom/pull/555` GitHub/GitLab PR/MR
 - `reslop -n` start a new review even if the latest is still editing
 - `reslop -r` read-only mode
+- `reslop -light` light color theme (default dark)
 
 Reviews go in `.review/YYYY-MM-DD-NN.md` with frontmatter `status`:
 

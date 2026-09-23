@@ -2,6 +2,8 @@
 
 ## [Unreleased][unreleased]
 
+## [0.2.1][] - 2026-09-23
+
 - Type a new commit message at the top of the list
 - Improve `fixup!` functions: create and apply
 - Reword the selected commit message with `r`
@@ -115,7 +117,8 @@
 - Feedback and todos that produce a repair plan for an agent
 - Intra-line highlighting in unified, mixed, and side-by-side layouts
 
-[unreleased]: https://github.com/tshemsedinov/reslop/compare/v0.2.0...HEAD
+[unreleased]: https://github.com/tshemsedinov/reslop/compare/v0.2.1...HEAD
+[0.2.1]: https://github.com/tshemsedinov/reslop/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/tshemsedinov/reslop/compare/v0.1.9...v0.2.0
 [0.1.9]: https://github.com/tshemsedinov/reslop/compare/v0.1.8...v0.1.9
 [0.1.8]: https://github.com/tshemsedinov/reslop/compare/v0.1.7...v0.1.8
