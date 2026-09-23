@@ -2198,7 +2198,7 @@ test('todo view paints file todo text not a diff hunk', () => {
   assert.match(body, /demo: TODOs\s+todo 1\/1/);
   assert.ok(!body.includes('demo/TODOs'));
   const footer = frame.rows[frame.rows.length - 1];
-  assert.match(footer, /← {2}→ {2}q/);
+  assert.match(footer, /← {2}→ {2}x {2}q/);
   assert.ok(!footer.includes('prev'));
   assert.ok(!footer.includes('next'));
   assert.ok(!footer.includes('quit'));
@@ -2375,11 +2375,17 @@ test('todo list exposes a click hit for each todo row', () => {
     height: 16,
     color: false,
   });
-  assert.equal(frame.todoHits.length, 2);
-  assert.equal(frame.todoHits[0].cursor, 0);
-  assert.equal(frame.todoHits[1].cursor, 1);
-  assert.equal(frame.todoHits[1].y, frame.todoHits[0].y + 1);
-  assert.ok(frame.todoHits[0].y > 1);
+  const boxes = frame.todoHits.filter((hit) => hit.check === true);
+  const rows = frame.todoHits.filter((hit) => hit.check !== true);
+  assert.equal(boxes.length, 2);
+  assert.equal(rows.length, 2);
+  assert.equal(boxes[0].cursor, 0);
+  assert.equal(boxes[0].x0, 1);
+  assert.equal(boxes[0].x1, 4);
+  assert.equal(rows[0].cursor, 0);
+  assert.equal(rows[1].cursor, 1);
+  assert.equal(rows[1].y, rows[0].y + 1);
+  assert.ok(rows[0].y > 1);
 });
 
 test('todo wrap hangs under the checkbox text', () => {
@@ -2425,7 +2431,8 @@ test('todo wrap hangs under the checkbox text', () => {
   assert.equal(visibleWidth(chunk0), visibleWidth(chunk1));
   assert.equal(firstPlain.indexOf('a'), secondPlain.indexOf('o'));
   assert.equal(frame.cursor.x, 6);
-  assert.equal(frame.cursor.y, frame.todoHits[1].y);
+  const rows = frame.todoHits.filter((hit) => hit.check !== true);
+  assert.equal(frame.cursor.y, rows[1].y);
 });
 
 test('wrapPlain moves whole words to the next line', () => {

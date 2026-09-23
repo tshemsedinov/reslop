@@ -98,6 +98,8 @@ test('actionFromKey maps aliases and ignores unbound keys', () => {
   assert.equal(actionFromKey('d'), 'revert');
   assert.equal(actionFromKey('c'), 'commit');
   assert.equal(actionFromKey('l'), 'theme');
+  assert.equal(actionFromKey('x'), 'check');
+  assert.equal(actionFromKey(' '), 'check');
   assert.equal(actionFromKey('g'), null);
   assert.equal(actionFromKey('r'), null);
   assert.equal(actionFromKey('backspace'), 'removeTodo');
@@ -383,4 +385,5 @@ test('buttonWord is the footer hint including the bound mark', () => {
   assert.equal(buttonWord('next'), '→');
   assert.equal(buttonWord('prev'), '←');
   assert.equal(buttonWord('quit'), 'q');
+  assert.equal(buttonWord('check'), 'x');
 });
