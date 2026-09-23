@@ -9,6 +9,7 @@
 - Support checkbox state in TODOs, UI for state change
 - Reload the file list when leaving todos, branches, or commits
 - Let agents run `editing` reviews and leave `done` files unchanged
+- Skip npm audit and outdated unless package files changed
 
 ## [0.2.0][] - 2026-09-22
 

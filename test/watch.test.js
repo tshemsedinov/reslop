@@ -555,3 +555,73 @@ test('watch reload runs npm extras when package.json changes', async () => {
   });
   assert.equal(extras, 2);
 });
+
+const npmReloadRepo = (cwd, gitItem, extras) => ({
+  load: () => ({ top: cwd, items: [gitItem], branch: 'main' }),
+  loadAsync: async (_dir, _paths, options = {}) => ({
+    top: cwd,
+    items: [gitItem],
+    pending: options.deferExtras === true,
+  }),
+  loadExtras: async () => {
+    extras.count += 1;
+    return {
+      top: cwd,
+      items: [gitItem],
+      pending: false,
+      auditMap: { lodash: extras.count },
+      outdatedMap: null,
+    };
+  },
+});
+
+test('source reload skips npm extras when packages are unchanged', async () => {
+  const gitItem = sampleItem('a.js');
+  const cwd = tempDir('reslop-watch-');
+  fs.writeFileSync(path.join(cwd, 'package.json'), '{}\n');
+  const extras = { count: 0 };
+  const { session } = openWatched([gitItem], {
+    cwd,
+    audit: true,
+    repo: npmReloadRepo(cwd, gitItem, extras),
+  });
+  session.uiOpen = true;
+  session.loader.didLoad = false;
+  await session.openLoad();
+  assert.equal(extras.count, 1);
+  await new Promise((resolve) => {
+    session.reloadAfterChange(resolve);
+  });
+  await waitUntil(() => session.busy === '');
+  assert.equal(extras.count, 1);
+  await new Promise((resolve) => {
+    session.refreshFromRepo({ afterLoad: resolve });
+  });
+  await waitUntil(() => session.busy === '');
+  assert.equal(extras.count, 1);
+});
+
+test('nested package.json reload runs npm extras', async () => {
+  const rel = 'packages/app/package.json';
+  const gitItem = sampleItem(rel);
+  const cwd = tempDir('reslop-watch-');
+  const pkg = path.join(cwd, rel);
+  fs.mkdirSync(path.dirname(pkg), { recursive: true });
+  fs.writeFileSync(pkg, '{}\n');
+  const extras = { count: 0 };
+  const { session } = openWatched([gitItem], {
+    cwd,
+    audit: true,
+    repo: npmReloadRepo(cwd, gitItem, extras),
+  });
+  session.uiOpen = true;
+  session.loader.didLoad = false;
+  await session.openLoad();
+  assert.equal(extras.count, 1);
+  fs.writeFileSync(pkg, '{"name":"app"}\n');
+  await new Promise((resolve) => {
+    session.reloadAfterChange(resolve);
+  });
+  await waitUntil(() => session.busy === '');
+  assert.equal(extras.count, 2);
+});
