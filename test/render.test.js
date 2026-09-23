@@ -42,8 +42,8 @@ test('AC2 muted line color differs from strong char color', () => {
     height: 16,
     color: true,
   });
-  assert.ok(frame.text.includes(render.DEL_CHAR_BG));
-  assert.ok(frame.text.includes(render.ADD_CHAR_BG));
+  assert.ok(frame.text.includes(render.delCharBg()));
+  assert.ok(frame.text.includes(render.addCharBg()));
   assert.ok(frame.text.includes(fg(CODE_FG.variable)));
   assert.ok(!frame.text.includes(fg(THEME.delLineFg)));
   assert.equal(frame.rows.length, 16);
@@ -305,8 +305,8 @@ test('AC23 staged lines are grey with plus and minus marks', () => {
   });
   assert.ok(frame.text.includes(bg(THEME.stagedDelCharBg)));
   assert.ok(frame.text.includes(bg(THEME.stagedAddCharBg)));
-  assert.ok(!frame.text.includes(render.DEL_CHAR_BG));
-  assert.ok(!frame.text.includes(render.ADD_CHAR_BG));
+  assert.ok(!frame.text.includes(render.delCharBg()));
+  assert.ok(!frame.text.includes(render.addCharBg()));
   const plain = render.renderFrame(view, {
     width: 80,
     height: 16,
@@ -2792,4 +2792,31 @@ test('unit edit hides plus minus marks and keeps the line-end cursor', () => {
   assert.ok(!body.includes('- old'));
   assert.match(body, /hello/);
   assert.ok(frame.cursor);
+});
+
+test('diff and chrome pick up a theme switched after load', () => {
+  const hunk = sampleHunk([
+    { type: 'del', text: 'a', noNl: false, blockId: 0 },
+    { type: 'add', text: 'b', noNl: false, blockId: 0 },
+  ]);
+  const view = reviewView({
+    origin: 'unstaged',
+    file: { newPath: 'f.js', oldPath: 'f.js', isBinary: false },
+    hunk,
+    blockId: 0,
+  });
+  try {
+    ansi.setTheme('light');
+    const frame = render.renderFrame(view, {
+      width: 80,
+      height: 16,
+      color: true,
+    });
+    assert.ok(frame.text.includes(bg(ansi.PALETTES.light.ui.addLineBg)));
+    assert.ok(frame.text.includes(bg(ansi.PALETTES.light.ui.headerBg)));
+    assert.ok(frame.text.includes(bg(ansi.PALETTES.light.ui.buttonBg)));
+    assert.ok(!frame.text.includes(bg(ansi.PALETTES.dark.ui.addLineBg)));
+  } finally {
+    ansi.setTheme('dark');
+  }
 });
