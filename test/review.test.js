@@ -168,7 +168,12 @@ test('serializeReview writes ready when status is ready', () => {
   addTodo(store, 'a.js', 'follow up');
   const md = serializeReview(store);
   assert.match(md, /status: ready/);
-  assert.match(md, /Execute reviews with `status: ready` or `status: partial`/);
+  assert.match(md, /Execute reviews with `status` `ready, partial, editing`/);
+  assert.match(md, /Do not start or change `done` review files/);
+  assert.match(
+    md,
+    /If not `editing`, set `status` to `partial` if some remain/,
+  );
 });
 
 test('parseFrontmatterStatus maps pending to ready', () => {
