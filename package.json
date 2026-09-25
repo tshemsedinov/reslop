@@ -49,11 +49,11 @@
     "node": ">=18"
   },
   "scripts": {
-    "enable": "node scripts/enable.js",
-    "disable": "node scripts/disable.js",
+    "test": "npm run -s lint && node --test",
     "lint": "eslint . && prettier -c \"**/*.js\" \"**/*.json\" \"**/*.md\"",
     "fix": "eslint . --fix && prettier --write \"**/*.js\" \"**/*.json\" \"**/*.md\"",
-    "test": "npm run -s lint && node --test"
+    "enable": "node scripts/enable.js",
+    "disable": "node scripts/disable.js"
   },
   "devDependencies": {
     "eslint": "^9.39.4",

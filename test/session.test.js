@@ -12,6 +12,7 @@ const { uiSink, sampleHunk, tempDir } = require('./helpers.js');
 const { createStore, addTodo, serializeReview } = require('../lib/review.js');
 const { parseReview } = require('../lib/review.js');
 const { stripAnsi, THEME, BOLD, seq } = require('../lib/ansi.js');
+const { logViewRows } = require('../lib/render/npm.js');
 const { setTheme, themeName } = require('../lib/ansi.js');
 const { REVIEW_DIR } = require('../lib/files.js');
 
@@ -833,7 +834,8 @@ test('AC14 files pane lists paths and enter opens', () => {
   assert.equal(session.pane, 'files');
   session.draw();
   const text = stdout.dump();
-  assert.match(text, /TODOs\s+todo 1\/3/);
+  assert.match(text, /TODOs/);
+  assert.ok(!text.includes('todo 1/3'));
   assert.ok(!text.includes('@@'));
   assert.match(text, /Repository TODOs and Issues/);
   assert.match(text, /a\.js/);
@@ -2492,7 +2494,7 @@ test('major update asks y or n on the loaded status line', async () => {
   session.handleEvent({ type: 'key', key: 'n' });
   assert.equal(session.mode, 'review');
   assert.deepEqual(installed, []);
-  session.handleEvent({ type: 'key', key: 'n' });
+  session.handleEvent({ type: 'key', key: 'j' });
   assert.equal(session.fileCursor, 1);
 });
 
@@ -3385,7 +3387,8 @@ test('x and a checkbox click toggle a todo and the file keeps it', () => {
   session.draw();
   body = stripAnsi(session.lastFrame.rows.join('\n'));
   assert.match(body, /\[x\] ship it/);
-  assert.match(body, /→ {2}x {2}q/);
+  assert.match(body, /→ x/);
+  assert.ok(!body.includes(' q'));
   session.pushInput(' ');
   assert.equal(session.notes.todos[0].done, false);
   session.draw();
@@ -3426,4 +3429,304 @@ test('l toggles the theme and is typed as text while composing', () => {
   } finally {
     setTheme('dark');
   }
+});
+
+test('files pane n opens npm scripts and bins', () => {
+  const { session, cwd, repo } = openSession([sampleItem('a.js')], {
+    startPane: 'files',
+  });
+  fs.writeFileSync(
+    path.join(cwd, 'package.json'),
+    `${JSON.stringify({
+      scripts: { test: 'node --test', lint: 'eslint .' },
+      dependencies: { leftpad: '1.0.0' },
+    })}\n`,
+  );
+  const dep = path.join(cwd, 'node_modules', 'leftpad');
+  fs.mkdirSync(dep, { recursive: true });
+  fs.writeFileSync(
+    path.join(dep, 'package.json'),
+    `${JSON.stringify({ name: 'leftpad', bin: { leftpad: 'bin.js' } })}\n`,
+  );
+  session.pushInput('n');
+  assert.equal(session.pane, 'npm');
+  session.draw();
+  let body = stripAnsi(session.lastFrame.rows.join('\n'));
+  assert.match(body, /test/);
+  assert.match(body, /lint/);
+  assert.match(body, /leftpad/);
+  assert.match(body, /: npm/);
+  assert.ok(!body.includes(' q'));
+  session.pushInput('e');
+  assert.equal(session.mode, 'compose');
+  assert.equal(session.editor.text, 'test: node --test');
+  session.editor.replace('nope');
+  session.handleEvent({ type: 'key', key: 'enter' });
+  assert.equal(session.mode, 'compose');
+  assert.equal(session.status, 'name: command');
+  session.editor.replace('test: node --test test');
+  session.handleEvent({ type: 'key', key: 'enter' });
+  assert.equal(session.mode, 'review');
+  const file = path.join(cwd, 'package.json');
+  const saved = JSON.parse(fs.readFileSync(file, 'utf8'));
+  assert.equal(saved.scripts.test, 'node --test test');
+  session.handleEvent({ type: 'key', key: 'ctrl-down' });
+  const order = JSON.parse(fs.readFileSync(file, 'utf8'));
+  assert.deepEqual(Object.keys(order.scripts), ['lint', 'test']);
+  session.handleEvent({ type: 'key', key: 'delete' });
+  assert.equal(session.mode, 'confirmDrop');
+  session.pushInput('n');
+  assert.equal(session.mode, 'review');
+  assert.equal(order.scripts.lint, 'eslint .');
+  session.handleEvent({ type: 'key', key: 'end' });
+  session.pushInput('e');
+  assert.equal(session.status, 'not a script');
+  session.handleEvent({ type: 'key', key: 'home' });
+  const ran = [];
+  repo.runNpmCommand = (root, entry, onData, onClose) => {
+    ran.push(entry.name);
+    const lines = [
+      '✔ passes',
+      `${root}/lib/app.js:4`,
+      '✖ fails',
+      'Error: boom',
+    ];
+    const text = lines.join('\n');
+    onData(text);
+    onClose({ status: 1, text });
+    return { kill() {} };
+  };
+  session.handleEvent({ type: 'key', key: 'enter' });
+  assert.deepEqual(ran, ['lint']);
+  session.draw();
+  body = stripAnsi(session.lastFrame.rows.join('\n'));
+  assert.match(body, /lib\/app\.js:4/);
+  assert.match(body, /Error: boom/);
+  assert.match(body, /exit 1/);
+  assert.ok(!body.includes('✔'));
+  assert.ok(!body.includes(cwd));
+  const stamp = dateStamp();
+  const logPath = path.join(cwd, '.log', `${stamp}-lint-01.log`);
+  const log = fs.readFileSync(logPath, 'utf8');
+  assert.match(log, /exit 1/);
+  assert.ok(!log.includes('✔'));
+  session.handleEvent({ type: 'key', key: 'escape' });
+  assert.equal(session.pane, 'npm');
+  assert.equal(session.view().npmView, false);
+  session.pushInput('q');
+  assert.equal(session.done, true);
+});
+
+const frameBody = (session) => {
+  session.draw();
+  const bodyH = session.lastFrame.bodyH;
+  const rows = session.lastFrame.rows.slice(1, 1 + bodyH);
+  return rows.map((row) => stripAnsi(row));
+};
+
+test('esc stops a running npm command and waits to leave', () => {
+  const { session, cwd, repo } = openSession([sampleItem('a.js')], {
+    startPane: 'files',
+  });
+  fs.writeFileSync(
+    path.join(cwd, 'package.json'),
+    `${JSON.stringify({ scripts: { test: 'node --test' } })}\n`,
+  );
+  let close = null;
+  let push = null;
+  let killed = false;
+  let starts = 0;
+  repo.runNpmCommand = (root, entry, onData, onClose) => {
+    starts += 1;
+    push = onData;
+    onData('hello\n');
+    close = onClose;
+    return {
+      kill() {
+        killed = true;
+      },
+    };
+  };
+  session.pushInput('n');
+  session.handleEvent({ type: 'key', key: 'enter' });
+  assert.equal(session.view().npmRunning, true);
+  session.draw();
+  const footer = () => stripAnsi(session.lastFrame.rows.at(-1));
+  const hitIds = () => session.lastFrame.buttons.map((hit) => hit.id);
+  assert.match(footer(), / esc /);
+  assert.match(footer(), / re-run/);
+  assert.ok(!footer().includes('edit'));
+  assert.ok(!footer().includes('new'));
+  assert.ok(hitIds().includes('npmStop'));
+  assert.ok(!hitIds().includes('npmRerun'));
+  session.handleEvent({ type: 'key', key: 'r' });
+  assert.equal(starts, 1);
+  assert.equal(session.view().npmRunning, true);
+  session.handleEvent({ type: 'key', key: 'escape' });
+  assert.equal(killed, true);
+  assert.equal(session.view().npmView, true);
+  assert.equal(session.view().npmRunning, false);
+  assert.equal(session.status, 'terminated');
+  let text = frameBody(session).join('\n');
+  assert.match(text, /hello/);
+  assert.match(text, /terminated/);
+  push('hello\nmore\n');
+  text = frameBody(session).join('\n');
+  assert.match(text, /hello/);
+  assert.match(text, /terminated/);
+  assert.ok(!text.includes('more'));
+  close({ status: null, text: 'hello\nlate\n' });
+  assert.equal(session.view().npmView, true);
+  text = frameBody(session).join('\n');
+  assert.match(text, /hello/);
+  assert.match(text, /terminated/);
+  assert.ok(!text.includes('late'));
+  assert.ok(!text.includes('more'));
+  assert.ok(!text.includes('exit null'));
+  session.draw();
+  let hits = hitIds();
+  assert.ok(hits.includes('npmStop'));
+  assert.ok(hits.includes('npmRerun'));
+  assert.ok(!hits.includes('npmEdit'));
+  const runs = [];
+  repo.runNpmCommand = (root, entry, onData, onClose) => {
+    runs.push(entry.name);
+    onData('again\n');
+    return {
+      kill() {
+        onClose({ status: null, text: 'again\n' });
+      },
+    };
+  };
+  session.handleEvent({ type: 'key', key: 'r' });
+  assert.deepEqual(runs, ['test']);
+  assert.equal(session.view().npmRunning, true);
+  session.handleEvent({ type: 'key', key: 'escape' });
+  assert.equal(session.view().npmView, true);
+  assert.equal(session.status, 'terminated');
+  session.draw();
+  hits = hitIds();
+  assert.ok(hits.includes('npmStop'));
+  session.handleEvent({ type: 'key', key: 'escape' });
+  assert.equal(session.view().npmView, false);
+  assert.equal(session.pane, 'npm');
+});
+
+test('npm output scrolls with the editor hotkeys', () => {
+  const { session, cwd, repo } = openSession([sampleItem('a.js')], {
+    startPane: 'files',
+  });
+  fs.writeFileSync(
+    path.join(cwd, 'package.json'),
+    `${JSON.stringify({ scripts: { test: 'node --test' } })}\n`,
+  );
+  const lines = [];
+  for (let i = 0; i < 80; i++) lines.push(`row ${i}`);
+  let push = null;
+  repo.runNpmCommand = (root, entry, onData, onClose) => {
+    push = onData;
+    onData(lines.join('\n'));
+    onClose({ status: 0, text: lines.join('\n') });
+    return { kill() {} };
+  };
+  session.pushInput('n');
+  session.handleEvent({ type: 'key', key: 'enter' });
+  session.draw();
+  const page = logViewRows(session.lastFrame.bodyH);
+  assert.ok(page > 1);
+  const half = Math.max(1, Math.floor(page * 0.5));
+  const at = () => session.view().npmScroll;
+  session.handleEvent({ type: 'key', key: 'home' });
+  assert.equal(at(), 0);
+  assert.equal(session.view().npmFollow, false);
+  session.handleEvent({ type: 'key', key: 'up' });
+  assert.equal(at(), 0);
+  session.handleEvent({ type: 'key', key: 'down' });
+  assert.equal(at(), 1);
+  session.handleEvent({ type: 'key', key: 'ctrl-y' });
+  assert.equal(at(), 0);
+  session.handleEvent({ type: 'key', key: 'ctrl-e' });
+  assert.equal(at(), 1);
+  session.handleEvent({ type: 'key', key: 'home' });
+  session.handleEvent({ type: 'key', key: 'ctrl-f' });
+  assert.equal(at(), page);
+  session.handleEvent({ type: 'key', key: 'ctrl-b' });
+  assert.equal(at(), 0);
+  session.handleEvent({ type: 'key', key: 'ctrl-d' });
+  assert.equal(at(), half);
+  session.handleEvent({ type: 'key', key: 'ctrl-u' });
+  assert.equal(at(), 0);
+  session.handleEvent({ type: 'key', key: 'pageDown' });
+  assert.equal(at(), page);
+  session.handleEvent({ type: 'key', key: 'pageUp' });
+  assert.equal(at(), 0);
+  session.handleEvent({ type: 'key', key: 'end' });
+  assert.equal(session.view().npmFollow, true);
+  session.handleEvent({ type: 'key', key: 'up' });
+  assert.equal(session.view().npmFollow, false);
+  const stayed = at();
+  push('row extra\n');
+  assert.equal(at(), stayed);
+  assert.equal(session.view().npmFollow, false);
+  const body = frameBody(session);
+  assert.equal(body[0].trim(), '');
+  assert.equal(body[body.length - 1].trim(), '');
+  assert.match(body[1], /^ {2}row /);
+});
+
+test('npm output animates progress until the command exits', () => {
+  const { session, cwd, repo } = openSession([sampleItem('a.js')], {
+    startPane: 'files',
+  });
+  fs.writeFileSync(
+    path.join(cwd, 'package.json'),
+    `${JSON.stringify({ scripts: { test: 'node --test' } })}\n`,
+  );
+  let finish = null;
+  repo.runNpmCommand = (root, entry, onData, onClose) => {
+    onData('hello\n');
+    finish = () => onClose({ status: 0, text: 'hello\n' });
+    return {
+      kill() {
+        finish();
+      },
+    };
+  };
+  session.pushInput('n');
+  session.handleEvent({ type: 'key', key: 'enter' });
+  assert.equal(session.view().npmRunning, true);
+  assert.equal(session.progress.size(), 1);
+  let body = frameBody(session);
+  const hello = body.findIndex((row) => row.includes('hello'));
+  assert.match(body[hello + 1], /^ {2}running {2}▰▰▱▱▱▱/);
+  session.tickProgress();
+  body = frameBody(session);
+  assert.match(body[hello + 1], /^ {2}running {2}▱▰▰▱▱▱/);
+  finish();
+  body = frameBody(session);
+  assert.equal(session.view().npmRunning, false);
+  assert.equal(session.progress.size(), 0);
+  const text = body.join('\n');
+  assert.match(text, /hello/);
+  assert.match(text, /exit 0/);
+  assert.ok(!text.includes('running'));
+});
+
+test('npm screen refuses edits when read only', () => {
+  const { session, cwd } = openSession([sampleItem('a.js')], {
+    startPane: 'files',
+    readOnly: true,
+  });
+  fs.writeFileSync(
+    path.join(cwd, 'package.json'),
+    `${JSON.stringify({ scripts: { test: 'node --test' } })}\n`,
+  );
+  session.pushInput('n');
+  session.pushInput('e');
+  assert.equal(session.status, 'read only');
+  assert.equal(session.mode, 'review');
+  session.pushInput('n');
+  assert.equal(session.status, 'read only');
+  session.handleEvent({ type: 'key', key: 'delete' });
+  assert.equal(session.mode, 'review');
 });

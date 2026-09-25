@@ -6,7 +6,8 @@ const assert = require('node:assert/strict');
 const ansi = require('../lib/ansi.js');
 
 const { visibleWidth, codeFg, CODE_FG, THEME, PALETTES } = ansi;
-const { setTheme, themeName } = ansi;
+const { setTheme, themeName, clipAnsi, stripAnsi, RESET } = ansi;
+const { foregroundOn, bg } = ansi;
 
 test('eye logo is one column, matching terminal wcwidth', () => {
   assert.equal(visibleWidth('👁️'), 1);
@@ -52,4 +53,28 @@ test('setTheme swaps colors in place and rejects unknown names', () => {
   } finally {
     setTheme('dark');
   }
+});
+
+test('clipAnsi keeps color codes and cuts on visible width', () => {
+  const red = '\x1b[31m';
+  const text = `${red}Error: boom${RESET}`;
+  assert.equal(clipAnsi(text, 40), text);
+  const cut = clipAnsi(text, 5);
+  assert.ok(cut.startsWith(red));
+  assert.equal(stripAnsi(cut), 'Error');
+  assert.ok(cut.endsWith(RESET));
+});
+
+test('foregroundOn keeps text color and uses the given background', () => {
+  const ground = bg(THEME.ctxBg);
+  const text = '\x1b[1;31;41mError\x1b[0m plain';
+  const out = foregroundOn(text, THEME.ctxBg);
+  const fg = `\x1b[1;31mError${RESET}${ground} plain`;
+  assert.equal(out, `${ground}${fg}`);
+  assert.ok(!out.includes('\x1b[41m'));
+  const rgb = '\x1b[38;2;9;8;7;48;2;1;2;3mX';
+  const colored = foregroundOn(rgb, THEME.ctxBg);
+  assert.ok(colored.includes('\x1b[38;2;9;8;7m'));
+  assert.ok(!colored.includes('48;2;1;2;3'));
+  assert.ok(colored.includes(ground));
 });

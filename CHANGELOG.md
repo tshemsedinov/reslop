@@ -3,6 +3,9 @@
 ## [Unreleased][unreleased]
 
 - Propose unused removals only for libraries that export code
+- Improve TUI/TUX, multiple small fixes
+- Implement npm command runner with termination and re-run
+- Filter and save logs running tests and other npm commands
 
 ## [0.2.1][] - 2026-09-23
 

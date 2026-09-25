@@ -385,7 +385,8 @@ test('status line includes feedback todo and code counts', () => {
     color: false,
   });
   const statusRow = frame.rows[frame.rows.length - 2];
-  assert.match(statusRow, /\[main\] {2}feedback 3 {2}todo 2 {2}code 1/);
+  assert.match(statusRow, /main {2}feedback 3 {2}todo 2 {2}code 1/);
+  assert.ok(!statusRow.includes('['));
   assert.match(statusRow, /6\/17\s*$/);
   assert.ok(!statusRow.includes('untracked'));
   const notesAt = statusRow.indexOf('feedback 3');
@@ -399,18 +400,13 @@ test('status line includes feedback todo and code counts', () => {
   const painted = colored.rows[colored.rows.length - 2];
   const chromeBg = bg(THEME.chromeBg);
   const white = `${fg(THEME.buttonHotFg)}${chromeBg}`;
-  const muted = `${fg(THEME.mutedFg)}${chromeBg}`;
-  const brackets = `${BOLD}${muted}`;
   assert.ok(painted.includes(`${white}main`));
-  assert.ok(painted.includes(`${brackets}[`));
-  assert.ok(painted.includes(`${brackets}]`));
   assert.ok(!painted.includes(`${white}[`));
-  assert.ok(!painted.includes(`${white}]`));
   assert.equal(frame.statusHits.length, 1);
   assert.equal(frame.statusHits[0].id, 'branch');
   assert.equal(frame.statusHits[0].y, frame.rows.length - 1);
   assert.equal(frame.statusHits[0].x0, 1);
-  assert.equal(frame.statusHits[0].x1, 7);
+  assert.equal(frame.statusHits[0].x1, 5);
 });
 
 test('status line includes repo +/- totals', () => {
@@ -456,7 +452,8 @@ test('status line includes repo +/- totals', () => {
     color: false,
   });
   const statusRow = stripAnsi(frame.rows[frame.rows.length - 2]);
-  assert.match(statusRow, /\[main\] {2}feedback 0 {2}todo 0 {2}code 0/);
+  assert.match(statusRow, /main {2}feedback 0 {2}todo 0 {2}code 0/);
+  assert.ok(!statusRow.includes('['));
   assert.match(statusRow, /\+3\/35 {2}-1\/6 {2}1\/17\s*$/);
   assert.ok(!statusRow.includes('untracked'));
   const notesAt = statusRow.indexOf('feedback 0');
@@ -1071,7 +1068,9 @@ test('file list leads with repository TODOs and a count', () => {
     fileCursor: 0,
     repoName: 'demo',
   });
-  assert.match(header, /demo: TODOs todo 1\/2/);
+  assert.match(header, /demo: TODOs\s*$/);
+  assert.ok(!header.includes('todo '));
+  assert.ok(!/\d+\/\d+/.test(header));
   assert.ok(!header.includes('demo/'));
   const colored = render.renderFrame(
     {
@@ -1130,8 +1129,9 @@ test('AC10 footer words highlight the bound letter', () => {
   });
   const row = frame.rows[frame.rows.length - 1];
   const plain = stripAnsi(row);
-  assert.match(plain, /add {2}unstage {2}drop {2}todo {2}branch {2}file {2}/);
-  assert.match(plain, /commit {2}pull {2}push {2}q/);
+  assert.match(plain, /add unstage drop todo branch npm file /);
+  assert.match(plain, /commit pull push/);
+  assert.ok(!plain.includes('q'));
   assert.ok(!plain.includes('prev'));
   assert.ok(!plain.includes('next'));
   assert.ok(!plain.includes('quit'));
@@ -1151,8 +1151,9 @@ test('AC10 footer words highlight the bound letter', () => {
     color: false,
   });
   const dimRow = dim.rows[dim.rows.length - 1];
-  assert.match(dimRow, /add {2}unstage {2}drop {2}todo {2}branch {2}file {2}/);
-  assert.match(dimRow, /commit {2}pull {2}push {2}q/);
+  assert.match(dimRow, /add unstage drop todo branch npm file /);
+  assert.match(dimRow, /commit pull push/);
+  assert.ok(!dimRow.includes('q'));
   assert.ok(!dimRow.includes('['));
   const mode = frame.buttons.find((hit) => hit.id === 'layout');
   const feedback = frame.buttons.find((hit) => hit.id === 'feedback');
@@ -1184,7 +1185,7 @@ test('AC10 footer words highlight the bound letter', () => {
     color: false,
   });
   const fileScopeRow = fileScope.rows[fileScope.rows.length - 1];
-  assert.match(fileScopeRow, /todo {2}branch {2}diff {2}commit {2}pull/);
+  assert.match(fileScopeRow, /todo branch npm diff commit pull/);
   assert.ok(fileScope.buttons.find((hit) => hit.id === 'diff'));
   assert.equal(
     fileScope.buttons.find((hit) => hit.id === 'file'),
@@ -1218,8 +1219,9 @@ test('files pane todos row dims add unstage drop', () => {
     color: false,
   });
   const footer = frame.rows[frame.rows.length - 1];
-  assert.match(footer, /add {2}unstage {2}drop {2}todo {2}branch {2}file {2}/);
-  assert.match(footer, /commit {2}pull {2}push {2}q/);
+  assert.match(footer, /add unstage drop todo branch npm file /);
+  assert.match(footer, /commit pull push/);
+  assert.ok(!footer.includes('q'));
   assert.ok(!footer.includes('←'));
   assert.ok(!footer.includes('→'));
   assert.equal(
@@ -1253,7 +1255,7 @@ test('files pane todos row dims add unstage drop', () => {
     color: false,
   });
   const fileFooter = file.rows[file.rows.length - 1];
-  assert.match(fileFooter, /add {2}unstage {2}drop {2}todo {2}branch {2}file/);
+  assert.match(fileFooter, /add unstage drop todo branch npm file/);
   assert.ok(file.buttons.find((hit) => hit.id === 'add'));
 });
 
@@ -1285,7 +1287,7 @@ test('diff pane dims add on staged and unstage on unstaged', () => {
   const stagedRow = staged.rows[staged.rows.length - 1];
   const rest = seq(THEME.buttonFg, THEME.buttonBg);
   const hot = seq(THEME.buttonHotFg, THEME.buttonBg);
-  assert.match(stripAnsi(stagedRow), /add {2}unstage {2}drop/);
+  assert.match(stripAnsi(stagedRow), /add unstage drop/);
   assert.equal(
     staged.buttons.find((hit) => hit.id === 'add'),
     undefined,
@@ -1361,8 +1363,10 @@ test('branch pane lists names and marks the default branch', () => {
   const featRow = rows.find((row) => row.includes('bbb2222'));
   assert.ok(mainRow);
   assert.ok(featRow);
-  assert.ok(mainRow.includes('[main]'));
-  assert.match(featRow, /\[feat\]/);
+  assert.ok(mainRow.includes('main'));
+  assert.ok(!mainRow.includes('['));
+  assert.match(featRow, /feat/);
+  assert.ok(!featRow.includes('['));
   assert.ok(!text.includes('* main'));
   assert.match(text, /aaa1111/);
   assert.match(text, /bbb2222/);
@@ -1413,20 +1417,14 @@ test('branch pane lists names and marks the default branch', () => {
   const featPainted = colored.rows.find((row) => row.includes('bbb2222'));
   const currentBg = bg(THEME.currentBg);
   const rowBg = bg(THEME.ctxBg);
-  const mainWrap = `${BOLD}${fg(THEME.mutedFg)}${rowBg}`;
   const mainName = `${BOLD}${fg(THEME.warnFg)}${rowBg}`;
   const currentName = `${fg(THEME.mutedFg)}${currentBg}`;
-  const currentWrap = `${BOLD}${fg(THEME.mutedFg)}${currentBg}`;
-  assert.ok(mainPainted.includes(`${mainWrap}[`));
   assert.ok(mainPainted.includes(`${mainName}main`));
-  assert.ok(mainPainted.includes(`${mainWrap}]`));
   assert.ok(!mainPainted.includes(bg(THEME.warnFg)));
   assert.ok(!mainPainted.includes(currentBg));
   const shaTone = `${fg(THEME.shaFg)}${bg(THEME.ctxBg)}`;
   assert.ok(mainPainted.includes(`${shaTone}aaa1111`));
-  assert.ok(featPainted.includes(`${currentWrap}[`));
   assert.ok(featPainted.includes(`${currentName}feat`));
-  assert.ok(featPainted.includes(`${currentWrap}]`));
   assert.ok(!featPainted.includes(`${fg(THEME.buttonHotFg)}${currentBg}`));
   assert.ok(featPainted.includes(`${fg(THEME.shaDarkFg)}${currentBg}`));
   assert.ok(!featPainted.includes(`${fg(THEME.shaFg)}${currentBg}`));
@@ -1532,7 +1530,8 @@ test('branch pane types a new name on a row under the list', () => {
   assert.ok(topicAt > featAt);
   assert.ok(topicAt < rows.length - 2);
   const mainRow = rows.find((row) => row.includes('aaa1111'));
-  assert.match(mainRow, /\[main\]/);
+  assert.match(mainRow, /main/);
+  assert.ok(!mainRow.includes('['));
   assert.equal(frame.cursor.y, topicAt + 1);
   assert.match(render.headerText(view), /demo: branches new 3\/3/);
 });
@@ -2195,10 +2194,12 @@ test('todo view paints file todo text not a diff hunk', () => {
   assert.match(body, /\[x\] already done/);
   assert.ok(!stripAnsi(frame.rows[2]).startsWith('+'));
   assert.ok(!stripAnsi(frame.rows[2]).startsWith('-'));
-  assert.match(body, /demo: TODOs\s+todo 1\/1/);
+  assert.match(body, /demo: TODOs/);
+  assert.ok(!body.includes('todo 1/1'));
   assert.ok(!body.includes('demo/TODOs'));
   const footer = frame.rows[frame.rows.length - 1];
-  assert.match(footer, /← {2}→ {2}x {2}q/);
+  assert.match(footer, /← → x/);
+  assert.ok(!footer.includes('q'));
   assert.ok(!footer.includes('prev'));
   assert.ok(!footer.includes('next'));
   assert.ok(!footer.includes('quit'));
@@ -2655,7 +2656,7 @@ test('unit pane marks the current block and keeps other diffs', () => {
   assert.ok(!body.includes('+ later'));
   assert.match(render.headerText(view), /reslop: demo\/a\.js unstaged 1\/4/);
   const footer = frame.rows[frame.rows.length - 1];
-  assert.match(footer, /add {2}unstage {2}drop/);
+  assert.match(footer, /add unstage drop/);
   assert.ok(!footer.includes('mode'));
   assert.ok(frame.buttons.find((hit) => hit.id === 'add'));
   assert.ok(frame.buttons.find((hit) => hit.id === 'code'));
@@ -2826,4 +2827,239 @@ test('diff and chrome pick up a theme switched after load', () => {
   } finally {
     ansi.setTheme('dark');
   }
+});
+
+test('npm output keeps a line margin and a two-space gutter', () => {
+  const lines = [];
+  for (let i = 0; i < 30; i++) lines.push(`line-${i}-${'x'.repeat(80)}`);
+  const view = {
+    pane: 'npm',
+    npmView: true,
+    npmOutput: `${lines.join('\n')}\n`,
+    npmFollow: false,
+    npmScroll: 2,
+    npmCommands: [],
+    repoName: 'demo',
+    status: '',
+    counts: {},
+  };
+  const frame = render.renderFrame(view, {
+    width: 40,
+    height: 12,
+    color: false,
+  });
+  const bodyH = frame.bodyH;
+  const body = frame.rows.slice(1, 1 + bodyH).map((row) => stripAnsi(row));
+  assert.equal(body[0].trim(), '');
+  assert.equal(body[body.length - 1].trim(), '');
+  assert.equal(body[1].slice(0, 8), '  line-2');
+  assert.ok(body[1].endsWith('  '));
+  assert.equal(body[1].length, 40);
+  assert.ok(!body[1].includes('x'.repeat(40)));
+});
+
+test('npm output paints a moving bar while a command runs', () => {
+  const view = {
+    pane: 'npm',
+    npmView: true,
+    npmRunning: true,
+    npmOutput: 'hello\n',
+    npmFollow: true,
+    progressFrame: 0,
+    npmCommands: [],
+    repoName: 'demo',
+    status: '',
+    counts: {},
+  };
+  const opt = { width: 40, height: 12, color: false };
+  const frame = render.renderFrame(view, opt);
+  const bodyH = frame.bodyH;
+  const body = frame.rows.slice(1, 1 + bodyH).map((row) => stripAnsi(row));
+  assert.equal(body[0].trim(), '');
+  assert.equal(body[body.length - 1].trim(), '');
+  const hello = body.findIndex((row) => row.includes('hello'));
+  assert.ok(hello > 0);
+  assert.match(body[hello + 1], /^ {2}running {2}▰▰▱▱▱▱/);
+  assert.ok(hello + 1 < body.length - 2);
+  view.progressFrame = 1;
+  const next = render.renderFrame(view, opt);
+  const moved = next.rows.slice(1, 1 + bodyH).map((row) => stripAnsi(row));
+  assert.match(moved[hello + 1], /^ {2}running {2}▱▰▰▱▱▱/);
+  const many = [];
+  for (let i = 0; i < 40; i++) many.push(`line-${i}`);
+  view.npmOutput = `${many.join('\n')}\n`;
+  view.progressFrame = 0;
+  const full = render.renderFrame(view, opt);
+  const fullBody = full.rows.slice(1, 1 + bodyH).map((row) => stripAnsi(row));
+  assert.match(fullBody[fullBody.length - 3], /line-39/);
+  assert.match(fullBody[fullBody.length - 2], /^ {2}running {2}▰▰▱▱▱▱/);
+  view.npmFollow = false;
+  view.npmScroll = 0;
+  const top = render.renderFrame(view, opt);
+  const topBody = top.rows.slice(1, 1 + bodyH).map((row) => stripAnsi(row));
+  assert.match(topBody[1], /line-0/);
+  assert.ok(!topBody.join('\n').includes('running'));
+});
+
+test('npm bin names are blue and package scripts stay white', () => {
+  const view = {
+    pane: 'npm',
+    npmCommands: [
+      { name: 'test', command: 'node --test', kind: 'script' },
+      { name: 'eslint', command: 'eslint', kind: 'bin' },
+    ],
+    npmCursor: 0,
+    repoName: 'demo',
+    status: '',
+    counts: {},
+  };
+  const frame = render.renderFrame(view, {
+    width: 60,
+    height: 10,
+    color: true,
+  });
+  const rows = frame.rows.map((row) => stripAnsi(row));
+  const script = frame.rows[rows.findIndex((row) => row.includes('test'))];
+  const bin = frame.rows[rows.findIndex((row) => row.includes('eslint'))];
+  const blue = seq(THEME.shaFg, THEME.ctxBg);
+  const white = `${BOLD}${seq(THEME.buttonHotFg, THEME.buttonBg)}`;
+  assert.ok(script.includes(`${white}test`));
+  assert.ok(!script.includes(fg(THEME.shaFg)));
+  assert.ok(bin.includes(`${blue}eslint`));
+  assert.ok(!bin.includes(`${fg(THEME.buttonHotFg)}eslint`));
+});
+
+test('npm list aligns names and commands on the left', () => {
+  const view = {
+    pane: 'npm',
+    npmCommands: [
+      { name: 'test', command: 'node --test', kind: 'script' },
+      { name: 'eslint', command: 'eslint .', kind: 'script' },
+      { name: 'leftpad', command: 'leftpad', kind: 'bin' },
+    ],
+    npmCursor: 1,
+    repoName: 'demo',
+    status: '',
+    counts: {},
+  };
+  const frame = render.renderFrame(view, {
+    width: 60,
+    height: 12,
+    color: false,
+  });
+  const rows = frame.rows.map((row) => stripAnsi(row));
+  const test = rows.find((row) => row.includes('node --test'));
+  const lint = rows.find((row) => row.includes('eslint .'));
+  const bin = rows.find((row) => row.includes('leftpad'));
+  const nameAt = test.indexOf('test');
+  const cmdAt = test.indexOf('node --test');
+  assert.equal(lint.indexOf('eslint'), nameAt);
+  assert.equal(bin.indexOf('leftpad'), nameAt);
+  assert.equal(lint.indexOf('eslint .'), cmdAt);
+  assert.equal(bin.indexOf('bin'), cmdAt);
+  assert.equal(cmdAt, nameAt + 'leftpad'.length + 2);
+});
+
+test('npm output keeps the colors the command printed', () => {
+  const red = '\x1b[31m';
+  const reset = '\x1b[0m';
+  const view = {
+    pane: 'npm',
+    npmView: true,
+    npmOutput: `${red}Error: boom${reset}\n`,
+    npmFollow: true,
+    npmCommands: [],
+    repoName: 'demo',
+    status: '',
+    counts: {},
+  };
+  const frame = render.renderFrame(view, {
+    width: 40,
+    height: 12,
+    color: true,
+  });
+  assert.ok(frame.text.includes(`${red}Error: boom`));
+  assert.ok(frame.text.includes(bg(THEME.ctxBg)));
+  const plain = stripAnsi(frame.rows.join('\n'));
+  assert.match(plain, / {2}Error: boom/);
+});
+
+test('npm output drops the command background', () => {
+  const view = {
+    pane: 'npm',
+    npmView: true,
+    npmOutput: '\x1b[31;41mError\x1b[0m\n',
+    npmFollow: true,
+    npmCommands: [],
+    repoName: 'demo',
+    status: '',
+    counts: {},
+  };
+  const frame = render.renderFrame(view, {
+    width: 40,
+    height: 12,
+    color: true,
+  });
+  assert.ok(frame.text.includes('\x1b[31mError'));
+  assert.ok(frame.text.includes(bg(THEME.ctxBg)));
+  assert.ok(!frame.text.includes('\x1b[41m'));
+  assert.ok(!frame.text.includes('31;41'));
+});
+
+test('npm output paints assertion fields as a colored table', () => {
+  const { reduceOutput } = require('../lib/npm-commands.js');
+  const mark = String.fromCharCode(39);
+  const field = (name, value) => `  ${name}: ${mark}${value}${mark}`;
+  const raw = [
+    '    at Test.runInAsyncScope (node:async_hooks:227:14) {',
+    field('code', 'ERR_ASSERTION'),
+    field('actual', 'local+'),
+    '}',
+  ].join('\n');
+  const view = {
+    pane: 'npm',
+    npmView: true,
+    npmOutput: reduceOutput(raw, '/repo', 1),
+    npmFollow: true,
+    npmCommands: [],
+    repoName: 'demo',
+    status: '',
+    counts: {},
+  };
+  const frame = render.renderFrame(view, {
+    width: 40,
+    height: 12,
+    color: true,
+  });
+  const plain = stripAnsi(frame.rows.join('\n'));
+  const codeRow = frame.rows.find((row) =>
+    stripAnsi(row).includes('ERR_ASSERTION'),
+  );
+  const actualRow = frame.rows.find((row) => stripAnsi(row).includes('local+'));
+  const bgMark = `${ESC}[48;2;`;
+  const backgrounds = (row) => {
+    const found = [];
+    let at = 0;
+    while (at < row.length) {
+      const start = row.indexOf(bgMark, at);
+      if (start < 0) break;
+      const end = row.indexOf('m', start);
+      found.push(row.slice(start, end + 1));
+      at = end + 1;
+    }
+    return found;
+  };
+  assert.match(plain, /code {4}ERR_ASSERTION/);
+  assert.match(plain, /actual {4}local\+/);
+  const codeBgs = backgrounds(codeRow);
+  const actualBgs = backgrounds(actualRow);
+  assert.notDeepEqual(codeBgs, actualBgs);
+  assert.ok(!codeBgs.includes(bg(THEME.checkBg)));
+  assert.ok(!codeBgs.includes(bg(THEME.buttonBg)));
+  assert.ok(!codeBgs.includes(bg(THEME.ctxBg)));
+  assert.ok(!actualBgs.includes(bg(THEME.ctxBg)));
+  assert.ok(codeRow.includes(fg(THEME.ctxFg)));
+  assert.ok(!plain.includes('┌'));
+  assert.ok(!plain.includes('│'));
+  assert.ok(!plain.includes('─'));
 });

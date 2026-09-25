@@ -55,6 +55,10 @@ test('decodeChunk maps letters and arrows', () => {
   assert.equal(ctrlLeft.key, 'ctrl-left');
   const ctrlRight = decodeChunk('\x1b[1;5C').events[0];
   assert.equal(ctrlRight.key, 'ctrl-right');
+  const ctrlUp = decodeChunk('\x1b[1;5A').events[0];
+  assert.equal(ctrlUp.key, 'ctrl-up');
+  const ctrlDown = decodeChunk('\x1b[1;5B').events[0];
+  assert.equal(ctrlDown.key, 'ctrl-down');
 });
 
 test('decodeChunk parses SGR mouse press', () => {
@@ -145,6 +149,7 @@ test('actionFromKey maps aliases and ignores unbound keys', () => {
   assert.equal(actionFromKey('right', 'commits'), null);
   assert.equal(actionFromKey('left', 'files'), null);
   assert.equal(actionFromKey('right', 'files'), null);
+  assert.equal(actionFromKey('n', 'files'), 'npm');
   assert.equal(actionFromKey('j', 'files'), 'next');
   assert.equal(actionFromKey('k', 'files'), 'prev');
   assert.equal(actionFromKey('a', 'files'), 'add');
@@ -163,7 +168,7 @@ test('layoutButtons hitboxes cover labels', () => {
   assert.ok(!layout.parts.some((part) => part.action.id === 'files'));
   assert.equal(layout.parts[0].label, 'add');
   assert.equal(layout.parts[0].letter, 'a');
-  assert.equal(layout.parts[0].piece, '  add');
+  assert.equal(layout.parts[0].piece, ' add');
   assert.ok(!layout.parts[0].piece.includes('['));
   assert.equal(layout.parts[1].action.id, 'unstage');
   assert.equal(layout.parts[3].action.id, 'commit');
@@ -176,7 +181,7 @@ test('layoutButtons hitboxes cover labels', () => {
   assert.ok(!diff80.parts.some((part) => part.action.id === 'commit'));
   const letters = layoutButtons(20, true);
   assert.equal(letters.parts[0].label, 'a');
-  assert.equal(letters.parts[0].piece, '  a');
+  assert.equal(letters.parts[0].piece, ' a');
   assert.ok(!letters.parts[0].piece.includes('['));
   const prev = letters.parts.find((part) => part.action.id === 'prev');
   assert.equal(prev.label, '←');
@@ -213,7 +218,6 @@ test('layoutButtons hitboxes cover labels', () => {
     'commit',
     'pull',
     'push',
-    'quit',
   ]);
   assert.ok(!filesIds.includes('diff'));
   const diffHint = layoutButtons(160, false, FILES_HIDDEN, [
