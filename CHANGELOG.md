@@ -2,6 +2,8 @@
 
 ## [Unreleased][unreleased]
 
+- Propose unused removals only for libraries that export code
+
 ## [0.2.1][] - 2026-09-23
 
 - Type a new commit message at the top of the list

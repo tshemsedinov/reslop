@@ -34,6 +34,25 @@ const noExportPkg = (name) => {
   return `${JSON.stringify({ name, bin }, null, 2)}\n`;
 };
 
+const libPkg = (name) => {
+  const body = { name, main: 'index.js' };
+  return `${JSON.stringify(body, null, 2)}\n`;
+};
+
+const toolPkg = (name, binName) => {
+  const bin = { [binName]: 'bin.js' };
+  const body = { name, main: 'index.js', bin };
+  return `${JSON.stringify(body, null, 2)}\n`;
+};
+
+const typesPkg = (name) => {
+  const exported = { '.': { types: './index.d.ts' } };
+  const body = { name, types: 'index.d.ts', exports: exported };
+  return `${JSON.stringify(body, null, 2)}\n`;
+};
+
+const exportsOf = (name) => new Map([[name, true]]);
+
 const lockV3 = (dependencies, versions) => {
   const packages = { '': { dependencies } };
   for (const name of Object.keys(versions)) {
@@ -317,6 +336,9 @@ test('foldDepItems marks an added dependency that is not imported', () => {
       },
     }),
     used,
+    null,
+    null,
+    { exportEntries: exportsOf('leftpad') },
   );
   const leftpad = depByName(folded, 'leftpad');
   assert.ok(leftpad);
@@ -376,20 +398,29 @@ test('foldDepItems does not mark unused without an export entry', () => {
 });
 
 test('proposeDepItems shows an unused dependency as a removal', () => {
-  const used = new Set(['eslint']);
-  const pkg = pkgLib({ eslint: '^9.39.5', leftpad: '1.0.0' });
-  const proposed = proposeDepItems(pkg, null, null, { usedNames: used });
-  const item = depByName(proposed, 'leftpad');
-  assert.ok(item);
-  assert.equal(item.dep.change.propose, true);
-  assert.equal(item.dep.change.unused, true);
-  assert.equal(item.dep.change.action, 'removed');
-  const lines = hunkTexts(item);
-  assertBlankAfter(lines, 'npm uninstall: dependency unused');
-  const entry = '"leftpad": "1.0.0"';
-  const gone = item.hunk.lines.find((line) => line.text === entry);
-  assert.equal(gone.type, 'del');
-  assert.equal(depByName(proposed, 'eslint'), null);
+  const repo = makeRepo();
+  try {
+    repo.write('node_modules/leftpad/package.json', libPkg('leftpad'));
+    const used = new Set(['eslint']);
+    const pkg = pkgLib({ eslint: '^9.39.5', leftpad: '1.0.0' });
+    const proposed = proposeDepItems(pkg, null, null, {
+      usedNames: used,
+      root: repo.dir,
+    });
+    const item = depByName(proposed, 'leftpad');
+    assert.ok(item);
+    assert.equal(item.dep.change.propose, true);
+    assert.equal(item.dep.change.unused, true);
+    assert.equal(item.dep.change.action, 'removed');
+    const lines = hunkTexts(item);
+    assertBlankAfter(lines, 'npm uninstall: dependency unused');
+    const entry = '"leftpad": "1.0.0"';
+    const gone = item.hunk.lines.find((line) => line.text === entry);
+    assert.equal(gone.type, 'del');
+    assert.equal(depByName(proposed, 'eslint'), null);
+  } finally {
+    repo.cleanup();
+  }
 });
 
 test('proposeDepItems skips unused without an export entry', () => {
@@ -448,6 +479,67 @@ test('proposeDepItems skips unused for a dep with no exports', () => {
       root: repo.dir,
     });
     assert.equal(depByName(proposed, 'metaskills'), null);
+  } finally {
+    repo.cleanup();
+  }
+});
+
+test('proposeDepItems removes an unused devDependency that exports', () => {
+  const repo = makeRepo();
+  try {
+    repo.write('node_modules/leftpad/package.json', libPkg('leftpad'));
+    const used = new Set(['eslint']);
+    const body = {
+      name: 'demo',
+      main: 'index.js',
+      dependencies: { eslint: '^9.39.5' },
+      devDependencies: { leftpad: '1.0.0' },
+    };
+    const pkg = `${JSON.stringify(body, null, 2)}\n`;
+    const proposed = proposeDepItems(pkg, null, null, {
+      usedNames: used,
+      root: repo.dir,
+    });
+    const item = depByName(proposed, 'leftpad');
+    assert.ok(item);
+    assert.equal(item.dep.change.section, 'devDependencies');
+    assert.equal(item.dep.change.unused, true);
+    assertBlankAfter(hunkTexts(item), 'npm uninstall: devDependency unused');
+  } finally {
+    repo.cleanup();
+  }
+});
+
+test('proposeDepItems skips a CLI tool that is not imported', () => {
+  const repo = makeRepo();
+  try {
+    const manifest = 'node_modules/typescript/package.json';
+    repo.write(manifest, toolPkg('typescript', 'tsc'));
+    const used = new Set(['eslint']);
+    const pkg = pkgLib({ eslint: '^9.39.5', typescript: '5.9.2' });
+    const proposed = proposeDepItems(pkg, null, null, {
+      usedNames: used,
+      root: repo.dir,
+    });
+    assert.equal(depByName(proposed, 'typescript'), null);
+  } finally {
+    repo.cleanup();
+  }
+});
+
+test('proposeDepItems skips a types-only package', () => {
+  const repo = makeRepo();
+  try {
+    const manifest = 'node_modules/@types/node/package.json';
+    repo.write(manifest, typesPkg('@types/node'));
+    const used = new Set(['eslint']);
+    const deps = { eslint: '^9.39.5', '@types/node': '^22.0.0' };
+    const pkg = pkgLib(deps);
+    const proposed = proposeDepItems(pkg, null, null, {
+      usedNames: used,
+      root: repo.dir,
+    });
+    assert.equal(depByName(proposed, '@types/node'), null);
   } finally {
     repo.cleanup();
   }
@@ -1087,6 +1179,7 @@ test('load marks an added dependency that is not imported', () => {
     repo.write('app.js', 'const _ = require("lodash");\n');
     repo.write('package.json', pkgLib(oldDeps));
     repo.write('package-lock.json', lockV3(oldDeps, { lodash: '4.17.20' }));
+    repo.write('node_modules/leftpad/package.json', libPkg('leftpad'));
     repo.git(['add', '.']);
     repo.git(['commit', '-m', 'init']);
     repo.write('package.json', pkgLib(newDeps));
@@ -1119,6 +1212,7 @@ test('load proposes an unused dependency with no package diffs', () => {
         leftpad: '1.0.0',
       }),
     );
+    repo.write('node_modules/leftpad/package.json', libPkg('leftpad'));
     repo.git(['add', '.']);
     repo.git(['commit', '-m', 'init']);
     const loaded = load(repo.dir, [], {
@@ -1149,6 +1243,7 @@ test('deferred load shows unused deps after extras', async () => {
         leftpad: '1.0.0',
       }),
     );
+    repo.write('node_modules/leftpad/package.json', libPkg('leftpad'));
     repo.git(['add', '.']);
     repo.git(['commit', '-m', 'init']);
     const loaded = load(repo.dir, [], { audit: true, deferExtras: true });
@@ -1278,6 +1373,7 @@ test('add on an unused dependency runs npm uninstall', () => {
     repo.write('app.js', 'const _ = require("lodash");\n');
     repo.write('package.json', pkgLib(keep));
     repo.write('package-lock.json', lockV3(keep, { lodash: '4.17.20' }));
+    repo.write('node_modules/leftpad/package.json', libPkg('leftpad'));
     repo.git(['add', '.']);
     repo.git(['commit', '-m', 'init']);
     repo.write('package.json', pkgLib(added));
