@@ -571,7 +571,7 @@ test('quit prompt paints f and c yellow on grey copy', () => {
   assert.equal(cont, 'continue next time');
 });
 
-test('commit pane lists subject author date and hash', () => {
+test('commit pane brief mode lists subject hash branch and age', () => {
   const view = {
     pane: 'commits',
     commits: [
@@ -580,6 +580,7 @@ test('commit pane lists subject author date and hash', () => {
         shortSha: 'aaa1111',
         author: 'Ada',
         date: '2 hours ago',
+        refs: 'HEAD -> main',
         subject: 'land the change',
         head: true,
       },
@@ -588,6 +589,7 @@ test('commit pane lists subject author date and hash', () => {
         shortSha: 'bbb2222',
         author: 'Bob',
         date: 'yesterday',
+        refs: 'old',
         subject: 'init',
         head: false,
       },
@@ -610,20 +612,26 @@ test('commit pane lists subject author date and hash', () => {
   const oldRow = rows.find((row) => row.includes('bbb2222'));
   assert.ok(headRow);
   assert.ok(oldRow);
-  assert.ok(headRow.includes('▶  land the change'));
-  assert.ok(headRow.includes('Ada'));
+  assert.ok(headRow.includes('▶ land the change'));
+  assert.ok(headRow.includes('HEAD -> main'));
   assert.ok(headRow.includes('2 hours ago'));
-  assert.ok(oldRow.includes('    init'));
-  assert.ok(oldRow.includes('Bob'));
+  assert.equal(headRow.includes('Ada'), false);
+  assert.ok(oldRow.includes('   init'));
+  assert.ok(oldRow.includes('old'));
   assert.ok(oldRow.includes('yesterday'));
-  assert.ok(headRow.endsWith('2 hours ago   '));
-  assert.ok(oldRow.endsWith('yesterday   '));
+  assert.ok(headRow.indexOf('land the change') < headRow.indexOf('aaa1111'));
+  assert.ok(headRow.indexOf('aaa1111') < headRow.indexOf('HEAD -> main'));
+  assert.ok(headRow.indexOf('HEAD -> main') < headRow.indexOf('2 hours ago'));
+  assert.ok(headRow.endsWith('2 hours ago '));
+  assert.ok(oldRow.endsWith('yesterday '));
+  assert.equal(visibleWidth(headRow), 80);
+  assert.equal(visibleWidth(oldRow), 80);
   assert.equal(
     headRow.indexOf('2 hours ago') + '2 hours ago'.length,
     oldRow.indexOf('yesterday') + 'yesterday'.length,
   );
   assert.match(text, /land the change/);
-  assert.match(render.headerText(view), /demo: commits HEAD 1\/2/);
+  assert.match(render.headerText(view), /demo: commits brief HEAD 1\/2/);
   const footer = frame.rows[frame.rows.length - 1];
   assert.match(footer, /commit/);
   assert.match(footer, /apply/);
@@ -635,7 +643,8 @@ test('commit pane lists subject author date and hash', () => {
   assert.match(footer, /push/);
   assert.ok(!footer.includes('add'));
   assert.ok(!footer.includes('←'));
-  assert.ok(!footer.includes('mode'));
+  assert.match(footer, /brief/);
+  assert.ok(frame.buttons.find((hit) => hit.id === 'brief'));
   assert.ok(frame.buttons.find((hit) => hit.id === 'commit'));
   assert.ok(!frame.buttons.find((hit) => hit.id === 'apply'));
   assert.ok(frame.buttons.find((hit) => hit.id === 'amend'));
@@ -664,15 +673,19 @@ test('commit pane lists subject author date and hash', () => {
     color: true,
   });
   const headPainted = colored.rows.find((row) => row.includes('aaa1111'));
-  const lead = ansi.paint(' ', THEME.buttonHotFg, THEME.buttonBg, true);
+  const mark = ansi.paint(' ▶ ', THEME.chromeFg, THEME.buttonBg, true);
   const subject = ansi.paint(
     'land the change',
     THEME.buttonHotFg,
     THEME.buttonBg,
     true,
   );
-  assert.ok(headPainted.includes(`${lead}${subject}`));
+  const tail = ansi.paint(' ', THEME.chromeFg, THEME.buttonBg, true);
+  assert.ok(headPainted.includes(`${mark}${subject}`));
+  assert.ok(headPainted.endsWith(tail));
   assert.ok(!headPainted.includes(bg(THEME.currentBg)));
+  assert.equal(visibleWidth(stripAnsi(headPainted)), 80);
+  assert.ok(!headPainted.includes(bg(THEME.ctxBg)));
   view.commitCursor = 1;
   const selected = render.renderFrame(view, {
     width: 80,
@@ -680,23 +693,24 @@ test('commit pane lists subject author date and hash', () => {
     color: true,
   });
   const idleHead = selected.rows.find((row) => row.includes('aaa1111'));
-  const idleLead = ansi.paint(' ', THEME.chromeFg, THEME.ctxBg, true);
+  const idleMark = ansi.paint('   ', THEME.mutedFg, THEME.ctxBg, true);
   const idleSubject = ansi.paint(
     'land the change',
     THEME.chromeFg,
     THEME.ctxBg,
     true,
   );
-  assert.ok(idleHead.includes(`${idleLead}${idleSubject}`));
+  assert.ok(idleHead.includes(`${idleMark}${idleSubject}`));
   const selectedRow = selected.rows.find((row) => row.includes('bbb2222'));
-  const selectedLead = ansi.paint(' ', THEME.buttonHotFg, THEME.buttonBg, true);
+  const selectedMark = ansi.paint(' ▶ ', THEME.chromeFg, THEME.buttonBg, true);
   const selectedSubject = ansi.paint(
     'init',
     THEME.buttonHotFg,
     THEME.buttonBg,
     true,
   );
-  assert.ok(selectedRow.includes(`${selectedLead}${selectedSubject}`));
+  assert.ok(selectedRow.includes(`${selectedMark}${selectedSubject}`));
+  assert.ok(selectedRow.endsWith(tail));
 });
 
 test('commit pane types a message on a row at the top of the list', () => {
@@ -740,10 +754,10 @@ test('commit pane types a message on a row at the top of the list', () => {
   const headAt = rows.findIndex((row) => row.includes('aaa1111'));
   assert.ok(editAt >= 0);
   assert.ok(headAt > editAt);
-  assert.ok(rows[editAt].includes('▶  ship it'));
+  assert.ok(rows[editAt].includes('▶ ship it'));
   assert.ok(!rows[editAt].includes('[ship it]'));
   assert.equal(frame.cursor.y, editAt + 1);
-  assert.match(render.headerText(view), /demo: commits new 1\/3/);
+  assert.match(render.headerText(view), /demo: commits brief new 1\/3/);
 });
 
 test('amend types over the current commit row', () => {
@@ -796,7 +810,366 @@ test('amend types over the current commit row', () => {
   assert.ok(!rows[editAt].includes('land the change'));
   assert.equal(rows.filter((row) => row.includes('▶')).length, 1);
   assert.equal(frame.cursor.y, editAt + 1);
-  assert.match(render.headerText(view), /demo: commits HEAD 1\/2/);
+  assert.match(render.headerText(view), /demo: commits brief HEAD 1\/2/);
+});
+
+test('full mode amend edits the message inside the panel', () => {
+  const hash = 'a'.repeat(40);
+  const view = {
+    pane: 'commits',
+    commitView: 'full',
+    commits: [
+      {
+        sha: hash,
+        shortSha: 'aaa1111',
+        author: 'Ada',
+        email: 'ada@example.com',
+        date: '2 hours ago',
+        when: '2026-09-26 00:32:00 +0300',
+        refs: 'HEAD -> main',
+        subject: 'land the change',
+        body: 'land the change\n\nexplain the change',
+        head: true,
+      },
+      {
+        sha: 'b'.repeat(40),
+        shortSha: 'bbb2222',
+        author: 'Bob',
+        date: 'yesterday',
+        when: '2026-09-25 12:00:00 +0300',
+        subject: 'init',
+        body: 'init',
+        head: false,
+      },
+    ],
+    commitCursor: 0,
+    compose: {
+      kind: 'commit',
+      commitKind: 'amend',
+      text: 'rewritten\nsecond line',
+      cursor: 9,
+    },
+    repoName: 'demo',
+    counts: { staged: 1, unstaged: 0, untracked: 0 },
+    branch: 'main',
+    status: '',
+    scroll: 0,
+  };
+  const frame = render.renderFrame(view, {
+    width: 120,
+    height: 18,
+    color: false,
+  });
+  const rows = frame.rows.map((row) => stripAnsi(row));
+  const head = rows.find((row) => row.includes(hash));
+  const subject = rows.find((row) => row.includes('rewritten'));
+  const editAt = rows.findIndex((row) => row.includes('rewritten'));
+  assert.ok(head.includes('▶'));
+  assert.ok(head.includes('Ada <ada@example.com>'));
+  assert.equal(head.includes('rewritten'), false);
+  assert.equal(head.includes('land the change'), false);
+  assert.equal(subject.includes(hash), false);
+  assert.ok(rows.some((row) => row.includes('second line')));
+  assert.equal(
+    rows.some((row) => row.includes('explain the change')),
+    false,
+  );
+  assert.equal(rows.filter((row) => row.includes('▶')).length, 1);
+  assert.equal(frame.cursor.y, editAt + 1);
+  const bob = rows.find((row) => row.includes('Bob'));
+  assert.ok(bob.includes('b'.repeat(40)));
+  const colored = render.renderFrame(view, {
+    width: 120,
+    height: 18,
+    color: true,
+  });
+  const subjectPaint = ansi.paint(
+    'rewritten',
+    THEME.buttonHotFg,
+    THEME.buttonBg,
+    true,
+  );
+  const bodyPaint = ansi.paint(
+    'second line',
+    THEME.mutedFg,
+    THEME.buttonBg,
+    true,
+  );
+  const paintedSubject = colored.rows.find((row) => row.includes('rewritten'));
+  const paintedBody = colored.rows.find((row) => row.includes('second line'));
+  assert.ok(paintedSubject.includes(subjectPaint));
+  assert.ok(paintedBody.includes(bodyPaint));
+});
+
+test('full mode new commit stays a multiline message', () => {
+  const hash = 'a'.repeat(40);
+  const view = {
+    pane: 'commits',
+    commitView: 'full',
+    commits: [
+      {
+        sha: hash,
+        shortSha: 'aaa1111',
+        author: 'Ada',
+        date: '2 hours ago',
+        when: '2026-09-26 00:32:00 +0300',
+        subject: 'land the change',
+        body: 'land the change',
+        head: true,
+      },
+    ],
+    commitCursor: 0,
+    compose: {
+      kind: 'commit',
+      commitKind: 'commit',
+      text: 'ship it\nmore',
+      cursor: 7,
+    },
+    repoName: 'demo',
+    counts: { staged: 1, unstaged: 0, untracked: 0 },
+    branch: 'main',
+    status: '',
+    scroll: 0,
+  };
+  const frame = render.renderFrame(view, {
+    width: 120,
+    height: 16,
+    color: false,
+  });
+  const rows = frame.rows.map((row) => stripAnsi(row));
+  const draft = rows.find((row) => row.includes('ship it'));
+  const editAt = rows.findIndex((row) => row.includes('ship it'));
+  const kept = rows.find((row) => row.includes(hash));
+  assert.ok(draft.includes('▶'));
+  assert.equal(draft.includes(hash), false);
+  assert.equal(draft.includes('aaa1111'), false);
+  assert.ok(rows.some((row) => row.includes('more')));
+  assert.equal(rows.filter((row) => row.includes('▶')).length, 1);
+  assert.equal(frame.cursor.y, editAt + 1);
+  assert.ok(kept.includes('Ada'));
+  assert.equal(kept.includes('▶'), false);
+  assert.ok(editAt < rows.findIndex((row) => row.includes(hash)));
+});
+
+test('commit pane full mode shows the message author date and branches', () => {
+  const view = {
+    pane: 'commits',
+    commitView: 'full',
+    commits: [
+      {
+        sha: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+        shortSha: 'aaa1111',
+        author: 'Ada',
+        email: 'ada@example.com',
+        date: '2 hours ago',
+        when: '2026-09-26 00:32:00 +0300',
+        refs: 'HEAD -> main, origin/main',
+        subject: 'land the change',
+        body: 'land the change\n\nexplain the change',
+        head: true,
+      },
+      {
+        sha: 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
+        shortSha: 'bbb2222',
+        author: 'Bob',
+        date: 'yesterday',
+        when: '2026-09-25 12:00:00 +0300',
+        refs: 'old',
+        subject: 'init',
+        body: 'init',
+        head: false,
+      },
+    ],
+    commitCursor: 0,
+    repoName: 'demo',
+    counts: { staged: 1, unstaged: 0, untracked: 0 },
+    branch: 'main',
+    status: '',
+    scroll: 0,
+  };
+  const frame = render.renderFrame(view, {
+    width: 120,
+    height: 18,
+    color: false,
+  });
+  const rows = frame.rows.map((row) => stripAnsi(row));
+  const hash = 'a'.repeat(40);
+  const head = rows.find((row) => row.includes(hash));
+  const stamp = rows.find((row) => row.includes('2026-09-26 00:32:00 +0300'));
+  const branches = rows.find((row) =>
+    row.includes('HEAD -> main, origin/main'),
+  );
+  assert.ok(head.includes('▶'));
+  assert.ok(head.includes('Ada <ada@example.com>'));
+  assert.ok(head.indexOf(hash) < head.indexOf('Ada'));
+  assert.ok(stamp.includes('land the change'));
+  assert.ok(stamp.includes('2 hours ago'));
+  assert.ok(stamp.indexOf('land the change') < stamp.indexOf('2026-09-26'));
+  assert.ok(stamp.indexOf('2026-09-26') < stamp.indexOf('2 hours ago'));
+  assert.ok(rows.some((row) => row.includes('explain the change')));
+  const column = head.indexOf('Ada');
+  assert.equal(stamp.indexOf('2026-09-26'), column);
+  assert.equal(branches.indexOf('HEAD -> main'), column);
+  const wideRefs = 'HEAD -> main, origin/main, feature/long-name';
+  const when = '2026-09-26 00:32:00 +0300';
+  const ago = '2 hours ago';
+  const wide = render.renderFrame(
+    {
+      ...view,
+      commits: [{ ...view.commits[0], refs: wideRefs }, view.commits[1]],
+    },
+    { width: 120, height: 18, color: false },
+  );
+  const wideRows = wide.rows.map((row) => stripAnsi(row));
+  const timeRow = wideRows.find((row) => row.includes(when));
+  const branchRow = wideRows.find((row) => row.includes(wideRefs));
+  const origin = timeRow.indexOf(when);
+  const columnW = Math.max(
+    'Ada <ada@example.com>'.length,
+    when.length + 2 + ago.length,
+    wideRefs.length,
+  );
+  assert.equal(branchRow.indexOf(wideRefs), origin);
+  assert.equal(timeRow.indexOf(ago) + ago.length, origin + columnW);
+  assert.ok(timeRow.endsWith(`${ago} `));
+  assert.ok(timeRow.indexOf(ago) > origin + when.length);
+  assert.equal(visibleWidth(timeRow), 120);
+  const oldHash = 'b'.repeat(40);
+  const bob = rows.find((row) => row.includes('Bob'));
+  assert.ok(bob.includes(oldHash));
+  assert.ok(bob.indexOf(oldHash) < bob.indexOf('Bob'));
+  assert.equal(bob.includes('<'), false);
+  const old = rows.find((row) => row.includes('old'));
+  assert.equal(old.includes(oldHash), false);
+  assert.equal(old.includes('init'), false);
+  const hits = frame.fileHits.map((hit) => hit.cursor);
+  assert.ok(hits.filter((cursor) => cursor === 0).length >= 4);
+  assert.ok(hits.includes(1));
+  assert.match(render.headerText(view), /demo: commits full HEAD 1\/2/);
+  const colored = render.renderFrame(view, {
+    width: 120,
+    height: 18,
+    color: true,
+  });
+  const authorPaint = ansi.paint('Ada', THEME.addLineFg, THEME.buttonBg, true);
+  const emailPaint = ansi.paint(
+    ' <ada@example.com>',
+    THEME.mutedFg,
+    THEME.buttonBg,
+    true,
+  );
+  const subjectPaint = ansi.paint(
+    'land the change',
+    THEME.buttonHotFg,
+    THEME.buttonBg,
+    true,
+  );
+  const bodyPaint = ansi.paint(
+    'explain the change',
+    THEME.mutedFg,
+    THEME.buttonBg,
+    true,
+  );
+  const paintedAuthor = colored.rows.find((row) => row.includes('Ada'));
+  const paintedSubject = colored.rows.find((row) =>
+    row.includes('land the change'),
+  );
+  const paintedBody = colored.rows.find((row) =>
+    row.includes('explain the change'),
+  );
+  assert.ok(paintedAuthor.includes(authorPaint));
+  assert.ok(paintedAuthor.includes(emailPaint));
+  assert.equal(visibleWidth(stripAnsi(paintedAuthor)), 120);
+  assert.ok(!paintedAuthor.includes(bg(THEME.ctxBg)));
+  const panelTail = ansi.paint(' ', THEME.chromeFg, THEME.buttonBg, true);
+  assert.ok(paintedSubject.endsWith(panelTail));
+  assert.ok(stripAnsi(paintedSubject).endsWith('2 hours ago '));
+  assert.ok(paintedSubject.includes(subjectPaint));
+  assert.ok(paintedBody.includes(bodyPaint));
+  view.commitCursor = 1;
+  const lower = render.renderFrame(view, {
+    width: 80,
+    height: 8,
+    color: false,
+  });
+  const lowerRows = lower.rows.map((row) => stripAnsi(row));
+  assert.ok(lowerRows.some((row) => row.includes('b'.repeat(40))));
+});
+
+test('full mode commit edit hints how to save', () => {
+  const view = {
+    pane: 'commits',
+    commitView: 'full',
+    mode: 'compose',
+    compose: {
+      kind: 'commit',
+      commitKind: 'commit',
+      text: 'ship',
+      cursor: 4,
+    },
+    commits: [],
+    commitCursor: 0,
+    repoName: 'demo',
+    counts: { staged: 1, unstaged: 0, untracked: 0 },
+    branch: 'main',
+    status: '',
+    scroll: 0,
+  };
+  const frame = render.renderFrame(view, {
+    width: 80,
+    height: 10,
+    color: false,
+  });
+  const footer = stripAnsi(frame.rows[frame.rows.length - 1]);
+  const status = stripAnsi(frame.rows[frame.rows.length - 2]);
+  assert.ok(footer.includes('Press Ctrl-S or Enter at EOF to save'));
+  assert.equal(footer.includes('reword'), false);
+  assert.equal(status.includes('Enter at EOF'), false);
+  assert.equal(frame.buttons.length, 0);
+  const colored = render.renderFrame(view, {
+    width: 80,
+    height: 10,
+    color: true,
+  });
+  const row = colored.rows[colored.rows.length - 1];
+  const ctrlS = ansi.paint(
+    'Ctrl-S',
+    THEME.chromeFg,
+    THEME.buttonBg,
+    true,
+    true,
+  );
+  const enterEof = ansi.paint(
+    'Enter at EOF',
+    THEME.chromeFg,
+    THEME.buttonBg,
+    true,
+    true,
+  );
+  const press = ansi.paint('Press ', THEME.buttonFg, THEME.buttonBg, true);
+  const or = ansi.paint(' or ', THEME.buttonFg, THEME.buttonBg, true);
+  const tail = ansi.paint(' to save', THEME.buttonFg, THEME.buttonBg, true);
+  assert.ok(row.includes(`${press}${ctrlS}${or}${enterEof}${tail}`));
+  view.status = 'empty commit message';
+  const blocked = render.renderFrame(view, {
+    width: 80,
+    height: 10,
+    color: false,
+  });
+  const errorRow = stripAnsi(blocked.rows[blocked.rows.length - 2]);
+  const stillHint = stripAnsi(blocked.rows[blocked.rows.length - 1]);
+  assert.ok(errorRow.includes('empty commit message'));
+  assert.ok(stillHint.includes('Press Ctrl-S or Enter at EOF to save'));
+  view.status = '';
+  view.commitView = 'brief';
+  const brief = render.renderFrame(view, {
+    width: 80,
+    height: 10,
+    color: false,
+  });
+  const briefRow = stripAnsi(brief.rows[brief.rows.length - 1]);
+  assert.equal(briefRow.includes('Enter at EOF'), false);
+  assert.ok(brief.buttons.find((hit) => hit.id === 'brief'));
 });
 
 test('update prompt paints y and n on the status line', () => {

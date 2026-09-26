@@ -699,10 +699,51 @@ test('listCommits is newest first with author date and hash', () => {
     assert.equal(listed[0].head, true);
     assert.equal(listed[1].subject, 'init');
     assert.equal(listed[1].head, false);
-    assert.ok(listed[0].author);
+    assert.equal(listed[0].author, 'Test');
+    assert.equal(listed[0].email, 'test@example.com');
     assert.ok(listed[0].date);
     assert.match(listed[0].sha, /^[0-9a-f]{40}$/);
     assert.match(listed[0].shortSha, /^[0-9a-f]{7,}$/);
+    assert.match(listed[0].when, /^\d{4}-\d{2}-\d{2}/);
+    assert.match(listed[0].refs, /HEAD -> main/);
+  } finally {
+    repo.cleanup();
+  }
+});
+
+test('listCommits shows branch tips and the full message', () => {
+  const repo = makeRepo();
+  try {
+    repo.write('f.txt', 'a\n');
+    repo.git(['add', 'f.txt']);
+    repo.git(['commit', '-m', 'init']);
+    repo.write('f.txt', 'b\n');
+    repo.git(['add', 'f.txt']);
+    repo.git(['commit', '-m', 'next', '-m', 'body line']);
+    repo.git(['branch', 'feature']);
+    repo.git(['tag', 'v1']);
+    repo.git(['branch', 'old', 'HEAD~1']);
+    repo.git(['update-ref', 'refs/remotes/origin/main', 'HEAD']);
+    repo.git([
+      'symbolic-ref',
+      'refs/remotes/origin/HEAD',
+      'refs/remotes/origin/main',
+    ]);
+    repo.write('f.txt', 'c\n');
+    repo.git(['add', 'f.txt']);
+    repo.git(['commit', '-m', 'third']);
+    const listed = listCommits(repo.dir);
+    assert.equal(listed[0].subject, 'third');
+    assert.equal(listed[0].refs, 'HEAD -> main');
+    assert.equal(listed[1].subject, 'next');
+    assert.match(listed[1].refs, /feature/);
+    assert.match(listed[1].refs, /origin\/main/);
+    assert.equal(listed[1].refs.includes('HEAD ->'), false);
+    assert.equal(listed[1].refs.includes('tag:'), false);
+    assert.equal(listed[1].refs.includes('origin/HEAD'), false);
+    assert.equal(listed[1].refs.includes('old'), false);
+    assert.match(listed[1].body, /^next\n\nbody line/);
+    assert.equal(listed[2].refs, 'old');
   } finally {
     repo.cleanup();
   }

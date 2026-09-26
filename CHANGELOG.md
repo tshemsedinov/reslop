@@ -2,6 +2,8 @@
 
 ## [Unreleased][unreleased]
 
+- Add brief and full commit lists, toggled with `b`
+- Edit a multi-line commit messages
 - Propose unused removals only for libraries that export code
 - Improve TUI/TUX, multiple small fixes
 - Implement npm command runner with termination and re-run
