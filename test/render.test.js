@@ -714,6 +714,58 @@ test('commit pane brief mode lists subject hash branch and age', () => {
   assert.ok(selectedRow.endsWith(tail));
 });
 
+test('brief mode shows only the first line of a commit message', () => {
+  const view = {
+    pane: 'commits',
+    commits: [
+      {
+        sha: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+        shortSha: 'aaa1111',
+        author: 'Ada',
+        date: '2 hours ago',
+        refs: 'HEAD -> main',
+        subject: 'land the change extra line',
+        body: 'land the change\nextra line',
+        head: true,
+      },
+    ],
+    commitCursor: 0,
+    repoName: 'demo',
+    counts: { staged: 0, unstaged: 0, untracked: 0 },
+    branch: 'main',
+    status: '',
+    scroll: 0,
+  };
+  const frame = render.renderFrame(view, {
+    width: 80,
+    height: 12,
+    color: false,
+  });
+  const rows = frame.rows.map((row) => stripAnsi(row));
+  const headRow = rows.find((row) => row.includes('aaa1111'));
+  assert.ok(headRow.includes('land the change'));
+  assert.equal(headRow.includes('extra line'), false);
+  view.compose = {
+    kind: 'commit',
+    commitKind: 'reword',
+    text: 'ship it\nextra line',
+    cursor: 7,
+  };
+  const editing = render.renderFrame(view, {
+    width: 80,
+    height: 12,
+    color: false,
+  });
+  const editRows = editing.rows.map((row) => stripAnsi(row));
+  const editRow = editRows.find((row) => row.includes('▶'));
+  assert.ok(editRow.includes('ship it'));
+  assert.equal(editRow.includes('land the change'), false);
+  assert.equal(
+    editRows.some((row) => row.includes('extra line')),
+    false,
+  );
+});
+
 test('commit pane types a message on a row at the top of the list', () => {
   const view = {
     pane: 'commits',
