@@ -622,6 +622,7 @@ test('commit pane brief mode lists subject hash branch and age', () => {
   assert.ok(oldRow.includes('yesterday'));
   assert.ok(headRow.indexOf('land the change') < headRow.indexOf('aaa1111'));
   assert.ok(headRow.indexOf('aaa1111') < headRow.indexOf('HEAD -> main'));
+  assert.equal(headRow.indexOf('HEAD -> main'), oldRow.indexOf('old'));
   assert.ok(headRow.indexOf('HEAD -> main') < headRow.indexOf('2 hours ago'));
   assert.ok(headRow.endsWith('2 hours ago '));
   assert.ok(oldRow.endsWith('yesterday '));
