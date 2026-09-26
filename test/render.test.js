@@ -473,31 +473,31 @@ test('long operations paint an infinite progress bar', () => {
   assert.equal(render.formatBusyStatus('pulled', 0), 'pulled');
   const first = render.formatBusyStatus('pulling', 0);
   const next = render.formatBusyStatus('pulling', 1);
-  assert.match(first, /^pulling {2}▰/);
+  assert.match(first, /^pulling {2}·•●•·/);
   assert.notEqual(first, next);
-  assert.match(render.formatBusyStatus('loading', 0), /^loading {2}▰/);
+  assert.match(render.formatBusyStatus('loading', 0), /^loading {2}·/);
   assert.match(render.formatBusyStatus('checking npm', 2), /^checking npm {2}/);
   assert.match(
     render.formatBusyStatus('updating reslop', 0),
-    /^updating reslop {2}▰/,
+    /^updating reslop {2}·/,
   );
-  assert.match(render.formatBusyStatus('npm i', 0), /^npm i {2}▰/);
+  assert.match(render.formatBusyStatus('npm i', 0), /^npm i {2}·/);
   assert.match(render.formatBusyStatus('npm uninstall', 1), /^npm uninstall /);
   assert.match(render.formatBusyStatus('npm audit fix', 2), /^npm audit fix /);
   assert.match(
     render.formatBusyStatus('checking out', 0),
-    /^checking out {2}▰/,
+    /^checking out {2}·/,
   );
   assert.match(
     render.formatBusyStatus('creating branch', 1),
     /^creating branch {2}/,
   );
-  assert.match(render.formatBusyStatus('rebasing', 0), /^rebasing {2}▰/);
+  assert.match(render.formatBusyStatus('rebasing', 0), /^rebasing {2}·/);
   assert.match(render.formatBusyStatus('dropping', 1), /^dropping {2}/);
   assert.match(render.formatBusyStatus('committing', 2), /^committing {2}/);
   assert.match(
     render.formatBusyStatus('force pushing', 0),
-    /^force pushing {2}▰/,
+    /^force pushing {2}·/,
   );
   const view = {
     pane: 'files',
@@ -2879,12 +2879,12 @@ test('npm output paints a moving bar while a command runs', () => {
   assert.equal(body[body.length - 1].trim(), '');
   const hello = body.findIndex((row) => row.includes('hello'));
   assert.ok(hello > 0);
-  assert.match(body[hello + 1], /^ {2}running {2}▰▰▱▱▱▱/);
+  assert.match(body[hello + 1], /^ {2}running {2}·•●•·/);
   assert.ok(hello + 1 < body.length - 2);
   view.progressFrame = 1;
   const next = render.renderFrame(view, opt);
   const moved = next.rows.slice(1, 1 + bodyH).map((row) => stripAnsi(row));
-  assert.match(moved[hello + 1], /^ {2}running {2}▱▰▰▱▱▱/);
+  assert.match(moved[hello + 1], /^ {2}running {2}··•●•/);
   const many = [];
   for (let i = 0; i < 40; i++) many.push(`line-${i}`);
   view.npmOutput = `${many.join('\n')}\n`;
@@ -2892,7 +2892,7 @@ test('npm output paints a moving bar while a command runs', () => {
   const full = render.renderFrame(view, opt);
   const fullBody = full.rows.slice(1, 1 + bodyH).map((row) => stripAnsi(row));
   assert.match(fullBody[fullBody.length - 3], /line-39/);
-  assert.match(fullBody[fullBody.length - 2], /^ {2}running {2}▰▰▱▱▱▱/);
+  assert.match(fullBody[fullBody.length - 2], /^ {2}running {2}·•●•·/);
   view.npmFollow = false;
   view.npmScroll = 0;
   const top = render.renderFrame(view, opt);
