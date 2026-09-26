@@ -2165,6 +2165,23 @@ test('brief reword edits the first line and keeps the body', () => {
   ]);
 });
 
+test('brief amend edits the first line and keeps the body', () => {
+  const { session, repo } = openSession([sampleItem('a.js')], {
+    startPane: 'files',
+  });
+  repo.lastMessage = () => 'land the change\n\nexplain the change';
+  session.pushInput('c');
+  session.dispatch('next');
+  session.pushInput('a');
+  assert.equal(session.editor.text, 'land the change');
+  assert.equal(session.editor.cursor, 'land the change'.length);
+  session.editor.replace('ship it');
+  session.handleEvent({ type: 'key', key: 'enter' });
+  assert.equal(session.status, 'amended');
+  assert.equal(repo.commits[0].kind, 'amend');
+  assert.equal(repo.commits[0].message, 'ship it\n\nexplain the change');
+});
+
 test('full mode reword edits the whole message', () => {
   const { session, repo } = openSession([sampleItem('a.js', 'staged')], {
     startPane: 'files',
