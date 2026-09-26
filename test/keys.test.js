@@ -172,6 +172,7 @@ test('layoutButtons hitboxes cover labels', () => {
   assert.equal(layout.parts[0].label, 'add');
   assert.equal(layout.parts[0].letter, 'a');
   assert.equal(layout.parts[0].piece, ' add');
+  assert.equal(layout.parts[1].piece, '  unstage');
   assert.ok(!layout.parts[0].piece.includes('['));
   assert.equal(layout.parts[1].action.id, 'unstage');
   assert.equal(layout.parts[3].action.id, 'commit');

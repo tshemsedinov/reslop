@@ -5,9 +5,14 @@ const assert = require('node:assert/strict');
 
 const ansi = require('../lib/ansi.js');
 
-const { visibleWidth, codeFg, CODE_FG, THEME, PALETTES } = ansi;
+const { visibleWidth, codeFg, CODE_FG, THEME, PALETTES, fg } = ansi;
 const { setTheme, themeName, clipAnsi, stripAnsi, RESET } = ansi;
 const { foregroundOn, bg } = ansi;
+
+test('a grey level uses the same value on every channel', () => {
+  assert.equal(fg(0xff), fg([0xff, 0xff, 0xff]));
+  assert.equal(bg(0), bg([0, 0, 0]));
+});
 
 test('eye logo is one column, matching terminal wcwidth', () => {
   assert.equal(visibleWidth('👁️'), 1);

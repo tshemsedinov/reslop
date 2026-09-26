@@ -2100,7 +2100,7 @@ test('editing a commit ignores clicks and scrolls on other commits', () => {
   assert.equal(session.mode, 'compose');
 });
 
-test('reword starts at the end of the first line', () => {
+test('brief reword edits the first line and keeps the body', () => {
   const { session, repo } = openSession([sampleItem('a.js', 'staged')], {
     startPane: 'files',
   });
@@ -2115,8 +2115,44 @@ test('reword starts at the end of the first line', () => {
   ]);
   session.pushInput('c');
   session.pushInput('r');
-  assert.equal(session.editor.text, 'land the change\n\nexplain the change');
+  assert.equal(session.editor.text, 'land the change');
   assert.equal(session.editor.cursor, 'land the change'.length);
+  session.editor.replace('ship it');
+  session.handleEvent({ type: 'key', key: 'enter' });
+  assert.equal(session.status, 'reworded');
+  assert.deepEqual(repo.rewords, [
+    {
+      sha: 'aaa1111aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+      message: 'ship it\n\nexplain the change',
+    },
+  ]);
+});
+
+test('full mode reword edits the whole message', () => {
+  const { session, repo } = openSession([sampleItem('a.js', 'staged')], {
+    startPane: 'files',
+  });
+  repo.setCommits([
+    {
+      sha: 'aaa1111aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+      shortSha: 'aaa1111',
+      author: 'Ada',
+      date: '2 hours ago',
+      subject: 'land the change\n\nexplain the change',
+    },
+  ]);
+  session.pushInput('c');
+  session.pushInput('b');
+  session.pushInput('r');
+  assert.equal(session.editor.text, 'land the change\n\nexplain the change');
+  session.editor.replace('ship it\n\nnew body');
+  session.handleEvent({ type: 'key', key: 'ctrl-s' });
+  assert.deepEqual(repo.rewords, [
+    {
+      sha: 'aaa1111aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+      message: 'ship it\n\nnew body',
+    },
+  ]);
 });
 
 test('commits pane a amends with the previous message', () => {
@@ -3517,7 +3553,7 @@ test('x and a checkbox click toggle a todo and the file keeps it', () => {
   session.draw();
   body = stripAnsi(session.lastFrame.rows.join('\n'));
   assert.match(body, /\[x\] ship it/);
-  assert.match(body, /→ x/);
+  assert.match(body, /→ {2}x/);
   assert.ok(!body.includes(' q'));
   session.pushInput(' ');
   assert.equal(session.notes.todos[0].done, false);

@@ -48,7 +48,8 @@ test('AC2 muted line color differs from strong char color', () => {
   assert.ok(!frame.text.includes(fg(THEME.delLineFg)));
   assert.equal(frame.rows.length, 16);
   assert.ok(!frame.text.includes('@@'));
-  assert.match(render.headerText(view), /reslop: demo\/f\.js unstaged 1\/1/);
+  assert.match(render.headerText(view), /reslop: demo\/f\.js$/);
+  assert.ok(!/\d+\/\d+/.test(render.headerText(view)));
 });
 
 test('AC27 side layout paints old left and new right', () => {
@@ -631,7 +632,7 @@ test('commit pane brief mode lists subject hash branch and age', () => {
     oldRow.indexOf('yesterday') + 'yesterday'.length,
   );
   assert.match(text, /land the change/);
-  assert.match(render.headerText(view), /demo: commits brief HEAD 1\/2/);
+  assert.match(render.headerText(view), /demo: commits brief$/);
   const footer = frame.rows[frame.rows.length - 1];
   assert.match(footer, /commit/);
   assert.match(footer, /apply/);
@@ -757,7 +758,7 @@ test('commit pane types a message on a row at the top of the list', () => {
   assert.ok(rows[editAt].includes('▶ ship it'));
   assert.ok(!rows[editAt].includes('[ship it]'));
   assert.equal(frame.cursor.y, editAt + 1);
-  assert.match(render.headerText(view), /demo: commits brief new 1\/3/);
+  assert.match(render.headerText(view), /demo: commits brief$/);
 });
 
 test('amend types over the current commit row', () => {
@@ -810,7 +811,7 @@ test('amend types over the current commit row', () => {
   assert.ok(!rows[editAt].includes('land the change'));
   assert.equal(rows.filter((row) => row.includes('▶')).length, 1);
   assert.equal(frame.cursor.y, editAt + 1);
-  assert.match(render.headerText(view), /demo: commits brief HEAD 1\/2/);
+  assert.match(render.headerText(view), /demo: commits brief$/);
 });
 
 test('full mode amend edits the message inside the panel', () => {
@@ -1045,7 +1046,7 @@ test('commit pane full mode shows the message author date and branches', () => {
   const hits = frame.fileHits.map((hit) => hit.cursor);
   assert.ok(hits.filter((cursor) => cursor === 0).length >= 4);
   assert.ok(hits.includes(1));
-  assert.match(render.headerText(view), /demo: commits full HEAD 1\/2/);
+  assert.match(render.headerText(view), /demo: commits full$/);
   const colored = render.renderFrame(view, {
     width: 120,
     height: 18,
@@ -1122,7 +1123,7 @@ test('full mode commit edit hints how to save', () => {
   });
   const footer = stripAnsi(frame.rows[frame.rows.length - 1]);
   const status = stripAnsi(frame.rows[frame.rows.length - 2]);
-  assert.ok(footer.includes('Press Ctrl-S or Enter at EOF to save'));
+  assert.match(footer, /^ Press Ctrl-S or Enter at EOF to save/);
   assert.equal(footer.includes('reword'), false);
   assert.equal(status.includes('Enter at EOF'), false);
   assert.equal(frame.buttons.length, 0);
@@ -1132,24 +1133,18 @@ test('full mode commit edit hints how to save', () => {
     color: true,
   });
   const row = colored.rows[colored.rows.length - 1];
-  const ctrlS = ansi.paint(
-    'Ctrl-S',
-    THEME.chromeFg,
-    THEME.buttonBg,
-    true,
-    true,
-  );
-  const enterEof = ansi.paint(
-    'Enter at EOF',
-    THEME.chromeFg,
-    THEME.buttonBg,
-    true,
-    true,
-  );
+  const hotFg = 0xff;
+  const ctrlS = ansi.paint('Ctrl-S', hotFg, THEME.buttonBg, true, true);
+  const enter = ansi.paint('Enter', hotFg, THEME.buttonBg, true, true);
   const press = ansi.paint('Press ', THEME.buttonFg, THEME.buttonBg, true);
   const or = ansi.paint(' or ', THEME.buttonFg, THEME.buttonBg, true);
-  const tail = ansi.paint(' to save', THEME.buttonFg, THEME.buttonBg, true);
-  assert.ok(row.includes(`${press}${ctrlS}${or}${enterEof}${tail}`));
+  const tail = ansi.paint(
+    ' at EOF to save',
+    THEME.buttonFg,
+    THEME.buttonBg,
+    true,
+  );
+  assert.ok(row.includes(`${press}${ctrlS}${or}${enter}${tail}`));
   view.status = 'empty commit message';
   const blocked = render.renderFrame(view, {
     width: 80,
@@ -1502,8 +1497,12 @@ test('AC10 footer words highlight the bound letter', () => {
   });
   const row = frame.rows[frame.rows.length - 1];
   const plain = stripAnsi(row);
-  assert.match(plain, /add unstage drop todo branch npm file /);
-  assert.match(plain, /commit pull push/);
+  assert.match(
+    plain,
+    /add {2}unstage {2}drop {2}todo {2}branch {2}npm {2}file /,
+  );
+  assert.match(plain, /commit {2}pull {2}push/);
+  assert.match(plain, /^ add {2}/);
   assert.ok(!plain.includes('q'));
   assert.ok(!plain.includes('prev'));
   assert.ok(!plain.includes('next'));
@@ -1524,8 +1523,11 @@ test('AC10 footer words highlight the bound letter', () => {
     color: false,
   });
   const dimRow = dim.rows[dim.rows.length - 1];
-  assert.match(dimRow, /add unstage drop todo branch npm file /);
-  assert.match(dimRow, /commit pull push/);
+  assert.match(
+    dimRow,
+    /add {2}unstage {2}drop {2}todo {2}branch {2}npm {2}file /,
+  );
+  assert.match(dimRow, /commit {2}pull {2}push/);
   assert.ok(!dimRow.includes('q'));
   assert.ok(!dimRow.includes('['));
   const mode = frame.buttons.find((hit) => hit.id === 'layout');
@@ -1558,7 +1560,7 @@ test('AC10 footer words highlight the bound letter', () => {
     color: false,
   });
   const fileScopeRow = fileScope.rows[fileScope.rows.length - 1];
-  assert.match(fileScopeRow, /todo branch npm diff commit pull/);
+  assert.match(fileScopeRow, /todo {2}branch {2}npm {2}diff {2}commit {2}pull/);
   assert.ok(fileScope.buttons.find((hit) => hit.id === 'diff'));
   assert.equal(
     fileScope.buttons.find((hit) => hit.id === 'file'),
@@ -1592,8 +1594,11 @@ test('files pane todos row dims add unstage drop', () => {
     color: false,
   });
   const footer = frame.rows[frame.rows.length - 1];
-  assert.match(footer, /add unstage drop todo branch npm file /);
-  assert.match(footer, /commit pull push/);
+  assert.match(
+    footer,
+    /add {2}unstage {2}drop {2}todo {2}branch {2}npm {2}file /,
+  );
+  assert.match(footer, /commit {2}pull {2}push/);
   assert.ok(!footer.includes('q'));
   assert.ok(!footer.includes('←'));
   assert.ok(!footer.includes('→'));
@@ -1628,7 +1633,10 @@ test('files pane todos row dims add unstage drop', () => {
     color: false,
   });
   const fileFooter = file.rows[file.rows.length - 1];
-  assert.match(fileFooter, /add unstage drop todo branch npm file/);
+  assert.match(
+    fileFooter,
+    /add {2}unstage {2}drop {2}todo {2}branch {2}npm {2}file/,
+  );
   assert.ok(file.buttons.find((hit) => hit.id === 'add'));
 });
 
@@ -1660,7 +1668,7 @@ test('diff pane dims add on staged and unstage on unstaged', () => {
   const stagedRow = staged.rows[staged.rows.length - 1];
   const rest = seq(THEME.buttonFg, THEME.buttonBg);
   const hot = seq(THEME.buttonHotFg, THEME.buttonBg);
-  assert.match(stripAnsi(stagedRow), /add unstage drop/);
+  assert.match(stripAnsi(stagedRow), /add {2}unstage {2}drop/);
   assert.equal(
     staged.buttons.find((hit) => hit.id === 'add'),
     undefined,
@@ -1749,7 +1757,7 @@ test('branch pane lists names and marks the default branch', () => {
   assert.match(text, /3 weeks ago/);
   assert.match(text, /init/);
   assert.match(text, /wip/);
-  assert.match(render.headerText(view), /demo: branches current 2\/2/);
+  assert.match(render.headerText(view), /demo: branches$/);
   const footer = frame.rows[frame.rows.length - 1];
   assert.match(footer, /new/);
   assert.match(footer, /rebase/);
@@ -1771,14 +1779,15 @@ test('branch pane lists names and marks the default branch', () => {
     undefined,
   );
   assert.equal(mainRow.indexOf('aaa1111'), featRow.indexOf('bbb2222'));
-  assert.ok(mainRow.endsWith('2 days ago   '));
-  assert.ok(featRow.endsWith('3 weeks ago   '));
+  assert.ok(mainRow.endsWith('2 days ago '));
+  assert.ok(!mainRow.endsWith('2 days ago  '));
+  assert.ok(featRow.endsWith('3 weeks ago '));
+  assert.ok(!featRow.endsWith('3 weeks ago  '));
   assert.equal(
     mainRow.indexOf('2 days ago') + '2 days ago'.length,
     featRow.indexOf('3 weeks ago') + '3 weeks ago'.length,
   );
   assert.match(featRow, /⇣2 {3}3 weeks ago/);
-  assert.ok(!featRow.endsWith('3 weeks ago    '));
   assert.equal(visibleWidth(featRow), 80);
   assert.equal(visibleWidth(mainRow), 80);
   const colored = render.renderFrame(view, {
@@ -1804,7 +1813,10 @@ test('branch pane lists names and marks the default branch', () => {
   assert.ok(featPainted.includes(`${fg(THEME.headerFg)}${currentBg}`));
   const date = ansi.paint('3 weeks ago', THEME.headerFg, THEME.currentBg, true);
   const dateTail = ansi.paint(' ', THEME.headerFg, THEME.currentBg, true);
+  const currentLead = ansi.paint(' ▶ ', THEME.headerFg, THEME.currentBg, true);
+  assert.ok(featPainted.includes(currentLead));
   assert.ok(featPainted.includes(`${date}${dateTail}`));
+  assert.ok(!featPainted.includes(bg(THEME.ctxBg)));
   assert.ok(featPainted.includes(`${fg(THEME.delLineFg)}${currentBg}`));
   assert.ok(!featPainted.includes(bg(THEME.buttonHotFg)));
   const rest = seq(THEME.buttonFg, THEME.buttonBg);
@@ -1826,6 +1838,9 @@ test('branch pane lists names and marks the default branch', () => {
   const ontoFeat = onto.rows.find((row) => row.includes('bbb2222'));
   const ontoMain = onto.rows.find((row) => row.includes('aaa1111'));
   assert.ok(ontoFeat.includes(currentBg));
+  const currentPlain = ansi.paint('   ', THEME.headerFg, THEME.currentBg, true);
+  assert.ok(ontoFeat.includes(currentPlain));
+  assert.ok(!ontoFeat.includes(bg(THEME.ctxBg)));
   const selectDate = ansi.paint(
     ' 2 days ago',
     THEME.mutedFg,
@@ -1834,8 +1849,7 @@ test('branch pane lists names and marks the default branch', () => {
   );
   const selectTail = ansi.paint(' ', THEME.chromeFg, THEME.buttonBg, true);
   assert.ok(ontoMain.includes(`${selectDate}${selectTail}`));
-  const selectEdge = ansi.paint('  ', THEME.chromeFg, THEME.ctxBg, true);
-  assert.ok(ontoMain.includes(selectEdge));
+  assert.ok(!ontoMain.includes(bg(THEME.ctxBg)));
   assert.ok(onto.buttons.find((hit) => hit.id === 'rebase'));
   assert.ok(onto.buttons.find((hit) => hit.id === 'drop'));
   assert.equal(
@@ -1906,7 +1920,7 @@ test('branch pane types a new name on a row under the list', () => {
   assert.match(mainRow, /main/);
   assert.ok(!mainRow.includes('['));
   assert.equal(frame.cursor.y, topicAt + 1);
-  assert.match(render.headerText(view), /demo: branches new 3\/3/);
+  assert.match(render.headerText(view), /demo: branches$/);
 });
 
 test('AC26 file list status and counts are column-aligned', () => {
@@ -2257,7 +2271,7 @@ test('commit review header and counts use short sha', () => {
     counts: { staged: 0, unstaged: 0, untracked: 0, commit: 1 },
     repoName: 'demo',
   };
-  assert.match(render.headerText(view), /reslop: demo\/f\.js 7ac260c 1\/1/);
+  assert.match(render.headerText(view), /reslop: demo\/f\.js$/);
   const frame = render.renderFrame(view, {
     width: 80,
     height: 16,
@@ -2289,7 +2303,7 @@ test('PR review header and counts use pull request label', () => {
     counts: { staged: 0, unstaged: 0, untracked: 0, commit: 0, pr: 1 },
     repoName: 'acme/app',
   };
-  assert.match(render.headerText(view), /reslop: acme\/app\/f\.js #123 1\/1/);
+  assert.match(render.headerText(view), /reslop: acme\/app\/f\.js$/);
   const frame = render.renderFrame(view, {
     width: 80,
     height: 16,
@@ -2318,7 +2332,7 @@ test('MR review header and counts use merge request label', () => {
     counts: { staged: 0, unstaged: 0, untracked: 0, commit: 0, pr: 1 },
     repoName: 'acme/app',
   };
-  assert.match(render.headerText(view), /reslop: acme\/app\/f\.js !123 1\/1/);
+  assert.match(render.headerText(view), /reslop: acme\/app\/f\.js$/);
   const frame = render.renderFrame(view, {
     width: 80,
     height: 16,
@@ -2571,7 +2585,7 @@ test('todo view paints file todo text not a diff hunk', () => {
   assert.ok(!body.includes('todo 1/1'));
   assert.ok(!body.includes('demo/TODOs'));
   const footer = frame.rows[frame.rows.length - 1];
-  assert.match(footer, /← → x/);
+  assert.match(footer, /← {2}→ {2}x/);
   assert.ok(!footer.includes('q'));
   assert.ok(!footer.includes('prev'));
   assert.ok(!footer.includes('next'));
@@ -3027,9 +3041,9 @@ test('unit pane marks the current block and keeps other diffs', () => {
   assert.match(body, /\+ new/);
   assert.match(body, / {2}later/);
   assert.ok(!body.includes('+ later'));
-  assert.match(render.headerText(view), /reslop: demo\/a\.js unstaged 1\/4/);
+  assert.match(render.headerText(view), /reslop: demo\/a\.js$/);
   const footer = frame.rows[frame.rows.length - 1];
-  assert.match(footer, /add unstage drop/);
+  assert.match(footer, /add {2}unstage {2}drop/);
   assert.ok(!footer.includes('mode'));
   assert.ok(frame.buttons.find((hit) => hit.id === 'add'));
   assert.ok(frame.buttons.find((hit) => hit.id === 'code'));
