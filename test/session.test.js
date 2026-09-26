@@ -1989,6 +1989,136 @@ test('click commit footer chooses commit amend or fixup', () => {
   clickKind('fixup', 'fixup');
 });
 
+test('commits pane b toggles brief on and off', () => {
+  const { session } = openSession([sampleItem('a.js')], {
+    startPane: 'files',
+  });
+  session.pushInput('c');
+  assert.equal(session.view().commitView, 'brief');
+  session.pushInput('b');
+  assert.equal(session.view().commitView, 'full');
+  assert.equal(session.status, 'full');
+  session.pushInput('b');
+  assert.equal(session.view().commitView, 'brief');
+  assert.equal(session.status, 'brief');
+});
+
+test('full mode commit enter inserts a newline', () => {
+  const { session, repo } = openSession([sampleItem('a.js', 'staged')], {
+    startPane: 'files',
+  });
+  session.pushInput('c');
+  session.pushInput('b');
+  session.pushInput('c');
+  session.pushInput('one');
+  session.handleEvent({ type: 'key', key: 'enter' });
+  session.pushInput('two');
+  assert.equal(session.mode, 'compose');
+  assert.equal(session.editor.text, 'one\ntwo');
+  assert.equal(repo.commits.length, 0);
+  session.handleEvent({ type: 'key', key: 'up' });
+  assert.equal(session.editor.cursor, 3);
+  assert.equal(session.commitCursor, 0);
+});
+
+test('full mode ctrl-s saves the message', () => {
+  const { session, repo } = openSession([sampleItem('a.js', 'staged')], {
+    startPane: 'files',
+  });
+  session.pushInput('c');
+  session.pushInput('b');
+  session.pushInput('c');
+  session.pushInput('one');
+  session.handleEvent({ type: 'key', key: 'enter' });
+  session.pushInput('two');
+  session.handleEvent({ type: 'key', key: 'ctrl-s' });
+  assert.equal(session.mode, 'review');
+  assert.equal(repo.commits.length, 1);
+  assert.equal(repo.commits[0].message, 'one\ntwo');
+});
+
+test('full mode enter on an empty last line saves', () => {
+  const { session, repo } = openSession([sampleItem('a.js', 'staged')], {
+    startPane: 'files',
+  });
+  session.pushInput('c');
+  session.pushInput('b');
+  session.pushInput('c');
+  session.pushInput('ship it');
+  session.handleEvent({ type: 'key', key: 'enter' });
+  assert.equal(session.mode, 'compose');
+  assert.equal(session.editor.text, 'ship it\n');
+  session.handleEvent({ type: 'key', key: 'enter' });
+  assert.equal(session.mode, 'review');
+  assert.equal(repo.commits[0].message, 'ship it\n');
+});
+
+test('editing a commit ignores clicks and scrolls on other commits', () => {
+  const { session, stdout } = openSession([sampleItem('a.js', 'staged')], {
+    startPane: 'files',
+  });
+  stdout.rows = 32;
+  session.pushInput('c');
+  session.pushInput('b');
+  session.dispatch('next');
+  session.pushInput('r');
+  session.pushInput('x');
+  assert.equal(session.mode, 'compose');
+  assert.equal(session.commitCursor, 1);
+  assert.equal(session.editor.text, 'initx');
+  const cursor = session.editor.cursor;
+  session.draw();
+  const other = session.lastFrame.fileHits.find((hit) => hit.cursor === 0);
+  assert.ok(other);
+  session.handleEvent({
+    type: 'mouse',
+    button: 0,
+    btn: 0,
+    kind: 'press',
+    x: 4,
+    y: other.y,
+    press: true,
+  });
+  session.handleEvent({
+    type: 'mouse',
+    button: 0,
+    btn: 0,
+    kind: 'release',
+    x: 4,
+    y: other.y,
+    press: false,
+  });
+  session.handleEvent({
+    type: 'mouse',
+    kind: 'wheelDown',
+    x: 4,
+    y: other.y,
+  });
+  assert.equal(session.commitCursor, 1);
+  assert.equal(session.editor.text, 'initx');
+  assert.equal(session.editor.cursor, cursor);
+  assert.equal(session.mode, 'compose');
+});
+
+test('reword starts at the end of the first line', () => {
+  const { session, repo } = openSession([sampleItem('a.js', 'staged')], {
+    startPane: 'files',
+  });
+  repo.setCommits([
+    {
+      sha: 'aaa1111aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+      shortSha: 'aaa1111',
+      author: 'Ada',
+      date: '2 hours ago',
+      subject: 'land the change\n\nexplain the change',
+    },
+  ]);
+  session.pushInput('c');
+  session.pushInput('r');
+  assert.equal(session.editor.text, 'land the change\n\nexplain the change');
+  assert.equal(session.editor.cursor, 'land the change'.length);
+});
+
 test('commits pane a amends with the previous message', () => {
   const { session, repo } = openSession([sampleItem('a.js')], {
     startPane: 'files',
