@@ -1359,6 +1359,43 @@ test('todos screen ignores commit and todo hotkeys', () => {
   assert.equal(session.mode, 'review');
 });
 
+test('todo list scrolls the focused row into view', () => {
+  const { session, stdout } = openSession([sampleItem('a.js')]);
+  stdout.rows = 12;
+  for (let i = 0; i < 30; i++) addTodo(session.notes, 'a.js', `item ${i}`);
+  session.composer.openTodoPage();
+  session.todoFocus = 0;
+  session.draw();
+  const top = stripAnsi(session.lastFrame.rows.join('\n'));
+  assert.match(top, /item 0(?!\d)/);
+  assert.ok(!/item 29(?!\d)/.test(top));
+  assert.equal(session.scroll, 0);
+  for (let i = 0; i < 25; i++) session.dispatch('scrollDown');
+  session.draw();
+  const down = stripAnsi(session.lastFrame.rows.join('\n'));
+  assert.match(down, /item 25(?!\d)/);
+  assert.ok(!/item 0(?!\d)/.test(down));
+  assert.ok(session.scroll > 0);
+  session.handleEvent({
+    type: 'mouse',
+    kind: 'wheelUp',
+    button: 64,
+    x: 2,
+    y: 4,
+    press: true,
+  });
+  session.draw();
+  const up = stripAnsi(session.lastFrame.rows.join('\n'));
+  assert.equal(session.todoFocus, 24);
+  assert.match(up, /item 24(?!\d)/);
+  session.dispatch('pageDown');
+  session.draw();
+  const paged = stripAnsi(session.lastFrame.rows.join('\n'));
+  assert.equal(session.todoFocus, 30);
+  assert.match(paged, /item 29(?!\d)/);
+  assert.ok(!/item 0(?!\d)/.test(paged));
+});
+
 test('todo edits in the list not the note line', () => {
   const { session } = openSession([sampleItem('a.js')]);
   session.dispatch('todo');
