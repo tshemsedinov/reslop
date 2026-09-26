@@ -3698,10 +3698,10 @@ test('npm output animates progress until the command exits', () => {
   assert.equal(session.progress.size(), 1);
   let body = frameBody(session);
   const hello = body.findIndex((row) => row.includes('hello'));
-  assert.match(body[hello + 1], /^ {2}running {2}▰▰▱▱▱▱/);
+  assert.match(body[hello + 1], /^ {2}running {2}·•●•·/);
   session.tickProgress();
   body = frameBody(session);
-  assert.match(body[hello + 1], /^ {2}running {2}▱▰▰▱▱▱/);
+  assert.match(body[hello + 1], /^ {2}running {2}··•●•/);
   finish();
   body = frameBody(session);
   assert.equal(session.view().npmRunning, false);
