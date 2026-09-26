@@ -151,6 +151,7 @@ test('review markdown notifies onReview and not onChange', async () => {
       reviews += 1;
     },
   });
+  await wait(60);
   const body = '---\nstatus: editing\n---\n\n## TODOs\n\n- [ ] gamma\n';
   fs.writeFileSync(file, body);
   assert.equal(await waitUntil(() => reviews >= 1, 1000), true);
