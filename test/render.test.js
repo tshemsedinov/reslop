@@ -645,8 +645,8 @@ test('commit pane brief mode lists subject hash branch and age', () => {
   assert.match(footer, /push/);
   assert.ok(!footer.includes('add'));
   assert.ok(!footer.includes('←'));
-  assert.match(footer, /brief/);
-  assert.ok(frame.buttons.find((hit) => hit.id === 'brief'));
+  assert.match(footer, /view/);
+  assert.ok(frame.buttons.find((hit) => hit.id === 'view'));
   assert.ok(frame.buttons.find((hit) => hit.id === 'commit'));
   assert.ok(!frame.buttons.find((hit) => hit.id === 'apply'));
   assert.ok(frame.buttons.find((hit) => hit.id === 'amend'));
@@ -713,6 +713,112 @@ test('commit pane brief mode lists subject hash branch and age', () => {
   );
   assert.ok(selectedRow.includes(`${selectedMark}${selectedSubject}`));
   assert.ok(selectedRow.endsWith(tail));
+});
+
+test('viewed commit is marked like the current branch', () => {
+  const sha = 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa';
+  const view = {
+    pane: 'commits',
+    rev: sha,
+    revShort: 'aaa1111',
+    commits: [
+      {
+        pending: true,
+        subject: 'uncommitted changes',
+        sha: '',
+        shortSha: '',
+        date: '',
+        refs: '',
+      },
+      {
+        sha,
+        shortSha: 'aaa1111',
+        date: '2 hours ago',
+        refs: 'HEAD -> main',
+        subject: 'land the change',
+        head: true,
+      },
+    ],
+    commitCursor: 0,
+    repoName: 'demo',
+    counts: { staged: 1, unstaged: 0, untracked: 0 },
+    branch: 'main',
+    status: '',
+    scroll: 0,
+  };
+  const colored = render.renderFrame(view, {
+    width: 80,
+    height: 12,
+    color: true,
+  });
+  const pending = colored.rows.find((row) => row.includes('uncommitted'));
+  const viewed = colored.rows.find((row) => row.includes('aaa1111'));
+  const currentBg = bg(THEME.currentBg);
+  const currentLead = ansi.paint('   ', THEME.headerFg, THEME.currentBg, true);
+  const currentSubject = ansi.paint(
+    'land the change',
+    THEME.mutedFg,
+    THEME.currentBg,
+    true,
+  );
+  const currentSha = ansi.paint(
+    'aaa1111',
+    THEME.shaDarkFg,
+    THEME.currentBg,
+    true,
+  );
+  const currentTail = ansi.paint(' ', THEME.headerFg, THEME.currentBg, true);
+  assert.ok(pending.includes(bg(THEME.buttonBg)));
+  assert.ok(!pending.includes(currentBg));
+  assert.ok(viewed.includes(`${currentLead}${currentSubject}`));
+  assert.ok(viewed.includes(currentSha));
+  assert.ok(viewed.endsWith(currentTail));
+  assert.ok(!viewed.includes(bg(THEME.buttonBg)));
+  assert.ok(!viewed.includes(bg(THEME.ctxBg)));
+  view.commitCursor = 1;
+  const selected = render.renderFrame(view, {
+    width: 80,
+    height: 12,
+    color: true,
+  });
+  const selectedViewed = selected.rows.find((row) => row.includes('aaa1111'));
+  const selectedLead = ansi.paint(' ▶ ', THEME.headerFg, THEME.currentBg, true);
+  assert.ok(selectedViewed.includes(`${selectedLead}${currentSubject}`));
+  assert.ok(!selectedViewed.includes(bg(THEME.buttonBg)));
+  view.rev = '';
+  view.revShort = '';
+  view.commitCursor = 0;
+  const worktree = render.renderFrame(view, {
+    width: 80,
+    height: 12,
+    color: true,
+  });
+  const currentPending = worktree.rows.find((row) =>
+    row.includes('uncommitted'),
+  );
+  const pendingLead = ansi.paint(' ▶ ', THEME.headerFg, THEME.currentBg, true);
+  const pendingSubject = ansi.paint(
+    'uncommitted changes',
+    THEME.mutedFg,
+    THEME.currentBg,
+    true,
+  );
+  assert.ok(currentPending.includes(`${pendingLead}${pendingSubject}`));
+  assert.ok(currentPending.endsWith(currentTail));
+  assert.ok(!currentPending.includes(bg(THEME.buttonBg)));
+  view.rev = sha;
+  view.revShort = 'aaa1111';
+  view.commitView = 'full';
+  view.commitCursor = 1;
+  const full = render.renderFrame(view, {
+    width: 80,
+    height: 16,
+    color: true,
+  });
+  const hash = full.rows.find((row) => row.includes(sha));
+  const fullHash = ansi.paint(sha, THEME.shaDarkFg, THEME.currentBg, true);
+  assert.ok(hash.includes(fullHash));
+  assert.ok(!hash.includes(bg(THEME.ctxBg)));
 });
 
 test('brief mode shows only the first line of a commit message', () => {
@@ -1217,7 +1323,7 @@ test('full mode commit edit hints how to save', () => {
   });
   const briefRow = stripAnsi(brief.rows[brief.rows.length - 1]);
   assert.equal(briefRow.includes('Enter at EOF'), false);
-  assert.ok(brief.buttons.find((hit) => hit.id === 'brief'));
+  assert.ok(brief.buttons.find((hit) => hit.id === 'view'));
 });
 
 test('update prompt paints y and n on the status line', () => {

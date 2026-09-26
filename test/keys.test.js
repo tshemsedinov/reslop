@@ -145,7 +145,7 @@ test('actionFromKey maps aliases and ignores unbound keys', () => {
   assert.equal(actionFromKey('c', 'commits'), 'commit');
   assert.equal(actionFromKey('p', 'commits'), 'pull');
   assert.equal(actionFromKey('s', 'commits'), 'push');
-  assert.equal(actionFromKey('b', 'commits'), 'brief');
+  assert.equal(actionFromKey('v', 'commits'), 'view');
   assert.equal(actionFromKey('m', 'commits'), 'layout');
   assert.equal(actionFromKey('m'), 'layout');
   assert.equal(actionFromKey('left', 'commits'), null);
@@ -337,7 +337,7 @@ test('disabledActions hides add unstage drop on files todos', () => {
     'reword',
     'fixup',
     'drop',
-    'brief',
+    'view',
     'pull',
     'push',
   ];
@@ -371,9 +371,9 @@ test('disabledActions hides add unstage drop on files todos', () => {
   assert.ok(commitLayout.parts.some((part) => part.action.id === 'apply'));
   assert.ok(commitLayout.parts.some((part) => part.action.id === 'reword'));
   assert.ok(commitLayout.parts.some((part) => part.action.id === 'drop'));
-  const brief = commitLayout.parts.find((part) => part.action.id === 'brief');
-  assert.equal(brief.label, 'brief');
-  assert.ok(commitLayout.hits.some((hit) => hit.id === 'brief'));
+  const view = commitLayout.parts.find((part) => part.action.id === 'view');
+  assert.equal(view.label, 'view');
+  assert.ok(commitLayout.hits.some((hit) => hit.id === 'view'));
   assert.ok(commitLayout.parts.some((part) => part.action.id === 'pull'));
   assert.ok(commitLayout.parts.some((part) => part.action.id === 'push'));
   assert.ok(!commitLayout.parts.some((part) => part.action.id === 'prev'));

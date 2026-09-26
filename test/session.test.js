@@ -1987,7 +1987,8 @@ test('files pane c lists commits and c commits the message', () => {
   assert.equal(session.pane, 'commits');
   assert.equal(session.mode, 'review');
   assert.equal(session.commitCursor, 0);
-  assert.equal(session.view().commits[0].subject, 'land the change');
+  assert.equal(session.view().commits[0].subject, 'uncommitted changes');
+  assert.equal(session.view().commits[1].subject, 'land the change');
   session.handleEvent({ type: 'key', key: 'escape' });
   assert.equal(session.pane, 'files');
   assert.equal(repo.commits.length, 0);
@@ -2015,6 +2016,7 @@ test('click commit footer chooses commit amend or fixup', () => {
       startPane: 'files',
     });
     session.pushInput('c');
+    if (id !== 'commit') session.dispatch('next');
     clickFooter(session, id);
     assert.equal(session.pane, 'commits');
     assert.equal(session.mode, 'compose');
@@ -2026,16 +2028,16 @@ test('click commit footer chooses commit amend or fixup', () => {
   clickKind('fixup', 'fixup');
 });
 
-test('commits pane b toggles brief on and off', () => {
+test('commits pane v toggles brief on and off', () => {
   const { session } = openSession([sampleItem('a.js')], {
     startPane: 'files',
   });
   session.pushInput('c');
   assert.equal(session.view().commitView, 'brief');
-  session.pushInput('b');
+  session.pushInput('v');
   assert.equal(session.view().commitView, 'full');
   assert.equal(session.status, 'full');
-  session.pushInput('b');
+  session.pushInput('v');
   assert.equal(session.view().commitView, 'brief');
   assert.equal(session.status, 'brief');
 });
@@ -2045,7 +2047,7 @@ test('full mode commit enter inserts a newline', () => {
     startPane: 'files',
   });
   session.pushInput('c');
-  session.pushInput('b');
+  session.pushInput('v');
   session.pushInput('c');
   session.pushInput('one');
   session.handleEvent({ type: 'key', key: 'enter' });
@@ -2063,7 +2065,7 @@ test('full mode ctrl-s saves the message', () => {
     startPane: 'files',
   });
   session.pushInput('c');
-  session.pushInput('b');
+  session.pushInput('v');
   session.pushInput('c');
   session.pushInput('one');
   session.handleEvent({ type: 'key', key: 'enter' });
@@ -2079,7 +2081,7 @@ test('full mode enter on an empty last line saves', () => {
     startPane: 'files',
   });
   session.pushInput('c');
-  session.pushInput('b');
+  session.pushInput('v');
   session.pushInput('c');
   session.pushInput('ship it');
   session.handleEvent({ type: 'key', key: 'enter' });
@@ -2096,12 +2098,13 @@ test('editing a commit ignores clicks and scrolls on other commits', () => {
   });
   stdout.rows = 32;
   session.pushInput('c');
-  session.pushInput('b');
+  session.pushInput('v');
+  session.dispatch('next');
   session.dispatch('next');
   session.pushInput('r');
   session.pushInput('x');
   assert.equal(session.mode, 'compose');
-  assert.equal(session.commitCursor, 1);
+  assert.equal(session.commitCursor, 2);
   assert.equal(session.editor.text, 'initx');
   const cursor = session.editor.cursor;
   session.draw();
@@ -2131,7 +2134,7 @@ test('editing a commit ignores clicks and scrolls on other commits', () => {
     x: 4,
     y: other.y,
   });
-  assert.equal(session.commitCursor, 1);
+  assert.equal(session.commitCursor, 2);
   assert.equal(session.editor.text, 'initx');
   assert.equal(session.editor.cursor, cursor);
   assert.equal(session.mode, 'compose');
@@ -2151,6 +2154,7 @@ test('brief reword edits the first line and keeps the body', () => {
     },
   ]);
   session.pushInput('c');
+  session.dispatch('next');
   session.pushInput('r');
   assert.equal(session.editor.text, 'land the change');
   assert.equal(session.editor.cursor, 'land the change'.length);
@@ -2196,7 +2200,8 @@ test('full mode reword edits the whole message', () => {
     },
   ]);
   session.pushInput('c');
-  session.pushInput('b');
+  session.pushInput('v');
+  session.dispatch('next');
   session.pushInput('r');
   assert.equal(session.editor.text, 'land the change\n\nexplain the change');
   session.editor.replace('ship it\n\nnew body');
@@ -2216,7 +2221,7 @@ test('commits pane a amends with the previous message', () => {
   session.pushInput('c');
   session.dispatch('next');
   session.pushInput('a');
-  assert.equal(session.commitCursor, 0);
+  assert.equal(session.commitCursor, 1);
   assert.equal(session.composeKind, 'commit');
   assert.equal(session.commitKind, 'amend');
   assert.equal(session.editor.text, 'previous message');
@@ -2232,8 +2237,9 @@ test('commits pane r rewords the selected commit', () => {
   });
   session.pushInput('c');
   session.dispatch('next');
+  session.dispatch('next');
   session.pushInput('r');
-  assert.equal(session.commitCursor, 1);
+  assert.equal(session.commitCursor, 2);
   assert.equal(session.composeKind, 'commit');
   assert.equal(session.commitKind, 'reword');
   assert.equal(session.editor.text, 'init');
@@ -2246,7 +2252,7 @@ test('commits pane r rewords the selected commit', () => {
       message: 'rewritten init',
     },
   ]);
-  assert.equal(session.view().commits[1].subject, 'rewritten init');
+  assert.equal(session.view().commits[2].subject, 'rewritten init');
 });
 
 test('commits pane a applies a selected fixup', () => {
@@ -2271,6 +2277,7 @@ test('commits pane a applies a selected fixup', () => {
     },
   ]);
   session.commits.refresh();
+  session.dispatch('next');
   session.draw();
   assert.ok(session.lastFrame.buttons.find((hit) => hit.id === 'apply'));
   session.pushInput('a');
@@ -2304,6 +2311,7 @@ test('click apply footer squashes the selected fixup', () => {
     },
   ]);
   session.commits.refresh();
+  session.dispatch('next');
   clickFooter(session, 'apply');
   assert.deepEqual(repo.applyFixups, [
     'fff0000fffffffffffffffffffffffffffffff',
@@ -2316,6 +2324,7 @@ test('commits pane f fixups the selected commit', () => {
     startPane: 'files',
   });
   session.pushInput('c');
+  session.dispatch('next');
   session.pushInput('f');
   assert.equal(session.editor.text, 'fixup! land the change');
   session.handleEvent({ type: 'key', key: 'escape' });
@@ -2377,7 +2386,7 @@ test('commits pane lists newest first', () => {
   const { session } = openSession([sampleItem('a.js')], { startPane: 'files' });
   session.pushInput('c');
   const listed = session.view().commits.map((entry) => entry.subject);
-  assert.deepEqual(listed, ['land the change', 'init']);
+  assert.deepEqual(listed, ['uncommitted changes', 'land the change', 'init']);
   session.handleEvent({ type: 'key', key: 'right' });
   assert.equal(session.commitCursor, 0);
   session.handleEvent({ type: 'key', key: 'down' });
@@ -2388,13 +2397,16 @@ test('commits pane lists newest first', () => {
   assert.equal(session.commitCursor, 1);
   session.handleEvent({ type: 'key', key: 'home' });
   assert.equal(session.commitCursor, 0);
-  session.handleEvent({ type: 'key', key: 'end' });
-  assert.equal(session.commitCursor, 1);
   session.handleEvent({ type: 'key', key: 'enter' });
-  assert.equal(session.pane, 'commits');
-  session.pushInput('m');
-  assert.equal(session.layout, 'unified');
-  assert.equal(session.pane, 'commits');
+  assert.equal(session.pane, 'diff');
+  assert.equal(session.rev, '');
+  session.handleEvent({ type: 'key', key: 'escape' });
+  session.pushInput('c');
+  session.handleEvent({ type: 'key', key: 'end' });
+  assert.equal(session.commitCursor, 2);
+  session.handleEvent({ type: 'key', key: 'enter' });
+  assert.equal(session.pane, 'diff');
+  assert.equal(session.rev, 'bbb2222bbbbbbbbbbbbbbbbbbbbbbbbbbbbbb');
 });
 
 test('commits pane d asks to drop the selected commit', () => {
@@ -2402,6 +2414,7 @@ test('commits pane d asks to drop the selected commit', () => {
     startPane: 'files',
   });
   session.pushInput('c');
+  session.dispatch('next');
   session.pushInput('d');
   assert.equal(session.mode, 'confirmDrop');
   assert.equal(session.view().dropName, 'aaa1111');
@@ -2419,7 +2432,7 @@ test('commits pane d asks to drop the selected commit', () => {
   ]);
   assert.match(session.status, /dropped aaa1111/);
   assert.equal(session.pane, 'commits');
-  assert.equal(session.view().commits[0].subject, 'init');
+  assert.equal(session.view().commits[1].subject, 'init');
 });
 
 test('click commit row selects it', () => {
