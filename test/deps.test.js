@@ -2134,3 +2134,40 @@ test('dependency staging respects clean filters, edits no files', async (t) => {
   assert.equal(parseGitJson(repo, ':package.json').name, 'clean');
   assert.deepEqual(dependencyFiles(repo), before);
 });
+
+test('a proposed update installs outside the write lock', async () => {
+  const repo = makeRepo();
+  try {
+    const { loaded, item } = await proposedLodash(repo);
+    const seen = [];
+    let held = false;
+    const locked = async (write) => {
+      held = true;
+      seen.push('lock');
+      try {
+        return await write();
+      } finally {
+        held = false;
+        seen.push('unlock');
+      }
+    };
+    const run = async () => {
+      seen.push(`install held=${held}`);
+      return { status: 0 };
+    };
+    const stage = async () => {
+      seen.push(`stage held=${held}`);
+    };
+    await gitDeps.applyProposedUpdate(loaded.top, item, { run, stage, locked });
+    const expected = [
+      'install held=false',
+      'lock',
+      'stage held=true',
+      'unlock',
+    ];
+    assert.deepEqual(seen.slice(-4), expected);
+    assert.equal(seen.filter((entry) => entry === 'lock').length >= 1, true);
+  } finally {
+    repo.cleanup();
+  }
+});

@@ -3969,8 +3969,7 @@ test('stage moves on while npm install is still running', async () => {
   assert.equal(installs, 1);
   assert.equal(repo.added.length, 0);
   finish();
-  await pending;
-  for (let i = 0; i < 6; i++) await Promise.resolve();
+  await session.ops.idle();
   assert.equal(repo.added.length, 1);
   assert.equal(repo.added[0].file.newPath, 'b.js');
   assert.equal(session.busy, '');
@@ -6664,4 +6663,38 @@ test('a reload keeps unsaved typing when the disk is unchanged', async () => {
   session.refreshFromRepo({ keepView: true, quiet: true });
   await session.ops.idle();
   assert.equal(session.editor.text, `${opened}outside\n`);
+});
+
+test('a code save does not wait for a running install', async () => {
+  const proposed = sampleItem('package.json');
+  proposed.reload = true;
+  proposed.dep = {
+    change: { propose: true, name: 'lodash' },
+    files: ['package.json'],
+  };
+  const { session, repo } = await openSession([proposed, sampleItem('b.js')]);
+  let finish = null;
+  const installing = new Promise((resolve) => {
+    finish = resolve;
+  });
+  const options = [];
+  repo.add = (top, item, extra) => {
+    options.push(extra);
+    return item.dep ? installing : undefined;
+  };
+  session.dispatch('add');
+  await settle();
+  assert.equal(session.busy, 'npm i');
+  assert.equal(typeof options[0].locked, 'function');
+  session.dispatch('next');
+  session.pushInput('e');
+  session.pushInput('2');
+  session.handleEvent({ type: 'key', key: 'escape' });
+  await settle();
+  assert.equal(repo.edited.length, 1);
+  assert.equal(session.mode, 'review');
+  assert.equal(session.ops.holds, 0);
+  finish();
+  await session.ops.idle();
+  assert.equal(session.busy, '');
 });
