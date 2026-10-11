@@ -6278,3 +6278,20 @@ test('commit view reads a file from git once, not on every frame', () => {
   fileText(worktree, 'a.js');
   assert.equal(calls, 5);
 });
+
+test('an external run whose record disappears stops spinning', async () => {
+  const { RunRecorder } = require('../lib/runs/runs.js');
+  const { session, cwd } = await openSession([sampleItem('a.js')], {
+    startPane: 'npm',
+  });
+  const recorder = new RunRecorder(cwd, 'eslint .');
+  session.npm.refreshRecorded();
+  const run = session.npm.runs.find((entry) => entry.externalId);
+  assert.equal(run.status, 'running');
+  assert.equal(session.npm.running, true);
+  fs.rmSync(recorder.slot.jsonFull, { force: true });
+  session.npm.refreshRecorded();
+  assert.equal(run.status, 'stopped');
+  assert.equal(session.npm.running, false);
+  assert.ok(run.endedAt > 0);
+});

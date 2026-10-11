@@ -2389,3 +2389,27 @@ test('diff groups show the age of the newest file', () => {
   assert.equal(groups.dirs[0].date, '5m ago');
   assert.equal(groups.exts[0].date, '5m ago');
 });
+
+test('pruning keeps the newest run records whatever their names', () => {
+  const dir = tempDir('reslop-runs-');
+  try {
+    let now = 1000;
+    const clock = () => now;
+    for (let i = 0; i < 30; i++) {
+      now += 1000;
+      new RunRecorder(dir, 'zeta --check', { now: clock }).finish(0);
+    }
+    now += 1000;
+    const newest = new RunRecorder(dir, 'alpha --lint', { now: clock });
+    now += 1000;
+    new RunRecorder(dir, 'zeta --check', { now: clock }).finish(0);
+    const kept = readRuns(dir);
+    const found = kept.find((record) => record.id === newest.record.id);
+    assert.ok(found, 'the newest alpha record was pruned');
+    assert.equal(found.status, 'running');
+    const oldest = Math.min(...kept.map((record) => record.startedAt));
+    assert.ok(oldest > 2000);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
