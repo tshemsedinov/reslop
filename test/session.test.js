@@ -6760,3 +6760,26 @@ test('quitting does not wait for an install or a stuck write', async () => {
   assert.ok(Date.now() - before < 1000);
   assert.equal(stuck.session.ops.unlanded(), true);
 });
+
+test('leaving the editor does not stage a change made outside', async () => {
+  const { session, repo } = await editFile([sampleItem('a.js')]);
+  repo.fileBodies['a.js'] = 'outside\n';
+  session.refreshFromRepo({ keepView: true, quiet: true });
+  await session.ops.idle();
+  assert.equal(session.editor.text, 'outside\n');
+  session.handleEvent({ type: 'key', key: 'escape' });
+  await session.ops.idle();
+  assert.equal(session.mode, 'review');
+  assert.equal(session.status, 'saved');
+  assert.deepEqual(repo.stagedPaths, []);
+  session.dispatch('code');
+  await session.ops.idle();
+  repo.fileBodies['a.js'] = 'again\n';
+  session.refreshFromRepo({ keepView: true, quiet: true });
+  await session.ops.idle();
+  session.editor.replace('again\nmine\n');
+  session.handleEvent({ type: 'key', key: 'escape' });
+  await session.ops.idle();
+  assert.equal(session.status, 'staged');
+  assert.deepEqual(repo.stagedPaths, ['a.js']);
+});
