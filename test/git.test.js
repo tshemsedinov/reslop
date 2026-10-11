@@ -108,7 +108,7 @@ test('a nested git repository stays out of the worktree load', async () => {
     const loaded = await load(repo.dir, [], { deferExtras: false });
     const paths = loaded.items.map((item) => item.file.newPath);
     assert.deepEqual(paths, ['note.txt']);
-    const names = createGitRepo().listFiles(repo.dir);
+    const names = await createGitRepo().listFiles(repo.dir);
     assert.equal(names.includes('note.txt'), true);
     assert.equal(names.includes('nested/'), false);
   } finally {
@@ -129,6 +129,7 @@ test('AC8 revert staged restores HEAD', async () => {
     session.dispatch('add');
     assert.equal(session.status, '');
     session.dispatch('revert');
+    await session.ops.idle();
     assert.equal(repo.read('f.txt'), 'one\n');
     const cached = repo.git(['diff', '--cached']);
     assert.equal(cached, '');
@@ -237,6 +238,7 @@ test('files pane revert restores the whole file', async () => {
     const session = await sessionFor(repo.dir);
     session.showFiles();
     session.dispatch('revert');
+    await session.ops.idle();
     assert.equal(repo.read('f.txt'), 'keep\nAAA\nkeep\nBBB\nkeep\n');
     const vsHead = repo.git(['diff', 'HEAD', '--', 'f.txt']);
     assert.equal(vsHead, '');
@@ -575,22 +577,22 @@ test('commitChanges amend replaces the last message', async () => {
     const log = repo.git(['log', '--format=%s']).trim().split('\n');
     assert.equal(log.length, 1);
     assert.equal(log[0], 'rewritten');
-    assert.equal(lastMessage(repo.dir), 'rewritten');
+    assert.equal(await lastMessage(repo.dir), 'rewritten');
   } finally {
     repo.cleanup();
   }
 });
 
-test('hasStaged is false until files are added', () => {
+test('hasStaged is false until files are added', async () => {
   const repo = makeRepo();
   try {
     repo.write('f.txt', 'a\n');
     repo.git(['add', 'f.txt']);
     repo.git(['commit', '-m', 'init']);
-    assert.equal(hasStaged(repo.dir), false);
+    assert.equal(await hasStaged(repo.dir), false);
     repo.write('f.txt', 'b\n');
     repo.git(['add', 'f.txt']);
-    assert.equal(hasStaged(repo.dir), true);
+    assert.equal(await hasStaged(repo.dir), true);
   } finally {
     repo.cleanup();
   }
@@ -606,28 +608,31 @@ test('updateCommit folds staged changes into the selected commit', async () => {
       repo.write('b.txt', 'two\n');
       repo.git(['add', 'b.txt']);
       repo.git(['commit', '-m', 'two\n\nbody']);
-      const head = listCommits(repo.dir)[0].sha;
+      const head = (await listCommits(repo.dir))[0].sha;
       repo.write('b.txt', 'two-more\n');
       repo.git(['add', 'b.txt']);
       await git[method](repo.dir, head);
-      const after = listCommits(repo.dir);
+      const after = await listCommits(repo.dir);
       assert.deepEqual(
         after.map((entry) => entry.subject),
         ['two', 'one'],
       );
       assert.equal(repo.read('b.txt'), 'two-more\n');
-      assert.equal(git.commitMessage(repo.dir, after[0].sha), 'two\n\nbody');
+      assert.equal(
+        await git.commitMessage(repo.dir, after[0].sha),
+        'two\n\nbody',
+      );
       repo.write('a.txt', 'one-more\n');
       repo.git(['add', 'a.txt']);
       await git[method](repo.dir, after[1].sha);
-      const folded = listCommits(repo.dir);
+      const folded = await listCommits(repo.dir);
       assert.deepEqual(
         folded.map((entry) => entry.subject),
         ['two', 'one'],
       );
       assert.equal(repo.read('a.txt'), 'one-more\n');
       assert.equal(repo.read('b.txt'), 'two-more\n');
-      assert.equal(git.commitMessage(repo.dir, folded[1].sha), 'one');
+      assert.equal(await git.commitMessage(repo.dir, folded[1].sha), 'one');
     } finally {
       repo.cleanup();
     }
@@ -672,7 +677,7 @@ test('load includes the current branch', async () => {
     repo.git(['commit', '-m', 'init']);
     const loaded = await load(repo.dir, [], { deferExtras: false });
     assert.equal(loaded.branch, 'main');
-    assert.equal(currentBranch(repo.dir), 'main');
+    assert.equal(await currentBranch(repo.dir), 'main');
   } finally {
     repo.cleanup();
   }
@@ -684,7 +689,7 @@ test('listBranches createBranch and checkoutBranch', async () => {
     repo.write('f.txt', 'a\n');
     repo.git(['add', 'f.txt']);
     repo.git(['commit', '-m', 'init']);
-    const before = listBranches(repo.dir);
+    const before = await listBranches(repo.dir);
     assert.equal(before.length, 1);
     assert.equal(before[0].name, 'main');
     assert.equal(before[0].current, true);
@@ -696,8 +701,8 @@ test('listBranches createBranch and checkoutBranch', async () => {
     assert.match(before[0].sha, /^[0-9a-f]{7,}$/);
     assert.ok(before[0].date);
     await createBranch(repo.dir, 'feat');
-    assert.equal(currentBranch(repo.dir), 'feat');
-    const onFeat = listBranches(repo.dir);
+    assert.equal(await currentBranch(repo.dir), 'feat');
+    const onFeat = await listBranches(repo.dir);
     const featNow = onFeat.find((entry) => entry.name === 'feat');
     const mainNow = onFeat.find((entry) => entry.name === 'main');
     assert.equal(featNow.current, true);
@@ -705,8 +710,8 @@ test('listBranches createBranch and checkoutBranch', async () => {
     assert.equal(mainNow.current, false);
     assert.equal(mainNow.isDefault, true);
     await checkoutBranch(repo.dir, 'main');
-    assert.equal(currentBranch(repo.dir), 'main');
-    const after = listBranches(repo.dir);
+    assert.equal(await currentBranch(repo.dir), 'main');
+    const after = await listBranches(repo.dir);
     const names = after.map((entry) => entry.name);
     assert.ok(names.includes('main'));
     assert.ok(names.includes('feat'));
@@ -739,7 +744,7 @@ for (const method of ['rebaseBranch']) {
       repo.git(['commit', '-m', 'on-main']);
       await checkoutBranch(repo.dir, 'feat');
       await git[method](repo.dir, 'main');
-      assert.equal(currentBranch(repo.dir), 'feat');
+      assert.equal(await currentBranch(repo.dir), 'feat');
       assert.equal(repo.read('g.txt'), 'main\n');
       assert.equal(repo.read('f.txt'), 'feat\n');
       const log = repo.git(['log', '--oneline']);
@@ -768,7 +773,7 @@ for (const method of ['rebaseBranch']) {
       repo.git(['commit', '-m', 'on-main']);
       await checkoutBranch(repo.dir, 'feat');
       await assert.rejects(async () => git[method](repo.dir, 'main'));
-      assert.equal(currentBranch(repo.dir), 'feat');
+      assert.equal(await currentBranch(repo.dir), 'feat');
       assert.equal(repo.read('f.txt'), 'feat\n');
     } finally {
       repo.cleanup();
@@ -776,7 +781,7 @@ for (const method of ['rebaseBranch']) {
   });
 }
 
-test('listCommits is newest first with author date and hash', () => {
+test('listCommits is newest first with author date and hash', async () => {
   const repo = makeRepo();
   try {
     repo.write('f.txt', 'a\n');
@@ -785,7 +790,7 @@ test('listCommits is newest first with author date and hash', () => {
     repo.write('f.txt', 'b\n');
     repo.git(['add', 'f.txt']);
     repo.git(['commit', '-m', 'next']);
-    const listed = listCommits(repo.dir);
+    const listed = await listCommits(repo.dir);
     assert.equal(listed.length, 2);
     assert.equal(listed[0].subject, 'next');
     assert.equal(listed[0].head, true);
@@ -807,7 +812,7 @@ test('listCommits is newest first with author date and hash', () => {
   }
 });
 
-test('listCommits shows branch tips and the full message', () => {
+test('listCommits shows branch tips and the full message', async () => {
   const repo = makeRepo();
   try {
     repo.write('f.txt', 'a\n');
@@ -828,7 +833,7 @@ test('listCommits shows branch tips and the full message', () => {
     repo.write('f.txt', 'c\n');
     repo.git(['add', 'f.txt']);
     repo.git(['commit', '-m', 'third']);
-    const listed = listCommits(repo.dir);
+    const listed = await listCommits(repo.dir);
     assert.equal(listed[0].subject, 'third');
     assert.equal(listed[0].refs, 'HEAD -> main');
     assert.equal(listed[1].subject, 'next');
@@ -855,9 +860,11 @@ for (const method of ['dropCommit']) {
       repo.write('f.txt', 'b\n');
       repo.git(['add', 'f.txt']);
       repo.git(['commit', '-m', 'two']);
-      const listed = listCommits(repo.dir);
+      const listed = await listCommits(repo.dir);
       await git[method](repo.dir, listed[0].sha);
-      const subjects = listCommits(repo.dir).map((entry) => entry.subject);
+      const subjects = (await listCommits(repo.dir)).map(
+        (entry) => entry.subject,
+      );
       assert.deepEqual(subjects, ['one']);
       assert.equal(repo.read('f.txt'), 'b\n');
     } finally {
@@ -879,9 +886,11 @@ for (const method of ['dropCommit']) {
       repo.write('c.txt', 'c\n');
       repo.git(['add', 'c.txt']);
       repo.git(['commit', '-m', 'three']);
-      const older = listCommits(repo.dir)[1].sha;
+      const older = (await listCommits(repo.dir))[1].sha;
       await git[method](repo.dir, older);
-      const subjects = listCommits(repo.dir).map((entry) => entry.subject);
+      const subjects = (await listCommits(repo.dir)).map(
+        (entry) => entry.subject,
+      );
       assert.deepEqual(subjects, ['three', 'one']);
       assert.equal(repo.read('a.txt'), 'a\n');
       assert.equal(repo.read('c.txt'), 'c\n');
@@ -898,9 +907,9 @@ test('dropCommit refuses the root commit', async () => {
     repo.write('f.txt', 'a\n');
     repo.git(['add', 'f.txt']);
     repo.git(['commit', '-m', 'init']);
-    const root = listCommits(repo.dir)[0].sha;
+    const root = (await listCommits(repo.dir))[0].sha;
     await assert.rejects(() => dropCommit(repo.dir, root));
-    assert.equal(listCommits(repo.dir)[0].subject, 'init');
+    assert.equal((await listCommits(repo.dir))[0].subject, 'init');
   } finally {
     repo.cleanup();
   }
@@ -919,13 +928,13 @@ for (const method of ['applyFixup']) {
       repo.write('b.txt', 'two-fix\n');
       repo.git(['add', 'b.txt']);
       repo.git(['commit', '-m', 'fixup! two']);
-      const listed = listCommits(repo.dir);
+      const listed = await listCommits(repo.dir);
       assert.deepEqual(
         listed.map((entry) => entry.subject),
         ['fixup! two', 'two', 'one'],
       );
       await git[method](repo.dir, listed[0].sha);
-      const after = listCommits(repo.dir).map((entry) => entry.subject);
+      const after = (await listCommits(repo.dir)).map((entry) => entry.subject);
       assert.deepEqual(after, ['two', 'one']);
       assert.equal(repo.read('b.txt'), 'two-fix\n');
     } finally {
@@ -940,7 +949,7 @@ test('applyFixup refuses a non-fixup commit', async () => {
     repo.write('f.txt', 'a\n');
     repo.git(['add', 'f.txt']);
     repo.git(['commit', '-m', 'init']);
-    const sha = listCommits(repo.dir)[0].sha;
+    const sha = (await listCommits(repo.dir))[0].sha;
     await assert.rejects(() => applyFixup(repo.dir, sha), /not a fixup commit/);
   } finally {
     repo.cleanup();
@@ -959,11 +968,13 @@ for (const method of ['rewordCommit']) {
       repo.git(['commit', '-m', 'two']);
       repo.write('s.txt', 'staged\n');
       repo.git(['add', 's.txt']);
-      const head = listCommits(repo.dir)[0].sha;
+      const head = (await listCommits(repo.dir))[0].sha;
       await git[method](repo.dir, head, 'TWO');
-      const listed = listCommits(repo.dir).map((entry) => entry.subject);
+      const listed = (await listCommits(repo.dir)).map(
+        (entry) => entry.subject,
+      );
       assert.deepEqual(listed, ['TWO', 'one']);
-      assert.equal(hasStaged(repo.dir), true);
+      assert.equal(await hasStaged(repo.dir), true);
       assert.equal(repo.exists('s.txt'), true);
       const cached = repo.git(['diff', '--cached', '--', 's.txt']);
       assert.match(cached, /staged/);
@@ -986,9 +997,11 @@ for (const method of ['rewordCommit']) {
       repo.write('c.txt', 'c\n');
       repo.git(['add', 'c.txt']);
       repo.git(['commit', '-m', 'three']);
-      const older = listCommits(repo.dir)[1].sha;
+      const older = (await listCommits(repo.dir))[1].sha;
       await git[method](repo.dir, older, 'TWO');
-      const listed = listCommits(repo.dir).map((entry) => entry.subject);
+      const listed = (await listCommits(repo.dir)).map(
+        (entry) => entry.subject,
+      );
       assert.deepEqual(listed, ['three', 'TWO', 'one']);
       assert.equal(repo.read('a.txt'), 'a\n');
       assert.equal(repo.read('b.txt'), 'b\n');
@@ -1008,15 +1021,15 @@ test('dropBranch deletes a branch that is not current', async () => {
     await createBranch(repo.dir, 'feat');
     await checkoutBranch(repo.dir, 'main');
     await dropBranch(repo.dir, 'feat');
-    const names = listBranches(repo.dir).map((entry) => entry.name);
+    const names = (await listBranches(repo.dir)).map((entry) => entry.name);
     assert.equal(names.includes('feat'), false);
-    assert.equal(currentBranch(repo.dir), 'main');
+    assert.equal(await currentBranch(repo.dir), 'main');
   } finally {
     repo.cleanup();
   }
 });
 
-test('listBranches reports ahead and behind vs upstream', () => {
+test('listBranches reports ahead and behind vs upstream', async () => {
   const repo = makeRepo();
   const bare = makeBare();
   try {
@@ -1025,14 +1038,16 @@ test('listBranches reports ahead and behind vs upstream', () => {
     repo.git(['commit', '-m', 'init']);
     repo.git(['remote', 'add', 'origin', bare.dir]);
     repo.git(['push', '-u', 'origin', 'HEAD']);
-    const synced = listBranches(repo.dir).find((entry) => entry.current);
+    const synced = (await listBranches(repo.dir)).find(
+      (entry) => entry.current,
+    );
     assert.equal(synced.ahead, 0);
     assert.equal(synced.behind, 0);
     assert.equal(synced.gone, false);
     repo.write('f.txt', 'b\n');
     repo.git(['add', 'f.txt']);
     repo.git(['commit', '-m', 'next']);
-    const ahead = listBranches(repo.dir).find((entry) => entry.current);
+    const ahead = (await listBranches(repo.dir)).find((entry) => entry.current);
     assert.equal(ahead.ahead, 1);
     assert.equal(ahead.behind, 0);
     assert.equal(ahead.subject, 'next');
@@ -1042,7 +1057,7 @@ test('listBranches reports ahead and behind vs upstream', () => {
   }
 });
 
-test('listBranches prefers origin HEAD then master', () => {
+test('listBranches prefers origin HEAD then master', async () => {
   const repo = makeRepo();
   const bare = makeBare();
   try {
@@ -1050,14 +1065,14 @@ test('listBranches prefers origin HEAD then master', () => {
     repo.git(['add', 'f.txt']);
     repo.git(['commit', '-m', 'init']);
     repo.git(['branch', '-m', 'master']);
-    const renamed = listBranches(repo.dir);
+    const renamed = await listBranches(repo.dir);
     assert.equal(renamed[0].name, 'master');
     assert.equal(renamed[0].isDefault, true);
     repo.git(['branch', 'main']);
     repo.git(['remote', 'add', 'origin', bare.dir]);
     repo.git(['push', 'origin', 'main', 'master']);
     repo.git(['remote', 'set-head', 'origin', 'master']);
-    const listed = listBranches(repo.dir);
+    const listed = await listBranches(repo.dir);
     const main = listed.find((entry) => entry.name === 'main');
     const master = listed.find((entry) => entry.name === 'master');
     assert.equal(master.isDefault, true);
@@ -1341,7 +1356,7 @@ test('editItem updates staged added lines in the index', async () => {
   }
 });
 
-test('listFiles includes tracked and untracked paths', () => {
+test('listFiles includes tracked and untracked paths', async () => {
   const repo = makeRepo();
   try {
     repo.write('b.js', 'b\n');
@@ -1349,9 +1364,9 @@ test('listFiles includes tracked and untracked paths', () => {
     repo.git(['add', '.']);
     repo.git(['commit', '-m', 'init']);
     repo.write('z.js', 'z\n');
-    const names = createGitRepo().listFiles(repo.dir);
+    const names = await createGitRepo().listFiles(repo.dir);
     assert.deepEqual(names, ['a.js', 'b.js', 'z.js']);
-    assert.equal(createGitRepo().fileText(repo.dir, 'a.js'), 'a\n');
+    assert.equal(await createGitRepo().fileText(repo.dir, 'a.js'), 'a\n');
     createGitRepo().writeFile(repo.dir, 'nested/x.js', 'x\n');
     assert.equal(repo.read('nested/x.js'), 'x\n');
   } finally {
@@ -1423,3 +1438,35 @@ for (const first of ['git', 'branches', 'deps']) {
     assert.equal(result.status, 0, result.stderr);
   });
 }
+
+test('repo reads answer through promises', async () => {
+  const repo = makeRepo();
+  try {
+    repo.write('a.js', 'a\n');
+    repo.git(['add', '.']);
+    repo.git(['commit', '-m', 'init']);
+    const source = createGitRepo();
+    const reads = {
+      toplevel: source.toplevel(repo.dir),
+      resolveRev: source.resolveRev(repo.dir, 'HEAD'),
+      listFiles: source.listFiles(repo.dir),
+      fileText: source.fileText(repo.dir, 'a.js', 'HEAD'),
+      hasStaged: source.hasStaged(repo.dir),
+      lastMessage: source.lastMessage(repo.dir),
+      listBranches: source.listBranches(repo.dir),
+      listCommits: source.listCommits(repo.dir),
+      currentBranch: source.currentBranch(repo.dir),
+    };
+    for (const name of Object.keys(reads)) {
+      assert.ok(reads[name] instanceof Promise, name);
+    }
+    assert.equal(await reads.fileText, 'a\n');
+    assert.equal(await reads.hasStaged, false);
+    assert.equal(await reads.lastMessage, 'init');
+    assert.equal((await reads.listCommits).length, 1);
+    assert.match(await reads.resolveRev, /^[0-9a-f]{40}$/);
+    await Promise.all(Object.values(reads));
+  } finally {
+    repo.cleanup();
+  }
+});

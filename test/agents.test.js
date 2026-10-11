@@ -140,7 +140,7 @@ const openUi = async () => {
     color: false,
     startPane: 'dashboard',
   });
-  ui.ensureRepo();
+  await ui.ensureRepo();
   await ui.load();
   ui.agents.authProbe = () => true;
   return { ui, repo, stdout };
@@ -1080,7 +1080,7 @@ test('model menu uses background and a right scroller', async () => {
     color: true,
     startPane: 'dashboard',
   });
-  ui.ensureRepo();
+  await ui.ensureRepo();
   await ui.load();
   try {
     const models = Array.from({ length: 16 }, (_, i) => `model-${i}`);
@@ -1849,7 +1849,7 @@ test('agent output shows a scroller when the log overflows', async () => {
     color: true,
     startPane: 'dashboard',
   });
-  ui.ensureRepo();
+  await ui.ensureRepo();
   await ui.load();
   try {
     ui.agents.listModels = async () => [];
@@ -1905,7 +1905,7 @@ test('dragging the agent output scroller scrolls the log', async () => {
     color: true,
     startPane: 'dashboard',
   });
-  ui.ensureRepo();
+  await ui.ensureRepo();
   await ui.load();
   try {
     ui.agents.listModels = async () => [];

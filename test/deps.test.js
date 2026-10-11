@@ -1932,6 +1932,7 @@ test('files pane revert restores both dependency files', async () => {
     assert.ok(dep);
     session.fileCursor = files.indexOf(dep);
     session.dispatch('revert');
+    await session.ops.idle();
     assert.equal(repo.read('package.json'), pkgJson(oldDeps));
     assert.equal(
       repo.read('package-lock.json'),

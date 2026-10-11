@@ -97,7 +97,7 @@ const openUi = async () => {
     color: false,
     startPane: 'dashboard',
   });
-  ui.ensureRepo();
+  await ui.ensureRepo();
   await ui.load();
   ui.agents.authProbe = () => true;
   return { ui, repo };

@@ -622,7 +622,7 @@ const openDashboard = async (rows = 40, columns = 120) => {
     color: false,
     startPane: 'dashboard',
   });
-  ui.ensureRepo();
+  await ui.ensureRepo();
   await ui.loadReady();
   ui.uiOpen = true;
   ui.lifecycle.startWatch();
@@ -750,44 +750,47 @@ test('the dashboard run panel shows a newly started command', async () => {
   }
 });
 
-const press = (ui, key) => ui.handleEvent({ type: 'key', key });
+const press = async (ui, key) => {
+  ui.handleEvent({ type: 'key', key });
+  await ui.ops.idle();
+};
 
 test('hotkeys open screens and Esc returns to the dashboard', async () => {
   const { ui, close } = await openDashboard();
   try {
-    press(ui, 'c');
+    await press(ui, 'c');
     assert.equal(ui.pane, 'commits');
-    press(ui, 'escape');
+    await press(ui, 'escape');
     assert.equal(ui.pane, 'dashboard');
-    press(ui, 'b');
+    await press(ui, 'b');
     assert.equal(ui.pane, 'branches');
-    press(ui, 'escape');
+    await press(ui, 'escape');
     assert.equal(ui.pane, 'dashboard');
-    press(ui, 'n');
+    await press(ui, 'n');
     assert.equal(ui.pane, 'packages');
-    press(ui, 'escape');
+    await press(ui, 'escape');
     assert.equal(ui.pane, 'dashboard');
-    press(ui, 'r');
+    await press(ui, 'r');
     assert.equal(ui.pane, 'npm');
-    press(ui, 'escape');
+    await press(ui, 'escape');
     assert.equal(ui.pane, 'dashboard');
-    press(ui, 'f');
+    await press(ui, 'f');
     assert.equal(ui.pane, 'files');
-    press(ui, 'escape');
+    await press(ui, 'escape');
     assert.equal(ui.pane, 'dashboard');
-    press(ui, 'd');
+    await press(ui, 'd');
     assert.equal(ui.pane, 'files');
-    press(ui, 'escape');
+    await press(ui, 'escape');
     assert.equal(ui.pane, 'dashboard');
-    press(ui, 't');
+    await press(ui, 't');
     assert.equal(ui.nav.tasksOpen, true);
-    press(ui, 'escape');
+    await press(ui, 'escape');
     assert.equal(ui.pane, 'dashboard');
     assert.equal(ui.nav.tasksOpen, false);
     ui.agents.listModels = async () => [];
-    press(ui, 'a');
+    await press(ui, 'a');
     assert.equal(ui.pane, 'agents');
-    press(ui, 'escape');
+    await press(ui, 'escape');
     assert.equal(ui.pane, 'dashboard');
   } finally {
     await close();
@@ -801,7 +804,7 @@ test('Esc on the dashboard quits', async () => {
     ui.onQuit = () => {
       quit += 1;
     };
-    press(ui, 'escape');
+    await press(ui, 'escape');
     assert.equal(quit, 1);
   } finally {
     await close();
@@ -831,7 +834,8 @@ test('the dashboard Esc button quits', async () => {
 test('other keys do nothing on the dashboard', async () => {
   const { ui, close } = await openDashboard();
   try {
-    for (const key of ['j', 'k', 'down', 'up', 's', 'u', 'x']) press(ui, key);
+    const keys = ['j', 'k', 'down', 'up', 's', 'u', 'x'];
+    for (const key of keys) await press(ui, key);
     assert.equal(ui.pane, 'dashboard');
   } finally {
     await close();
@@ -851,6 +855,7 @@ test('the footer offers the block buttons and opens screens', async () => {
     const at = { x: hit.x0 + 1, y, btn: 0, button: 0 };
     ui.handleEvent({ type: 'mouse', kind: 'press', press: true, ...at });
     ui.handleEvent({ type: 'mouse', kind: 'release', press: false, ...at });
+    await ui.ops.idle();
     assert.equal(ui.pane, 'commits');
   } finally {
     await close();
@@ -866,6 +871,7 @@ test('a click on a tile opens its screen', async () => {
     const at = { x: hit.x0 + 2, y: hit.y, btn: 0, button: 0 };
     ui.handleEvent({ type: 'mouse', kind: 'press', press: true, ...at });
     ui.handleEvent({ type: 'mouse', kind: 'release', press: false, ...at });
+    await ui.ops.idle();
     assert.equal(ui.pane, 'branches');
     ui.nav.pane = 'dashboard';
     ui.draw();
@@ -874,6 +880,7 @@ test('a click on a tile opens its screen', async () => {
     const npmAt = { x: npm.x0 + 2, y: npm.y, btn: 0, button: 0 };
     ui.handleEvent({ type: 'mouse', kind: 'press', press: true, ...npmAt });
     ui.handleEvent({ type: 'mouse', kind: 'release', press: false, ...npmAt });
+    await ui.ops.idle();
     assert.equal(ui.pane, 'packages');
   } finally {
     await close();

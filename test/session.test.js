@@ -266,6 +266,12 @@ const openSession = async (items, extra = {}) => {
   return { session, repo, stdout, cwd };
 };
 
+// Lets held reads finish without waiting for a write the test keeps pending
+const settle = () =>
+  new Promise((resolve) => {
+    setImmediate(resolve);
+  });
+
 const clickStatusChoice = (session, id) => {
   session.draw();
   const hit = session.lastFrame.statusHits.find((entry) => entry.id === id);
@@ -981,6 +987,7 @@ test('files pane disables mode and feedback', async () => {
   assert.equal(session.mode, 'review');
   assert.equal(session.pane, 'files');
   session.dispatch('code');
+  await session.ops.idle();
   assert.equal(session.pane, 'unit');
   assert.equal(session.composeKind, 'file');
 });
@@ -2649,6 +2656,7 @@ test('enter on uncommitted changes opens the commit editor', async () => {
   });
   session.pushInput('c');
   session.handleEvent({ type: 'key', key: 'enter' });
+  await session.ops.idle();
   assert.equal(session.pane, 'commits');
   assert.equal(session.mode, 'compose');
   assert.equal(session.commitKind, 'commit');
@@ -2662,17 +2670,20 @@ test('c commits, amends the latest, or fixups an older commit', async () => {
   session.pushInput('c');
   assert.equal(session.commitCursor, 0);
   session.handleEvent({ type: 'key', key: 'insert' });
+  await session.ops.idle();
   assert.equal(session.commitKind, 'commit');
   session.composer.closeCompose();
   session.dispatch('next');
   session.handleEvent({ type: 'key', key: 'insert' });
   session.handleEvent({ type: 'key', key: 'a' });
+  await session.ops.idle();
   assert.equal(session.commitCursor, 1);
   assert.equal(session.commitKind, 'amend');
   session.composer.closeCompose();
   session.dispatch('next');
   session.handleEvent({ type: 'key', key: 'insert' });
   session.handleEvent({ type: 'key', key: 'f' });
+  await session.ops.idle();
   assert.equal(session.commitCursor, 2);
   assert.equal(session.commitKind, 'fixup');
 });
@@ -2683,10 +2694,15 @@ test('click commit footer chooses commit amend or fixup', async () => {
       startPane: 'files',
     });
     session.pushInput('c');
+    await session.ops.idle();
     for (let i = 0; i < steps; i++) session.dispatch('next');
+    for (let i = 0; i < steps; i++) await session.ops.idle();
     clickFooter(session, 'newCommit');
+    await session.ops.idle();
     if (steps === 1) session.handleEvent({ type: 'key', key: 'a' });
+    if (steps === 1) await session.ops.idle();
     if (steps === 2) session.handleEvent({ type: 'key', key: 'f' });
+    if (steps === 2) await session.ops.idle();
     assert.equal(session.pane, 'commits');
     assert.equal(session.mode, 'compose');
     assert.equal(session.commitKind, kind);
@@ -2703,6 +2719,7 @@ test('commits pane v toggles brief on and off', async () => {
   session.pushInput('c');
   assert.equal(session.view().commitView, 'brief');
   session.pushInput('v');
+  await session.ops.idle();
   assert.equal(session.view().commitView, 'full');
   assert.equal(session.status, 'full');
   session.pushInput('v');
@@ -2720,6 +2737,7 @@ test('full mode commit enter inserts a newline', async () => {
   session.pushInput('one');
   session.handleEvent({ type: 'key', key: 'enter' });
   session.pushInput('two');
+  await session.ops.idle();
   assert.equal(session.mode, 'compose');
   assert.equal(session.editor.text, 'one\ntwo');
   assert.equal(repo.commits.length, 0);
@@ -2739,6 +2757,7 @@ test('full mode ctrl-s saves the message', async () => {
   session.handleEvent({ type: 'key', key: 'enter' });
   session.pushInput('two');
   session.handleEvent({ type: 'key', key: 'ctrl-s' });
+  await session.ops.idle();
   assert.equal(session.mode, 'review');
   assert.equal(repo.commits.length, 1);
   assert.equal(repo.commits[0].message, 'one\ntwo');
@@ -2753,6 +2772,7 @@ test('full mode enter keeps the blank line after the subject', async () => {
   session.handleEvent({ type: 'key', key: 'insert' });
   session.pushInput('ship it');
   session.handleEvent({ type: 'key', key: 'enter' });
+  await session.ops.idle();
   assert.equal(session.mode, 'compose');
   assert.equal(session.editor.text, 'ship it\n');
   session.handleEvent({ type: 'key', key: 'enter' });
@@ -2763,6 +2783,7 @@ test('full mode enter keeps the blank line after the subject', async () => {
   session.handleEvent({ type: 'key', key: 'enter' });
   assert.equal(session.mode, 'compose');
   session.handleEvent({ type: 'key', key: 'enter' });
+  await session.ops.idle();
   assert.equal(session.mode, 'review');
   assert.equal(repo.commits[0].message, 'ship it\n\nexplain');
 });
@@ -2777,9 +2798,11 @@ test('full mode enter three times saves a one-line message', async () => {
   session.pushInput('  ship it  ');
   session.handleEvent({ type: 'key', key: 'enter' });
   session.handleEvent({ type: 'key', key: 'enter' });
+  await session.ops.idle();
   assert.equal(session.mode, 'compose');
   assert.equal(session.editor.text, '  ship it  \n\n');
   session.handleEvent({ type: 'key', key: 'enter' });
+  await session.ops.idle();
   assert.equal(session.mode, 'review');
   assert.equal(repo.commits[0].message, 'ship it');
 });
@@ -2791,8 +2814,10 @@ test('saving a commit trims spaces and surrounding newlines', async () => {
   session.pushInput('c');
   session.pushInput('v');
   session.handleEvent({ type: 'key', key: 'insert' });
+  await session.ops.idle();
   session.editor.replace('  ship it  \n \n  explain  \n\n');
   session.handleEvent({ type: 'key', key: 'ctrl-s' });
+  await session.ops.idle();
   assert.equal(session.mode, 'review');
   assert.equal(repo.commits[0].message, 'ship it\n\nexplain');
 });
@@ -2807,10 +2832,12 @@ test('editing a commit ignores clicks and scrolls elsewhere', async () => {
   stdout.rows = 32;
   session.pushInput('c');
   session.pushInput('v');
+  await session.ops.idle();
   session.dispatch('next');
   session.dispatch('next');
   session.pushInput('e');
   session.pushInput('x');
+  await session.ops.idle();
   assert.equal(session.mode, 'compose');
   assert.equal(session.commitCursor, 2);
   assert.equal(session.editor.text, 'initx');
@@ -2919,11 +2946,14 @@ test('full mode reword edits the whole message', async () => {
   ]);
   session.pushInput('c');
   session.pushInput('v');
+  await session.ops.idle();
   session.dispatch('next');
   session.pushInput('e');
+  await session.ops.idle();
   assert.equal(session.editor.text, 'land the change\n\nexplain the change');
   session.editor.replace('ship it\n\nnew body');
   session.handleEvent({ type: 'key', key: 'ctrl-s' });
+  await session.ops.idle();
   assert.deepEqual(repo.rewords, [
     {
       sha: 'aaa1111aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
@@ -3101,6 +3131,7 @@ test('compose c inserts a letter and does not open commit', async () => {
 test('diff pane c opens commits', async () => {
   const { session } = await openSession([sampleItem('a.js', 'staged')]);
   session.pushInput('c');
+  await session.ops.idle();
   assert.equal(session.mode, 'review');
   assert.equal(session.pane, 'commits');
 });
@@ -3110,8 +3141,10 @@ test('commits pane skips commit when nothing is staged', async () => {
     startPane: 'files',
   });
   session.pushInput('c');
+  await session.ops.idle();
   assert.equal(session.pane, 'commits');
   session.handleEvent({ type: 'key', key: 'insert' });
+  await session.ops.idle();
   assert.equal(session.mode, 'review');
   assert.equal(session.status, 'nothing to commit');
   assert.equal(repo.commits.length, 0);
@@ -3223,6 +3256,7 @@ test('click commit row selects it', async () => {
     startPane: 'files',
   });
   session.pushInput('c');
+  await session.ops.idle();
   session.draw();
   const hit = session.lastFrame.fileHits.find((entry) => entry.cursor === 1);
   assert.ok(hit);
@@ -3280,6 +3314,7 @@ test('commits pane p applies and s does not push', async () => {
     startPane: 'files',
   });
   session.pushInput('c');
+  await session.ops.idle();
   assert.equal(session.pane, 'commits');
   session.pushInput('p');
   session.pushInput('s');
@@ -3375,7 +3410,7 @@ test('openLoad paints git items before npm extras arrive', async () => {
   const extraItem = sampleItem('package.json');
   extraItem.dep = { change: { name: 'lodash', section: 'dependencies' } };
   const cwd = tempDir('reslop-ui-');
-  let extrasResolve;
+  let extrasResolve = null;
   const extras = new Promise((resolve) => {
     extrasResolve = resolve;
   });
@@ -3437,7 +3472,7 @@ test('openLoad paints git items before npm extras arrive', async () => {
 const openUpdating = async (extra = {}) => {
   const cacheFile = path.join(tempDir('reslop-cache-'), 'update.json');
   const installed = [];
-  let fetchResolve;
+  let fetchResolve = null;
   let fetchGate = null;
   if (extra.gateFetch) {
     fetchGate = new Promise((resolve) => {
@@ -3681,6 +3716,7 @@ test('click status branch opens the branch list', async () => {
     y: hit.y,
     press: false,
   });
+  await session.ops.idle();
   assert.equal(session.pane, 'branches');
 });
 
@@ -3717,6 +3753,7 @@ test('list screens hint 🢐esc and the button goes back', async () => {
   assert.equal(session.current().origin, 'task');
   assert.match(footer(), /^ 🢐esc {2}/);
   clickFooter(session, 'back');
+  await session.ops.idle();
   assert.equal(session.pane, 'files');
 });
 
@@ -3841,13 +3878,14 @@ test('click force push prompt', async () => {
   };
   session.pushInput('b');
   session.pushInput('s');
+  await session.ops.idle();
   clickStatusChoice(session, 'f');
   assert.deepEqual(repo.pushes, [true]);
   assert.equal(session.mode, 'review');
 });
 
 test('pull shows progress until git finishes', async () => {
-  let finish;
+  let finish = null;
   const pending = new Promise((resolve) => {
     finish = resolve;
   });
@@ -3857,6 +3895,7 @@ test('pull shows progress until git finishes', async () => {
   session.repo.pull = () => pending;
   session.pushInput('b');
   session.pushInput('p');
+  await settle();
   assert.equal(repo.pulls.length, 0);
   assert.equal(session.busy, 'pulling');
   assert.equal(session.view().status, 'pulling');
@@ -3865,15 +3904,14 @@ test('pull shows progress until git finishes', async () => {
   assert.equal(session.progressFrame, 1);
   session.pushInput('p');
   finish();
-  await pending;
-  await Promise.resolve();
+  await session.ops.idle();
   assert.equal(session.status, 'pulled');
   assert.equal(session.busy, '');
   assert.equal(session.gitBusy, false);
 });
 
 test('npm i shows progress until install finishes', async () => {
-  let finish;
+  let finish = null;
   const pending = new Promise((resolve) => {
     finish = resolve;
   });
@@ -3894,14 +3932,13 @@ test('npm i shows progress until install finishes', async () => {
   session.tickProgress();
   assert.equal(session.progressFrame, 1);
   finish();
-  await pending;
-  for (let i = 0; i < 6; i++) await Promise.resolve();
+  await session.ops.idle();
   assert.equal(session.status, 'staged');
   assert.equal(session.busy, '');
 });
 
 test('stage moves on while npm install is still running', async () => {
-  let finish;
+  let finish = null;
   const pending = new Promise((resolve) => {
     finish = resolve;
   });
@@ -3939,7 +3976,7 @@ test('stage moves on while npm install is still running', async () => {
 });
 
 test('openLoad shows progress while a remote change loads', async () => {
-  let finish;
+  let finish = null;
   const pending = new Promise((resolve) => {
     finish = resolve;
   });
@@ -3979,7 +4016,7 @@ test('openLoad shows progress while a remote change loads', async () => {
 });
 
 test('checkout shows progress until git finishes', async () => {
-  let finish;
+  let finish = null;
   const pending = new Promise((resolve) => {
     finish = resolve;
   });
@@ -4009,7 +4046,7 @@ test('checkout shows progress until git finishes', async () => {
 });
 
 test('commit shows progress until git finishes', async () => {
-  let finish;
+  let finish = null;
   const pending = new Promise((resolve) => {
     finish = resolve;
   });
@@ -4028,6 +4065,7 @@ test('commit shows progress until git finishes', async () => {
   session.pushInput('land the change');
   await session.ops.idle();
   session.handleEvent({ type: 'key', key: 'enter' });
+  await settle();
   assert.equal(repo.commits.length, 0);
   assert.equal(session.busy, 'committing');
   session.tickProgress();
@@ -4055,6 +4093,7 @@ test('files pane f opens file scope and d drops', async () => {
   const { session, repo } = await openSession([item], { startPane: 'files' });
   session.dispatch('next');
   session.pushInput('f');
+  await session.ops.idle();
   assert.equal(session.fileScope, 'file');
   assert.equal(session.pane, 'files');
   assert.equal(repo.unstageCalls.length, 0);
@@ -4069,6 +4108,7 @@ test('unit scope lists every file sorted by path', async () => {
   });
   repo.extraFiles.push('a.js', 'z.js');
   session.dispatch('file');
+  await session.ops.idle();
   const names = session.fileList().map((entry) => entry.path);
   assert.deepEqual(names, ['a.js', 'b.js', 'z.js']);
 });
@@ -4094,7 +4134,9 @@ test('unit view shows the file with current block marks', async () => {
   repo.fileBodies['a.js'] = 'b\nkeep\nd\n';
   session.dispatch('file');
   session.dispatch('next');
+  await session.ops.idle();
   session.dispatch('open');
+  await session.ops.idle();
   assert.equal(session.pane, 'unit');
   const view = session.view();
   const types = view.unitLines.map((line) => `${line.type}:${line.text}`);
@@ -4163,8 +4205,10 @@ test('file scope next scrolls the whole block into view', async () => {
   repo.fileBodies['a.js'] = `${rows.join('\n')}\n`;
   session.dispatch('file');
   session.dispatch('next');
+  await session.ops.idle();
   session.dispatch('open');
   session.draw();
+  await session.ops.idle();
   session.dispatch('next');
   session.draw();
   const body = stripAnsi(session.lastFrame.rows.join('\n'));
@@ -4202,8 +4246,10 @@ test('file scope next pins an oversized block at its start', async () => {
   repo.fileBodies['a.js'] = `${rows.join('\n')}\n`;
   session.dispatch('file');
   session.dispatch('next');
+  await session.ops.idle();
   session.dispatch('open');
   session.draw();
+  await session.ops.idle();
   session.dispatch('next');
   session.draw();
   const body = stripAnsi(session.lastFrame.rows.join('\n'));
@@ -4245,8 +4291,10 @@ test('file compose keeps del and add highlighting', async () => {
   repo.fileBodies['a.js'] = 'b\nkeep\n';
   session.dispatch('file');
   session.dispatch('next');
+  await session.ops.idle();
   session.dispatch('open');
   session.dispatch('code');
+  await session.ops.idle();
   const types = session
     .view()
     .unitLines.map((line) => `${line.type}:${line.text}`);
@@ -4269,8 +4317,10 @@ test('file compose cursor stays on a trailing empty line', async () => {
   repo.fileBodies['a.js'] = 'b\nkeep\n';
   session.dispatch('file');
   session.dispatch('next');
+  await session.ops.idle();
   session.dispatch('open');
   session.dispatch('code');
+  await session.ops.idle();
   session.editor.cursor = session.editor.text.length;
   session.draw();
   assert.ok(session.lastFrame.cursor);
@@ -4289,11 +4339,14 @@ test('file compose scroll follows the editor cursor', async () => {
   repo.fileBodies['a.js'] = `${rows.join('\n')}\n`;
   session.dispatch('file');
   session.dispatch('next');
+  await session.ops.idle();
   session.dispatch('open');
   session.dispatch('code');
+  await session.ops.idle();
   session.scroll = 0;
   session.editor.cursor = 0;
   for (let i = 0; i < 30; i++) session.composer.handleKey('down');
+  for (let i = 0; i < 30; i++) await session.ops.idle();
   const downScroll = session.scroll;
   assert.ok(downScroll > 0);
   session.editor.cursor = 0;
@@ -4309,11 +4362,16 @@ test('unit view reloads disk text in view and edit', async () => {
   repo.fileBodies['a.js'] = 'b\n';
   session.dispatch('file');
   session.dispatch('next');
+  await session.ops.idle();
   session.dispatch('open');
+  await session.ops.idle();
   repo.fileBodies['a.js'] = 'from-disk\n';
+  session.refreshFromRepo({ keepView: true, quiet: true });
+  await session.ops.idle();
   const view = session.view();
   assert.ok(view.unitLines.some((line) => line.text === 'from-disk'));
   session.dispatch('code');
+  await session.ops.idle();
   repo.fileBodies['a.js'] = 'later\n';
   session.composer.applyDiskText('later\n');
   assert.equal(session.editor.text, 'later\n');
@@ -4325,6 +4383,7 @@ test('insert creates a branch, or commits, amends, or fixups', async () => {
   });
   branch.session.pushInput('b');
   branch.session.handleEvent({ type: 'key', key: 'insert' });
+  await branch.session.ops.idle();
   assert.equal(branch.session.mode, 'compose');
   assert.equal(branch.session.composeKind, 'branch');
   const commits = await openSession([sampleItem('a.js', 'staged')], {
@@ -4332,6 +4391,7 @@ test('insert creates a branch, or commits, amends, or fixups', async () => {
   });
   commits.session.pushInput('c');
   commits.session.handleEvent({ type: 'key', key: 'insert' });
+  await commits.session.ops.idle();
   assert.equal(commits.session.commitKind, 'commit');
   commits.session.composer.closeCompose();
   commits.session.dispatch('next');
@@ -4343,6 +4403,7 @@ test('insert creates a branch, or commits, amends, or fixups', async () => {
   assert.match(headLine, /esc cancel/);
   assert.match(headLine, /update {2}commit {2}amend {2}fixup/);
   commits.session.handleEvent({ type: 'key', key: 'c' });
+  await commits.session.ops.idle();
   assert.equal(commits.session.commitKind, 'commit');
   commits.session.composer.closeCompose();
   commits.session.dispatch('next');
@@ -4351,6 +4412,7 @@ test('insert creates a branch, or commits, amends, or fixups', async () => {
   assert.equal(commits.session.mode, 'review');
   commits.session.handleEvent({ type: 'key', key: 'insert' });
   commits.session.handleEvent({ type: 'key', key: 'a' });
+  await commits.session.ops.idle();
   assert.equal(commits.session.commitCursor, 1);
   assert.equal(commits.session.commitKind, 'amend');
   commits.session.composer.closeCompose();
@@ -4362,6 +4424,7 @@ test('insert creates a branch, or commits, amends, or fixups', async () => {
   assert.match(older, /esc cancel/);
   assert.match(older, /update {2}commit {2}amend {2}fixup/);
   commits.session.handleEvent({ type: 'key', key: 'c' });
+  await commits.session.ops.idle();
   assert.equal(commits.session.commitKind, 'commit');
   assert.equal(commits.session.commitCursor, 0);
   commits.session.composer.closeCompose();
@@ -4369,12 +4432,14 @@ test('insert creates a branch, or commits, amends, or fixups', async () => {
   commits.session.dispatch('next');
   commits.session.handleEvent({ type: 'key', key: 'insert' });
   commits.session.handleEvent({ type: 'key', key: 'a' });
+  await commits.session.ops.idle();
   assert.equal(commits.session.commitCursor, 1);
   assert.equal(commits.session.commitKind, 'amend');
   commits.session.composer.closeCompose();
   commits.session.dispatch('next');
   commits.session.handleEvent({ type: 'key', key: 'insert' });
   commits.session.handleEvent({ type: 'key', key: 'f' });
+  await commits.session.ops.idle();
   assert.equal(commits.session.commitCursor, 2);
   assert.equal(commits.session.commitKind, 'fixup');
 });
@@ -4407,12 +4472,14 @@ test('insert update keeps the commit and takes staged changes', async () => {
   session.handleEvent({ type: 'key', key: 'insert' });
   await session.ops.idle();
   clickStatusChoice(session, 'u');
+  await session.ops.idle();
   assert.deepEqual(repo.updates, [head, older, older]);
   const bare = await openSession([sampleItem('a.js')], { startPane: 'files' });
   bare.session.pushInput('c');
   bare.session.dispatch('next');
   bare.session.handleEvent({ type: 'key', key: 'insert' });
   bare.session.handleEvent({ type: 'key', key: 'enter' });
+  await bare.session.ops.idle();
   assert.equal(bare.session.status, 'nothing to commit');
   assert.deepEqual(bare.repo.updates, []);
 });
@@ -4498,6 +4565,7 @@ test('click drop prompt y and n', async () => {
     startPane: 'files',
   });
   session.pushInput('b');
+  await session.ops.idle();
   session.dispatch('next');
   session.handleEvent({ type: 'key', key: 'delete' });
   clickStatusChoice(session, 'n');
@@ -4513,6 +4581,7 @@ test('escape from branch list returns to files', async () => {
     startPane: 'files',
   });
   session.pushInput('b');
+  await session.ops.idle();
   assert.equal(session.pane, 'branches');
   session.handleEvent({ type: 'key', key: 'escape' });
   assert.equal(session.pane, 'files');
@@ -4718,7 +4787,7 @@ test('packages screen manages dependencies', async () => {
   assert.match(rows.at(-1), /delete/);
   assert.match(rows.at(-1), /wanted/);
   assert.match(rows.at(-1), /latest/);
-  let release;
+  let release = null;
   gate = new Promise((resolve) => {
     release = resolve;
   });
@@ -5839,8 +5908,10 @@ test('click moves the caret in the code and file editors', async () => {
   repo.fileBodies['a.js'] = 'ab\ncd\n';
   session.dispatch('file');
   session.dispatch('next');
+  await session.ops.idle();
   session.dispatch('open');
   session.dispatch('code');
+  await session.ops.idle();
   assert.equal(session.composeKind, 'file');
   session.editor.place(2);
   session.draw();
@@ -5881,12 +5952,14 @@ test('click moves the caret in commit, branch, and npm editors', async () => {
   session.pushInput('c');
   session.handleEvent({ type: 'key', key: 'insert' });
   session.pushInput('hello');
+  await session.ops.idle();
   session.draw();
   clickCaret(session, -4, 0);
   assert.equal(session.editor.cursor, 1);
   session.handleEvent({ type: 'key', key: 'escape' });
   session.pushInput('v');
   session.handleEvent({ type: 'key', key: 'insert' });
+  await session.ops.idle();
   session.editor.replace('ab\ncd');
   session.draw();
   clickCaret(session, -1, -1);
@@ -5895,6 +5968,7 @@ test('click moves the caret in commit, branch, and npm editors', async () => {
   session.handleEvent({ type: 'key', key: 'escape' });
   session.handleEvent({ type: 'key', key: 'escape' });
   session.pushInput('b');
+  await session.ops.idle();
   session.dispatch('newBranch');
   session.pushInput('topic');
   session.draw();
@@ -5956,6 +6030,7 @@ test('table editors scroll long lines horizontally', async () => {
     return row;
   };
   session.pushInput('b');
+  await session.ops.idle();
   session.dispatch('newBranch');
   session.editor.replace(longValue('Q', 'Z'));
   showsTail('Q', 'Z');
@@ -5981,6 +6056,7 @@ test('table editors scroll long lines horizontally', async () => {
   session.handleEvent({ type: 'key', key: 'escape' });
   session.pushInput('c');
   session.handleEvent({ type: 'key', key: 'insert' });
+  await session.ops.idle();
   session.editor.replace(longValue('Q', 'Z'));
   showsTail('Q', 'Z');
   session.handleEvent({ type: 'key', key: 'escape' });
@@ -6040,6 +6116,7 @@ test('editor general and commits settings persist in .reslop', async () => {
     press(session, 'l');
     session.pushInput('c');
     press(session, 'v');
+    await session.ops.idle();
     const saved = JSON.parse(fs.readFileSync(file, 'utf8'));
     assert.equal(saved.lineNumbers, undefined);
     assert.equal(saved.editor.lineNumbers, true);
@@ -6138,6 +6215,7 @@ test('editors select with shift and copy cut paste', async () => {
   press(session, 'escape');
   press(session, 'escape');
   press(session, 'b');
+  await session.ops.idle();
   session.dispatch('newBranch');
   session.pushInput('topic');
   press(session, 'shift-home');
@@ -6257,26 +6335,32 @@ test('slash searches paths on the files and diff screens', async () => {
   assert.equal(session.view().find, null);
 });
 
-test('commit view reads a file from git once, not on every frame', () => {
-  const { fileText } = require('../lib/session/unit.js');
+test('the file view reads a file once, not on every frame', async () => {
+  const { FileReads } = require('../lib/session/reads.js');
   let calls = 0;
   const repo = {
-    fileText: (top, rel, rev) => {
+    fileText: async (top, rel, rev) => {
       calls += 1;
       return `${rev}:${rel}`;
     },
   };
-  const ui = { repo, top: '/repo', rev: 'abc123' };
-  assert.equal(fileText(ui, 'a.js'), 'abc123:a.js');
-  assert.equal(fileText(ui, 'a.js'), 'abc123:a.js');
+  const pending = [];
+  const ops = { track: (promise) => pending.push(promise) };
+  const ui = { repo, ops, top: '/repo', rev: 'abc123', paint: () => {} };
+  const reads = new FileReads(ui);
+  assert.equal(await reads.loadText('a.js'), 'abc123:a.js');
+  assert.equal(reads.textOf('a.js'), 'abc123:a.js');
+  assert.equal(reads.textOf('a.js'), 'abc123:a.js');
   assert.equal(calls, 1);
-  assert.equal(fileText(ui, 'b.js'), 'abc123:b.js');
-  assert.equal(fileText({ ...ui, rev: 'def456' }, 'b.js'), 'def456:b.js');
+  assert.equal(reads.textOf('b.js'), '');
+  assert.equal(reads.textOf('b.js'), '');
+  await Promise.all(pending);
+  assert.equal(reads.textOf('b.js'), 'abc123:b.js');
+  assert.equal(calls, 2);
+  ui.rev = 'def456';
+  assert.equal(reads.cached('b.js'), null);
+  assert.equal(await reads.loadText('b.js'), 'def456:b.js');
   assert.equal(calls, 3);
-  const worktree = { repo, top: '/repo', rev: '' };
-  fileText(worktree, 'a.js');
-  fileText(worktree, 'a.js');
-  assert.equal(calls, 5);
 });
 
 test('an external run whose record disappears stops spinning', async () => {
@@ -6294,4 +6378,82 @@ test('an external run whose record disappears stops spinning', async () => {
   assert.equal(run.status, 'stopped');
   assert.equal(session.npm.running, false);
   assert.ok(run.endedAt > 0);
+});
+
+test('repo writes run one at a time and in order', async () => {
+  const { session } = await openSession([sampleItem('a.js')]);
+  const seen = [];
+  let release = null;
+  const held = new Promise((resolve) => {
+    release = resolve;
+  });
+  const slow = async () => {
+    seen.push('slow start');
+    await held;
+    seen.push('slow end');
+  };
+  const failing = async () => {
+    seen.push('failing');
+    throw new Error('no');
+  };
+  const first = session.ops.exclusive(slow);
+  const second = session.ops.exclusive(failing);
+  const third = session.ops.exclusive(async () => seen.push('last'));
+  assert.deepEqual(seen, ['slow start']);
+  release();
+  await first;
+  await assert.rejects(second, /no/);
+  await third;
+  assert.deepEqual(seen, ['slow start', 'slow end', 'failing', 'last']);
+  session.ops.exclusive(async () => seen.push('free'));
+  assert.equal(seen.at(-1), 'free');
+});
+
+test('keys typed while a list loads are handled after it opens', async () => {
+  const { session, repo } = await openSession([sampleItem('a.js')], {
+    startPane: 'files',
+  });
+  let deliver = null;
+  const list = repo.listCommits();
+  repo.listCommits = () =>
+    new Promise((resolve) => {
+      deliver = () => resolve(list);
+    });
+  session.pushInput('c');
+  session.pushInput('\x1b[B');
+  await settle();
+  assert.equal(session.pane, 'files');
+  assert.equal(session.commitCursor, 0);
+  deliver();
+  await session.ops.idle();
+  assert.equal(session.pane, 'commits');
+  assert.equal(session.commitCursor, 1);
+});
+
+test('the file list and file view read the repo only once', async () => {
+  const { session, repo } = await openSession([sampleItem('a.js')], {
+    startPane: 'files',
+  });
+  const calls = { names: 0, text: 0 };
+  const { listFiles, fileText } = repo;
+  repo.listFiles = (...args) => {
+    calls.names += 1;
+    return listFiles(...args);
+  };
+  repo.fileText = (...args) => {
+    calls.text += 1;
+    return fileText(...args);
+  };
+  repo.extraFiles.push('z.js');
+  session.dispatch('file');
+  await session.ops.idle();
+  for (let i = 0; i < 5; i++) session.view();
+  const names = session.fileList().map((entry) => entry.path);
+  assert.deepEqual(names, ['a.js', 'z.js']);
+  assert.equal(calls.names, 1);
+  session.dispatch('open');
+  await session.ops.idle();
+  assert.equal(session.pane, 'unit');
+  for (let i = 0; i < 5; i++) session.view();
+  assert.equal(calls.text, 1);
 });

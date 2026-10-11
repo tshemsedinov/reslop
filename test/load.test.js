@@ -49,7 +49,7 @@ test('abort replaces the signal and marks the old one aborted', () => {
 });
 
 test('a slow load cannot replace a newer load', async () => {
-  let finishA;
+  let finishA = null;
   const gateA = new Promise((resolve) => {
     finishA = resolve;
   });
@@ -128,7 +128,7 @@ test('resetState allows a second openLoad after a completed load', async () => {
 });
 
 test('openLoad shares one in-flight promise without reset', async () => {
-  let finish;
+  let finish = null;
   const gate = new Promise((resolve) => {
     finish = resolve;
   });
@@ -158,7 +158,7 @@ test('openLoad shares one in-flight promise without reset', async () => {
 });
 
 test('reset rejects a late snapshot that ignores abort', async () => {
-  let finishA;
+  let finishA = null;
   const gateA = new Promise((resolve) => {
     finishA = resolve;
   });
@@ -198,7 +198,7 @@ test('reset ignores extras from a previous load', async () => {
   const extraItem = sampleItem('package.json');
   extraItem.dep = { change: { name: 'lodash', section: 'dependencies' } };
   const newItem = sampleItem('new.js');
-  let extrasResolve;
+  let extrasResolve = null;
   const extras = new Promise((resolve) => {
     extrasResolve = resolve;
   });
@@ -263,7 +263,7 @@ test('reset ignores extras from a previous load', async () => {
 });
 
 test('close while loading ignores the late snapshot', async () => {
-  let finish;
+  let finish = null;
   const gate = new Promise((resolve) => {
     finish = resolve;
   });
@@ -375,11 +375,11 @@ test('refresh is tracked until data and its callback apply', async () => {
 
 test('deferred extras keep an empty branch review open', async () => {
   const session = emptySession();
-  let finishExtras;
+  let finishExtras = null;
   const extras = new Promise((resolve) => {
     finishExtras = resolve;
   });
-  let startExtras;
+  let startExtras = null;
   const started = new Promise((resolve) => {
     startExtras = resolve;
   });

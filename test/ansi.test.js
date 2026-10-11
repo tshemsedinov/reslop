@@ -103,3 +103,26 @@ test('foregroundOn keeps text color and uses the given background', () => {
   assert.ok(!colored.includes('48;2;1;2;3'));
   assert.ok(colored.includes(ground));
 });
+
+test('standalone scripts and joined clusters measure the same way', () => {
+  const segmenter = new Intl.Segmenter(undefined, { granularity: 'grapheme' });
+  const clusters = (text) =>
+    [...segmenter.segment(text)].map((part) => part.segment);
+  const samples = [
+    'Застосувати патч',
+    ' ▶ lint │ ✔ exit 0 … ⠸ ──',
+    'zażółć gęślą jaźń',
+    'é ñ',
+    'и҃',
+    '👨‍👩‍👧 🇺🇦 ✔️',
+    '日本語',
+  ];
+  for (const text of samples) {
+    assert.deepEqual(ansi.graphemes(text), clusters(text), text);
+  }
+  assert.equal(ansi.visibleWidth('Застосувати патч'), 16);
+  assert.equal(ansi.visibleWidth(' ▶ lint │ ✔'), 11);
+  assert.equal(ansi.visibleWidth('é'), 1);
+  assert.equal(ansi.truncateVisible('Застосувати', 5), 'Засто');
+  assert.equal(ansi.trimVisible('▶▶▶▶▶▶', 4), '▶▶▶…');
+});

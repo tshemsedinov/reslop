@@ -59,7 +59,7 @@ test('abort stops retry wait', async () => {
 
 test('request passes abort signal to fetch', async () => {
   const ac = new AbortController();
-  let received;
+  let received = null;
   await createClient().request('https://example.test/x', {
     fetch: async (_url, init) => {
       received = init.signal;
