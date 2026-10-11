@@ -1140,9 +1140,9 @@ test('model menu uses background and a right scroller', async () => {
     assert.ok(scrolled.at(-1).includes(thumb));
     assert.equal(scrolled[0].includes(thumb), false);
     const itemFace = (row) => {
-      const mark = row.includes(bg(THEME.checkBg))
-        ? bg(THEME.checkBg)
-        : bg(THEME.noteBg);
+      const checked = bg(THEME.checkBg);
+      const note = bg(THEME.noteBg);
+      const mark = row.includes(checked) ? checked : note;
       const at = row.indexOf(mark);
       const start = row.indexOf('m', at) + 1;
       const end = row.indexOf(RESET, start);

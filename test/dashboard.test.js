@@ -1168,17 +1168,17 @@ test('diff activity scrolls minutes left and blinks the current one', () => {
     assert.equal(part.bg, null);
   }
   const flash = diffsBlock(model, 40, 6, { now, frame: 1 }, tile);
-  assert.equal(flash.footer.at(-2).text, '█');
+  assert.equal(flash.footer.at(-2).text, '●');
   assert.equal(flash.footer.at(-2).tone, 'key');
   const painted = paintTile(tile, flash, 42, 6, true);
   const row = painted.at(-1);
   const plain = stripAnsi(row);
   assert.equal(visibleWidth(plain), 42);
-  assert.equal(plain.endsWith('█ '), true);
-  assert.equal(plain.endsWith('█  '), false);
+  assert.equal(plain.endsWith('● '), true);
+  assert.equal(plain.endsWith('●  '), false);
   model.diffs.activity.live = false;
   const done = diffsBlock(model, 40, 6, { now, frame: 0 }, tile);
-  assert.equal(done.footer.at(-2).text, 'x');
+  assert.equal(done.footer.at(-2).text, '⨯');
 });
 
 test('diff activity keeps a foreground-only timeline with edge gaps', () => {
@@ -1276,7 +1276,7 @@ test('diff activity marks removals and pulses the current minute', () => {
   assert.equal(high.footer.at(-2).text, '•');
   model.diffs.activity.minutes[2].level = 400;
   const top = diffsBlock(model, 40, 6, { now, frame: 1 }, tile);
-  assert.equal(top.footer.at(-2).text, '█');
+  assert.equal(top.footer.at(-2).text, '●');
 });
 
 test('diff rows keep removals when the tile is narrow', () => {
