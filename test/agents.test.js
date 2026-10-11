@@ -371,9 +371,8 @@ test('agent launch builds model, effort, fast, and login options', () => {
     models: cursor.models,
   };
   const launch = buildLaunch(row, { model: 'auto', extra: '' }, '/tmp/plan.md');
-  assert.equal(launch.args[0], '--trust');
-  assert.equal(launch.pty, true);
-  const shown = 'cursor-agent --trust --model auto /tmp/plan.md';
+  assert.equal(launch.args[0], '--print');
+  const shown = 'cursor-agent --print --trust --model auto /tmp/plan.md';
   assert.equal(launch.command, shown);
   const hard = buildLaunch(
     row,
@@ -381,7 +380,7 @@ test('agent launch builds model, effort, fast, and login options', () => {
     '/tmp/plan.md',
   );
   const hardCmd =
-    'cursor-agent --trust --model auto[effort=xhigh] /tmp/plan.md';
+    'cursor-agent --print --trust --model auto[effort=xhigh] /tmp/plan.md';
   assert.equal(hard.command, hardCmd);
   const codex = AGENTS.find((item) => item.id === 'codex');
   const codexRow = {
@@ -417,7 +416,7 @@ test('agent launch builds model, effort, fast, and login options', () => {
     '/tmp/plan.md',
   );
   const savedCmd =
-    'cursor-agent --trust --model grok-4.6[effort=high,fast=true] ' +
+    'cursor-agent --print --trust --model grok-4.6[effort=high,fast=true] ' +
     '/tmp/plan.md';
   assert.equal(saved.command, savedCmd);
 });
@@ -449,7 +448,8 @@ test('cursor grok-4.6 uses the listed effort slug', () => {
     '/tmp/plan.md',
   );
   const cmd =
-    'cursor-agent --trust --model cursor-grok-4.6-high-fast /tmp/plan.md';
+    'cursor-agent --print --trust --model cursor-grok-4.6-high-fast ' +
+    '/tmp/plan.md';
   assert.equal(launch.command, cmd);
   assert.equal(launch.args.includes('--effort'), false);
 });
@@ -869,7 +869,8 @@ test('effort encoded in a model id is chosen separately', () => {
     { model: 'gpt-5.6-sol-high', effort: 'low', extra: '' },
     '/tmp/plan.md',
   );
-  const cmd = 'cursor-agent --trust --model gpt-5.6-sol-low /tmp/plan.md';
+  const cmd =
+    'cursor-agent --print --trust --model gpt-5.6-sol-low /tmp/plan.md';
   assert.equal(launch.command, cmd);
   assert.equal(launch.command.includes('--effort'), false);
   const fastOn = buildLaunch(
@@ -878,7 +879,7 @@ test('effort encoded in a model id is chosen separately', () => {
     '/tmp/plan.md',
   );
   const fastCmd =
-    'cursor-agent --trust --model gpt-5.6-sol-low-fast /tmp/plan.md';
+    'cursor-agent --print --trust --model gpt-5.6-sol-low-fast /tmp/plan.md';
   assert.equal(fastOn.command, fastCmd);
   const sized = buildLaunch(
     row,
@@ -886,7 +887,7 @@ test('effort encoded in a model id is chosen separately', () => {
     '/tmp/plan.md',
   );
   const sizedCmd =
-    'cursor-agent --trust --model gpt-5.6-sol-low[context=1m] ' +
+    'cursor-agent --print --trust --model gpt-5.6-sol-low[context=1m] ' +
     '/tmp/plan.md';
   assert.equal(sized.command, sizedCmd);
   const normal = buildLaunch(
@@ -1987,8 +1988,8 @@ test('buildLaunch continues a previous session', () => {
     '/tmp',
     sessionId,
   );
-  assert.equal(kept.args[0], '--trust');
-  assert.equal(kept.args[1], `--resume=${sessionId}`);
+  const resume = `--resume=${sessionId}`;
+  assert.deepEqual(kept.args.slice(0, 3), ['--print', '--trust', resume]);
   assert.equal(kept.session, sessionId);
   assert.match(kept.command, /--resume=/);
   const fresh = buildLaunch(row, emptyChoice(row), '/tmp/plan.md', '/tmp');
@@ -2050,8 +2051,9 @@ test('starting an agent uses the selected session', async () => {
     ui.agents.focusCli();
     ui.agents.start();
     assert.equal(calls.length, 2);
-    assert.equal(calls[1].args[0], '--trust');
-    assert.equal(calls[1].args[1], `--resume=${sessionId}`);
+    const resume = `--resume=${sessionId}`;
+    const lead = calls[1].args.slice(0, 3);
+    assert.deepEqual(lead, ['--print', '--trust', resume]);
     assert.equal(calls[1].session, sessionId);
     assert.match(calls[1].command, /--resume=/);
     assert.match(calls[1].prompt, /repair plan/);

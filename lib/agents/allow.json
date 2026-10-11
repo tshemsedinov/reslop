@@ -1,0 +1,16 @@
+{
+  "planAllows": [
+    "Write(.plan/**)",
+    "Write(.plan/**/*.md)",
+    "Write(**/.plan/**)",
+    "Write(**/.plan/**/*.md)",
+    "Shell(npm)",
+    "Shell(npm test)",
+    "Shell(npm t)",
+    "Shell(npx)",
+    "Shell(node)",
+    "Shell(node --test)",
+    "Shell(reslop)",
+    "Shell(reslop t)"
+  ]
+}
