@@ -6603,3 +6603,65 @@ test('a package command that rejects shows the error and stops', async () => {
   assert.equal(session.status, 'no npm');
   assert.equal(session.busy, '');
 });
+
+const editFile = async (items) => {
+  const opened = await openSession(items, { startPane: 'files' });
+  const { session } = opened;
+  session.dispatch('file');
+  await session.ops.idle();
+  session.dispatch('open');
+  session.dispatch('code');
+  await session.ops.idle();
+  assert.equal(session.composeKind, 'file');
+  return opened;
+};
+
+const heldLoad = (repo) => {
+  const { load } = repo;
+  let release = null;
+  repo.load = (...args) =>
+    new Promise((resolve) => {
+      release = () => resolve(load(...args));
+    });
+  return () => release();
+};
+
+test('a reload does not undo an autosave that landed meanwhile', async () => {
+  const { session, repo } = await editFile([sampleItem('a.js')]);
+  const finishLoad = heldLoad(repo);
+  session.refreshFromRepo({ keepView: true, quiet: true });
+  await settle();
+  session.editor.replace('typed\n');
+  session.autosave();
+  await settle();
+  assert.equal(repo.fileBodies['a.js'], 'typed\n');
+  finishLoad();
+  await session.ops.idle();
+  assert.equal(session.editor.text, 'typed\n');
+  assert.equal(session.composer.composeBaseline, 'typed\n');
+  assert.equal(session.reads.textOf('a.js'), 'typed\n');
+});
+
+test('a reload keeps unsaved typing when the disk is unchanged', async () => {
+  const { session, repo } = await editFile([sampleItem('a.js')]);
+  const opened = session.editor.text;
+  let land = null;
+  const { writeFile } = repo;
+  repo.writeFile = (...args) =>
+    new Promise((resolve) => {
+      land = () => resolve(writeFile(...args));
+    });
+  session.editor.replace('typed\n');
+  session.autosave();
+  session.refreshFromRepo({ keepView: true, quiet: true });
+  await settle();
+  assert.equal(session.editor.text, 'typed\n');
+  land();
+  await session.ops.idle();
+  assert.equal(session.editor.text, 'typed\n');
+  assert.equal(repo.fileBodies['a.js'], 'typed\n');
+  repo.fileBodies['a.js'] = `${opened}outside\n`;
+  session.refreshFromRepo({ keepView: true, quiet: true });
+  await session.ops.idle();
+  assert.equal(session.editor.text, `${opened}outside\n`);
+});
