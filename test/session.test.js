@@ -6698,3 +6698,65 @@ test('a code save does not wait for a running install', async () => {
   await session.ops.idle();
   assert.equal(session.busy, '');
 });
+
+const gatedAdds = (repo) => {
+  const gates = [];
+  const done = [];
+  repo.add = (top, item) =>
+    new Promise((resolve) => {
+      gates.push(() => {
+        done.push(item);
+        resolve();
+      });
+    });
+  return { gates, done };
+};
+
+test('quitting lets a running stage finish every hunk first', async () => {
+  const second = sampleItem('a.js');
+  second.blockId = 1;
+  const { session, repo } = await openSession([sampleItem('a.js'), second], {
+    startPane: 'files',
+  });
+  const { gates, done } = gatedAdds(repo);
+  session.dispatch('add');
+  await settle();
+  assert.equal(gates.length, 1);
+  session.onQuit();
+  session.pushInput('u');
+  assert.equal(session.done, false);
+  gates[0]();
+  await settle();
+  assert.equal(session.done, false);
+  assert.equal(gates.length, 2);
+  gates[1]();
+  await session.ops.idle();
+  assert.equal(done.length, 2);
+  assert.equal(session.done, true);
+  assert.equal(repo.unstageCalls.length, 0);
+});
+
+test('quitting does not wait for an install or a stuck write', async () => {
+  const proposed = sampleItem('package.json');
+  proposed.reload = true;
+  proposed.dep = {
+    change: { propose: true, name: 'lodash' },
+    files: ['package.json'],
+  };
+  const { session, repo } = await openSession([proposed]);
+  repo.add = () => new Promise(() => {});
+  session.dispatch('add');
+  await settle();
+  assert.equal(session.busy, 'npm i');
+  session.onQuit();
+  assert.equal(session.done, true);
+  const stuck = await openSession([sampleItem('a.js')]);
+  stuck.repo.add = () => new Promise(() => {});
+  stuck.session.dispatch('add');
+  await settle();
+  assert.equal(stuck.session.ops.unlanded(), true);
+  const before = Date.now();
+  await stuck.session.ops.landed(30);
+  assert.ok(Date.now() - before < 1000);
+  assert.equal(stuck.session.ops.unlanded(), true);
+});
