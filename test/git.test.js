@@ -1470,3 +1470,21 @@ test('repo reads answer through promises', async () => {
     repo.cleanup();
   }
 });
+
+test('runProc survives a child that exits before reading input', async () => {
+  const input = 'x'.repeat(4 * 1024 * 1024);
+  const errors = [];
+  const onError = (error) => errors.push(error);
+  process.on('uncaughtException', onError);
+  try {
+    const args = ['-e', 'process.exit(3)'];
+    const result = await runProc(process.execPath, args, { input });
+    await new Promise((resolve) => {
+      setTimeout(resolve, 50);
+    });
+    assert.equal(result.status, 3);
+    assert.deepEqual(errors, []);
+  } finally {
+    process.off('uncaughtException', onError);
+  }
+});
