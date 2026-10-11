@@ -6587,3 +6587,19 @@ test('a file edit reloads once and later saves do not stage', async () => {
   assert.equal(session.notes.feedback.size, 1);
   assert.equal(loads, 1);
 });
+
+test('a package command that rejects shows the error and stops', async () => {
+  const { session, repo } = await openSession([sampleItem('a.js')]);
+  session.dashboard.tasks.npm.request = () => {};
+  repo.runPackage = () => Promise.reject(new Error('registry down'));
+  await session.packages.exec(['update', 'leftpad'], 'npm i', 'updated');
+  assert.equal(session.status, 'registry down');
+  assert.equal(session.packages.running, false);
+  assert.equal(session.busy, '');
+  repo.runPackage = () => {
+    throw new Error('no npm');
+  };
+  await session.packages.exec(['update', 'leftpad'], 'npm i', 'updated');
+  assert.equal(session.status, 'no npm');
+  assert.equal(session.busy, '');
+});
