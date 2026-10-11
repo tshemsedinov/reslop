@@ -3244,6 +3244,7 @@ test('double click commit row opens its diff', async () => {
   assert.equal(session.commitCursor, 2);
   assert.equal(session.pane, 'commits');
   clickAt(session, 4, hit.y);
+  await session.ops.idle();
   assert.equal(session.pane, 'diff');
   assert.equal(session.rev, 'bbb2222bbbbbbbbbbbbbbbbbbbbbbbbbbbbbb');
 });
@@ -3995,14 +3996,12 @@ test('checkout shows progress until git finishes', async () => {
   session.pushInput('j');
   await session.ops.idle();
   session.handleEvent({ type: 'key', key: 'enter' });
-  await session.ops.idle();
   assert.equal(repo.checkouts.length, 0);
   assert.equal(session.busy, 'checking out');
   session.tickProgress();
   assert.equal(session.progressFrame, 1);
   finish();
-  await pending;
-  await Promise.resolve();
+  await session.ops.idle();
   assert.deepEqual(repo.checkouts, ['feat']);
   assert.match(session.status, /checked out feat/);
   assert.equal(session.pane, 'branches');
@@ -4029,14 +4028,12 @@ test('commit shows progress until git finishes', async () => {
   session.pushInput('land the change');
   await session.ops.idle();
   session.handleEvent({ type: 'key', key: 'enter' });
-  await session.ops.idle();
   assert.equal(repo.commits.length, 0);
   assert.equal(session.busy, 'committing');
   session.tickProgress();
   assert.equal(session.progressFrame, 1);
   finish();
-  await pending;
-  await Promise.resolve();
+  await session.ops.idle();
   assert.equal(repo.commits.length, 1);
   assert.equal(session.status, 'committed');
   assert.equal(session.busy, '');
@@ -4236,6 +4233,7 @@ test('unit view e edits the whole file and autosaves', async () => {
   assert.equal(repo.fileBodies['a.js'], 'edited\n');
   assert.equal(repo.stagedPaths.length, 0);
   session.composer.saveCompose();
+  await session.ops.idle();
   assert.deepEqual(repo.stagedPaths, ['a.js']);
   assert.equal(session.status, 'staged');
 });

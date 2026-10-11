@@ -246,6 +246,7 @@ test('ignoreWatch skips the next disk reload', async () => {
   session.lifecycle.ignoreWatch();
   repo.setItems([a, b]);
   session.lifecycle.onDiskChange();
+  await session.ops.idle();
   assert.equal(session.items.length, 1);
 });
 
@@ -298,6 +299,7 @@ test('watch reload keeps item order after origin change', async () => {
   session.index = 1;
   repo.setItems([{ ...b, origin: 'staged' }, a, c]);
   session.lifecycle.onDiskChange();
+  await session.ops.idle();
   assert.deepEqual(
     session.items.map((item) => item.file.newPath),
     ['a.js', 'b.js', 'c.js'],
@@ -328,6 +330,7 @@ test('disk watch reloads without leaving the current screen', async () => {
   session.status = 'staged';
   repo.setItems([a, b, c]);
   session.lifecycle.onDiskChange();
+  await session.ops.idle();
   assert.equal(session.pane, 'diff');
   assert.equal(session.current().file.newPath, 'b.js');
   assert.equal(session.scroll, 6);
@@ -353,6 +356,7 @@ test('disk watch keeps the files pane on the same path', async () => {
   assert.equal(session.fileList()[session.fileCursor].path, 'a.js');
   repo.setItems([extra, a, b]);
   session.lifecycle.onDiskChange();
+  await session.ops.idle();
   assert.equal(session.pane, 'files');
   assert.equal(session.fileList()[session.fileCursor].path, 'a.js');
   assert.equal(session.busy, '');
@@ -366,6 +370,7 @@ test('disk watch follows a hunk whose line numbers moved', async () => {
   session.scroll = 4;
   repo.setItems([moved]);
   session.lifecycle.onDiskChange();
+  await session.ops.idle();
   assert.equal(session.current().hunk.newStart, 12);
   assert.equal(session.current().file.newPath, 'a.js');
   assert.equal(session.scroll, 4);
@@ -380,6 +385,7 @@ test('compose defers disk reload until the editor closes', async () => {
   session.dispatch('feedback');
   repo.setItems([a, b]);
   session.lifecycle.onDiskChange();
+  await session.ops.idle();
   assert.equal(session.mode, 'compose');
   assert.equal(session.items.length, 1);
   assert.equal(session.editor.text, '');
@@ -398,6 +404,7 @@ test('busy git work defers disk reload', async () => {
   session.gitBusy = true;
   repo.setItems([a, b]);
   session.lifecycle.onDiskChange();
+  await session.ops.idle();
   assert.equal(session.items.length, 1);
   session.gitBusy = false;
   await wait(DEBOUNCE_MS + 50);
@@ -412,6 +419,7 @@ test('npm extras do not block a disk reload', async () => {
   session.busy = 'checking npm';
   repo.setItems([a, b]);
   session.lifecycle.onDiskChange();
+  await session.ops.idle();
   assert.equal(session.items.length, 2);
   assert.equal(session.pane, 'diff');
 });
@@ -505,6 +513,7 @@ test('editing a todo applies a deferred reload on exit', async () => {
   assert.equal(session.mode, 'compose');
   repo.setItems([a, b]);
   session.lifecycle.onDiskChange();
+  await session.ops.idle();
   assert.equal(session.items.length, 1);
   session.handleEvent({ type: 'key', key: 'escape' });
   await session.ops.idle();
@@ -591,6 +600,7 @@ test('commits pane reloads when HEAD moves outside reslop', async () => {
   ];
   fs.appendFileSync(logHead, 'new\n');
   session.lifecycle.onDiskChange();
+  await session.ops.idle();
   assert.equal(session.view().commits[1].subject, 'second');
 });
 

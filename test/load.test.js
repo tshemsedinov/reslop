@@ -289,11 +289,10 @@ test('close while loading ignores the late snapshot', async () => {
   assert.equal(session.items.length, 0);
 });
 
-const emptySession = (asyncLoad = false, extra = {}) => {
+const emptySession = (extra = {}) => {
   const cwd = extra.cwd ?? tempDir('reslop-ui-');
-  const load = () => ({ top: cwd, items: [] });
+  const load = async () => ({ top: cwd, items: [] });
   const repo = extra.repo ?? { load };
-  if (asyncLoad && !repo.load) repo.load = async () => load();
   return new Session({
     stdout: uiSink(),
     color: false,
@@ -304,7 +303,7 @@ const emptySession = (asyncLoad = false, extra = {}) => {
 };
 
 test('opening an empty worktree stays in the files pane', async () => {
-  const session = emptySession(true, { startPane: 'diff' });
+  const session = emptySession({ startPane: 'diff' });
   session.uiOpen = true;
   await session.openLoad();
   assert.equal(session.done, false);
@@ -315,7 +314,7 @@ test('opening an empty worktree stays in the files pane', async () => {
 });
 
 test('an empty worktree reload stays open with its done status', async () => {
-  const session = emptySession(true);
+  const session = emptySession();
   session.uiOpen = true;
   await new Promise((resolve) => {
     session.refreshFromRepo({ doneStatus: 'reloaded', afterLoad: resolve });
@@ -327,7 +326,7 @@ test('an empty worktree reload stays open with its done status', async () => {
 });
 
 test('opening an empty commit review finishes without an error', async () => {
-  const session = emptySession(true, { rev: 'abc1234' });
+  const session = emptySession({ rev: 'abc1234' });
   session.uiOpen = true;
   await session.openLoad();
   assert.equal(session.done, true);
@@ -338,7 +337,7 @@ test('opening an empty commit review finishes without an error', async () => {
 });
 
 test('async reload can keep an empty branch review open', async () => {
-  const session = emptySession(true);
+  const session = emptySession();
   session.uiOpen = true;
   session.scroll = 8;
   session.selection = { start: { x: 1, y: 1 }, end: { x: 2, y: 1 } };
@@ -356,7 +355,7 @@ test('async reload can keep an empty branch review open', async () => {
   assert.equal(session.busy, '');
 });
 
-test('sync refresh applies data and its callback before returning', () => {
+test('refresh is tracked until data and its callback apply', async () => {
   const session = emptySession();
   let afterLoad = false;
   const result = session.refreshFromRepo({
@@ -366,6 +365,8 @@ test('sync refresh applies data and its callback before returning', () => {
     },
   });
   assert.equal(result, undefined);
+  assert.equal(afterLoad, false);
+  await session.ops.idle();
   assert.equal(afterLoad, true);
   assert.equal(session.didLoad, true);
   assert.equal(session.done, false);
@@ -373,7 +374,7 @@ test('sync refresh applies data and its callback before returning', () => {
 });
 
 test('deferred extras keep an empty branch review open', async () => {
-  const session = emptySession(true);
+  const session = emptySession();
   let finishExtras;
   const extras = new Promise((resolve) => {
     finishExtras = resolve;

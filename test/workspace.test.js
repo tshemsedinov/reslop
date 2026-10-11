@@ -111,7 +111,8 @@ test('readDiffStat matches the status bar with untracked lines', async () => {
     fs.appendFileSync(path.join(dir, 'app.js'), 'next\n');
     fs.writeFileSync(path.join(dir, 'extra.js'), 'a\nb\nc\n');
     const diff = await readDiffStat(dir);
-    const total = fileTotals(fileEntries(load(dir).items));
+    const loaded = await load(dir);
+    const total = fileTotals(fileEntries(loaded.items));
     assert.equal(diff.stagedAdded, total.stagedAdded);
     assert.equal(diff.unstagedAdded, total.unstagedAdded);
     assert.equal(diff.stagedRemoved, total.stagedRemoved);

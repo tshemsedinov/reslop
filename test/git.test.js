@@ -1393,6 +1393,7 @@ test('file edit save stages the whole file', async () => {
       'alpha\nBETA\nkeep1\nkeep2\nkeep3\nkeep4\nkeep5\nGAMMA\n',
     );
     session.composer.saveCompose();
+    await session.ops.idle();
     const cached = repo.git(['diff', '--cached', '--', 'a.js']);
     const work = repo.git(['diff', '--', 'a.js']);
     assert.match(cached, /BETA/);
