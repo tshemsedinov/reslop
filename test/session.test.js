@@ -6554,3 +6554,36 @@ test('an autosave and a save write the file in the order begun', async () => {
   assert.equal(repo.fileBodies['a.js'], 'two');
   assert.equal(session.mode, 'review');
 });
+
+test('a file edit reloads once and later saves do not stage', async () => {
+  const items = [sampleItem('a.js'), sampleItem('b.js')];
+  const { session, repo } = await openSession(items);
+  let loads = 0;
+  const { load } = repo;
+  repo.load = (...args) => {
+    loads += 1;
+    return load(...args);
+  };
+  session.pushInput('e');
+  session.pushInput('2');
+  session.handleEvent({ type: 'key', key: 'escape' });
+  await session.ops.idle();
+  assert.equal(repo.edited.length, 1);
+  assert.deepEqual(repo.stagedPaths, ['a.js']);
+  assert.equal(loads, 1);
+  session.dispatch('next');
+  session.pushInput('e');
+  session.handleEvent({ type: 'key', key: 'escape' });
+  await session.ops.idle();
+  assert.equal(session.mode, 'review');
+  assert.equal(repo.edited.length, 1);
+  assert.deepEqual(repo.stagedPaths, ['a.js']);
+  assert.equal(loads, 1);
+  session.dispatch('feedback');
+  session.pushInput('note');
+  session.handleEvent({ type: 'key', key: 'enter' });
+  await session.ops.idle();
+  assert.equal(session.mode, 'review');
+  assert.equal(session.notes.feedback.size, 1);
+  assert.equal(loads, 1);
+});
