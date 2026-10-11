@@ -1370,6 +1370,7 @@ test('e edits added lines in the reviewed file', async () => {
   assert.equal(session.mode, 'compose');
   assert.equal(session.editor.text, 'b2\n');
   session.handleEvent({ type: 'key', key: 'escape' });
+  await session.ops.idle();
   assert.equal(session.mode, 'review');
   assert.equal(session.notes.code.size, 0);
   assert.equal(session.view().counts.code, 0);
@@ -5905,6 +5906,7 @@ test('click moves the caret in the code and file editors', async () => {
   assert.equal(session.editor.cursor, 4);
   session.handleEvent({ type: 'key', key: 'escape' });
   session.handleEvent({ type: 'key', key: 'escape' });
+  await session.ops.idle();
   repo.fileBodies['a.js'] = 'ab\ncd\n';
   session.dispatch('file');
   session.dispatch('next');
@@ -6456,4 +6458,99 @@ test('the file list and file view read the repo only once', async () => {
   assert.equal(session.pane, 'unit');
   for (let i = 0; i < 5; i++) session.view();
   assert.equal(calls.text, 1);
+});
+
+test('an action taken while editing code waits for the save', async () => {
+  const items = [sampleItem('a.js'), sampleItem('b.js')];
+  const { session, repo } = await openSession(items);
+  let land = null;
+  repo.edit = (top, item, text) =>
+    new Promise((resolve) => {
+      land = () => {
+        repo.edited.push({ top, item, text });
+        resolve();
+      };
+    });
+  session.pushInput('e');
+  session.pushInput('2');
+  session.dispatch('next');
+  await settle();
+  assert.equal(session.mode, 'compose');
+  assert.equal(session.index, 0);
+  assert.equal(repo.edited.length, 0);
+  land();
+  await session.ops.idle();
+  assert.equal(repo.edited.length, 1);
+  assert.equal(repo.edited[0].text, 'b2');
+  assert.equal(session.mode, 'review');
+  assert.equal(session.index, 1);
+});
+
+test('a failed code save keeps the editor and drops the action', async () => {
+  const items = [sampleItem('a.js'), sampleItem('b.js')];
+  const { session, repo } = await openSession(items);
+  repo.edit = async () => {
+    throw new Error('disk full');
+  };
+  session.pushInput('e');
+  session.pushInput('2');
+  session.dispatch('next');
+  await session.ops.idle();
+  assert.equal(session.status, 'disk full');
+  assert.equal(session.mode, 'compose');
+  assert.equal(session.editor.text, 'b2');
+  assert.equal(session.index, 0);
+});
+
+test('quitting while editing a file writes it before leaving', async () => {
+  const { session, repo } = await openSession([sampleItem('a.js')], {
+    startPane: 'files',
+  });
+  session.dispatch('file');
+  await session.ops.idle();
+  session.dispatch('open');
+  session.dispatch('code');
+  await session.ops.idle();
+  assert.equal(session.composeKind, 'file');
+  session.editor.replace('kept\n');
+  session.onQuit();
+  assert.equal(session.done, false);
+  await session.ops.idle();
+  assert.equal(repo.fileBodies['a.js'], 'kept\n');
+  assert.equal(session.done, true);
+});
+
+test('an autosave and a save write the file in the order begun', async () => {
+  const { session, repo } = await openSession([sampleItem('a.js')], {
+    startPane: 'files',
+  });
+  session.dispatch('file');
+  await session.ops.idle();
+  session.dispatch('open');
+  session.dispatch('code');
+  await session.ops.idle();
+  const order = [];
+  const gates = [];
+  repo.writeFile = (top, rel, text) =>
+    new Promise((resolve) => {
+      order.push(`start ${text}`);
+      gates.push(() => {
+        repo.fileBodies[rel] = text;
+        order.push(`end ${text}`);
+        resolve();
+      });
+    });
+  session.editor.replace('one');
+  session.autosave();
+  session.editor.replace('two');
+  session.handleEvent({ type: 'key', key: 'ctrl-s' });
+  await settle();
+  assert.deepEqual(order, ['start one']);
+  gates[0]();
+  await settle();
+  gates[1]();
+  await session.ops.idle();
+  assert.deepEqual(order, ['start one', 'end one', 'start two', 'end two']);
+  assert.equal(repo.fileBodies['a.js'], 'two');
+  assert.equal(session.mode, 'review');
 });

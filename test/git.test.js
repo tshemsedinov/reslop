@@ -1290,7 +1290,7 @@ test('editItem writes added lines into the reviewed file', async () => {
     repo.write('f.txt', 'alpha\nBETA\ngamma\n');
     const loaded = await load(repo.dir, [], { deferExtras: false });
     assert.equal(loaded.items.length, 1);
-    editItem(loaded.top, loaded.items[0], 'BETA-edited');
+    await editItem(loaded.top, loaded.items[0], 'BETA-edited');
     assert.equal(repo.read('f.txt'), 'alpha\nBETA-edited\ngamma\n');
     const again = await load(repo.dir, [], { deferExtras: false });
     const lines = again.items[0].hunk.lines;
@@ -1345,7 +1345,7 @@ test('editItem updates staged added lines in the index', async () => {
     const loaded = await load(repo.dir, [], { deferExtras: false });
     const item = loaded.items.find((entry) => entry.origin === 'staged');
     assert.ok(item);
-    editItem(loaded.top, item, 'STAGED');
+    await editItem(loaded.top, item, 'STAGED');
     assert.equal(repo.read('f.txt'), 'alpha\nSTAGED\ngamma\n');
     const cached = repo.git(['diff', '--cached', '--', 'f.txt']);
     assert.match(cached, /\+STAGED/);
@@ -1367,7 +1367,7 @@ test('listFiles includes tracked and untracked paths', async () => {
     const names = await createGitRepo().listFiles(repo.dir);
     assert.deepEqual(names, ['a.js', 'b.js', 'z.js']);
     assert.equal(await createGitRepo().fileText(repo.dir, 'a.js'), 'a\n');
-    createGitRepo().writeFile(repo.dir, 'nested/x.js', 'x\n');
+    await createGitRepo().writeFile(repo.dir, 'nested/x.js', 'x\n');
     assert.equal(repo.read('nested/x.js'), 'x\n');
   } finally {
     repo.cleanup();
