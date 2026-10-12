@@ -1935,14 +1935,14 @@ test('dashboard ages stay at minutes', () => {
 const metricText = (cells) =>
   cells.map((item) => item.segs.map((part) => part.text).join('')).join('|');
 
-test('run rows show completed, passed and failed counts', () => {
+test('run rows show passed, failed and total counts', () => {
   const passed = runMetrics({
     status: 'passed',
     source: 'reslop t',
     result: { tests: 10, passed: 8, failed: 2 },
   });
-  assert.equal(metricText(passed), '10|8|2|10');
-  assert.equal(passed[2].align, 'r');
+  assert.equal(metricText(passed), '8|2|10');
+  assert.equal(passed[1].align, 'r');
   const live = runMetrics({
     status: 'running',
     source: 'reslop t',
@@ -1951,7 +1951,7 @@ test('run rows show completed, passed and failed counts', () => {
     expected: 12,
     result: null,
   });
-  assert.equal(metricText(live), '4|3|1|12');
+  assert.equal(metricText(live), '3|1|12');
   const session = runMetrics({
     status: 'running',
     source: 'reslop',
@@ -1960,7 +1960,7 @@ test('run rows show completed, passed and failed counts', () => {
     expected: 6,
     result: null,
   });
-  assert.equal(metricText(session), '3|2|1|6');
+  assert.equal(metricText(session), '2|1|6');
   const failed = runMetrics({
     status: 'failed',
     source: 'reslop t',
@@ -1972,7 +1972,7 @@ test('run rows show completed, passed and failed counts', () => {
   assert.equal(metricText(failed).includes('exit'), false);
 });
 
-test('run captions sit in the header with total and duration', () => {
+test('run captions sit in the header with total and spent', () => {
   const now = 1_000_000;
   const model = {
     busy: '',
@@ -2000,16 +2000,15 @@ test('run captions sit in the header with total and duration', () => {
     return visibleWidth(line.slice(0, at + value.length));
   };
   assert.equal(header.startsWith('run'), true);
-  const done = block.titleLine.find((part) => part.text === 'done');
-  const duration = block.titleLine.find((part) => part.text === 'duration');
-  assert.equal(done.tone, 'caption');
-  assert.equal(duration.tone, 'caption');
+  const spent = block.titleLine.find((part) => part.text === 'spent');
+  assert.equal(spent.tone, 'caption');
+  assert.equal(header.includes('done'), false);
+  assert.equal(header.includes('duration'), false);
   assert.equal(row.includes('done'), false);
-  assert.equal(end(header, 'done'), end(row, '10'));
   assert.equal(end(header, 'ok'), end(row, '8'));
   assert.equal(end(header, 'fail'), end(row, '2'));
-  assert.equal(end(header, 'total'), end(row, '10', row.indexOf('10') + 2));
-  assert.equal(end(header, 'duration'), end(row, '3.0s'));
+  assert.equal(end(header, 'total'), end(row, '10'));
+  assert.equal(end(header, 'spent'), end(row, '3.0s'));
 });
 
 test('a running command spins on its row and not in the caption', () => {
@@ -2065,7 +2064,8 @@ test('a long run command keeps the columns and shows an ellipsis', () => {
   const text = (line) => line.map((part) => part.text).join('');
   const header = text(block.titleLine);
   const row = text(block.lines[0]);
-  assert.ok(header.includes('duration'));
+  assert.ok(header.includes('spent'));
+  assert.equal(header.includes('duration'), false);
   assert.ok(row.includes('3.0s'));
   assert.ok(row.includes('…'));
   assert.equal(row.includes(name), false);
@@ -2240,9 +2240,15 @@ test('agent status sits in the table and the header totals sessions', () => {
     const sessions = claude.find((part) => part.text === ' 2');
     assert.equal(sessions.tone, 'key');
     assert.equal(sessions.bold, true);
+    const gapBefore = (line, name) => {
+      const at = line.findIndex((part) => part.text === name);
+      return line[at - 1].text;
+    };
+    assert.equal(gapBefore(claude, 'claude'), ' ');
     const cursor = rowOf(block, 'cursor');
     const quiet = cursor.find((part) => part.text === '●');
     assert.equal(quiet.tone, 'muted');
+    assert.equal(gapBefore(cursor, 'cursor'), ' ');
     assert.equal(text(cursor).includes('0'), false);
   }
 });
