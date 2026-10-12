@@ -17,21 +17,23 @@ Open a change, leave findings and a backlog, and prepare a repair plan for the a
 Review → Plan → Repair → Verify
 ```
 
-- Live dashboard: files, diffs, tasks, branches, commits, run, and npm, updated in real time
+- Live dashboard: files, diffs, tasks, branches, commits, run, agents, and npm, updated in real time
 - Leave feedback, a project backlog, and in-place code proposals as a repair plan
 - Review uncommitted git diffs, a given commit, a GitHub PR, or a GitLab MR
 - File-scope review mode: not just diffs, with editor mode
 - Stage, unstage, or revert each contiguous block of diff lines
 - Auto-reload local diffs when files change, keeping the current screen
-- Import GitHub PR and GitLab MR review comments into the local plan for AI
+- Import GitHub PR and GitLab MR review comments, and GitHub/GitLab issues, into tasks and the local plan
 - Commits list: brief and full, view a commit's diff, commit, update, amend, apply, edit, fixup, and delete
 - Branches: checkout, create, rebase, delete, pull, and push
 - npm scripts and bins: run, edit, and reorder; double-click to run; clean logs older than 5 days
 - Reduced test and lint output for agents: failures and a short summary, not passing noise
 - Review, renew, audit and update npm dependencies in `package.json` and the lockfile
 - Auto-update reslop patch and minor releases; confirm a new major
-- Work with git, npm and fetch in background
-- Execute review results and plan in cli agents, detect local agent, choose effort, and model
+- Work with git, npm, and fetch in the background; run tests in the background while you review
+- Execute the plan in local CLI agents: pick agent, model, and effort; watch progress; sessions, history, and continue or new runs
+- Agent defaults and extras in `.reslop` (grouped settings sections)
+- Optional line numbers in diff and file views (`Ctrl+L`)
 
 ## Install
 
@@ -82,7 +84,6 @@ Reviews go in `.plan/YYYY-MM-DD-NN.md` with frontmatter `status`:
 - Send questions and the repair plan to experts for approval
 - Ask experts
 - Apply refactoring skills
-- Call agents, harnesses, and IDEs to execute prepared plans
 - Squash, cherry-pick, and interactive rebase
 - Merge, rename, and conflict resolution
 

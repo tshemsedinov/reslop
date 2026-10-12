@@ -34,7 +34,7 @@
     "operatingSystem": "Linux, macOS, Windows",
     "url": "https://reslop.it/",
     "downloadUrl": "https://www.npmjs.com/package/reslop",
-    "softwareVersion": "0.2.7",
+    "softwareVersion": "0.3.0",
     "license": "https://opensource.org/licenses/MIT",
     "description": "Interactive code review and repair planning for AI-assisted changes. Open a change, leave findings and a backlog, and prepare a repair plan for the agent.",
     "author": {
@@ -114,15 +114,16 @@
             </p>
           </article>
           <div class="bridge" aria-hidden="true">
-            <code>.review/*.md</code>
+            <code>.plan/*.md</code>
             <span>plan</span>
           </div>
           <article class="card agent">
             <p class="who">Agent</p>
             <h3>Execute the plan</h3>
             <p>
-              One markdown file. The agent works the checkboxes, then checks
-              the result.
+              Run the plan in a local CLI agent from reslop: choose model and
+              effort, follow progress, resume sessions or start a new run, then
+              verify with reduced test output.
             </p>
           </article>
         </div>
@@ -135,15 +136,19 @@
         <ul class="feats">
           <li>
             <h3>Live dashboard</h3>
-            <p>Files, diffs, tasks, commits, branches, runs, and dependencies, updated as the tree changes.</p>
+            <p>Files, diffs, tasks, commits, branches, runs, agents, and dependencies, updated as the tree changes.</p>
           </li>
           <li>
             <h3>Block review</h3>
-            <p>Intra-line highlight on the tokens that differ. Stage, unstage, or drop each block.</p>
+            <p>Intra-line highlight on the tokens that differ. Stage, unstage, or drop each block. Optional line numbers (<code>Ctrl+L</code>).</p>
           </li>
           <li>
             <h3>Tasks</h3>
-            <p>Feature, bug, debt, research, and security, with progress on the dashboard.</p>
+            <p>Feature, bug, debt, research, and security, with progress on the dashboard. Import GitHub and GitLab issues from a URL.</p>
+          </li>
+          <li>
+            <h3>CLI agents</h3>
+            <p>Detect local agents, run the repair plan in-process, and tune defaults in <code>.reslop</code>.</p>
           </li>
           <li>
             <h3>Git</h3>
@@ -155,7 +160,7 @@
           </li>
           <li>
             <h3>Reduced reports</h3>
-            <p><code>reslop t</code> prints failures and a short summary. The raw log stays under <code>.log/</code>.</p>
+            <p><code>reslop t</code> prints failures and a short summary. The raw log stays under <code>.log/</code>. Run tests in the background from the dashboard.</p>
           </li>
         </ul>
       </div>
@@ -172,7 +177,7 @@
           </li>
           <li>
             <code>reslop</code>
-            <p>Live dashboard: files, diffs, tasks, commits, branches, runs, and dependencies.</p>
+            <p>Live dashboard: files, diffs, tasks, commits, branches, runs, agents, and dependencies.</p>
           </li>
           <li>
             <code>reslop path/to/file</code>
@@ -185,6 +190,10 @@
           <li>
             <code>reslop https://github.com/org/repo/pull/1</code>
             <p>Review a GitHub pull request or a GitLab merge request, comments included.</p>
+          </li>
+          <li>
+            <code>reslop https://github.com/org/repo/issues/42</code>
+            <p>Import one GitHub or GitLab issue into tasks. Use the issues list URL to import all open issues.</p>
           </li>
           <li>
             <code>reslop -n</code>

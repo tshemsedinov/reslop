@@ -2,17 +2,20 @@
 
 ## [Unreleased][unreleased]
 
-- Support Antigravity (AGY) cli agents, asking for permissions by default
-- Opt into autonomous AGY runs with `agents.agy.extra` in `.reslop` set to
-  `--dangerously-skip-permissions` (approves every tool action unasked)
+## [0.3.0][] - 2026-10-12
+
 - Execute review results and plan in cli agents
 - Detect available agents and choose its model, effort, context
-- Save agent settings `.reslop`
-- Show agent execution and progress
+- Show agent execution and progress; sessions, history in TUI
+- Import GitHub and GitLab issues into tasks
+- Run tests in the background
+- Codebase refactoring and optimization for simplicity and performance
+- Async repository reads and writes
+- Startup and diff rendering optimizations
 - Rename `.review` to `.plan`
-- Remember the agents screen selection and reload saved runs with the repository
-- Drop the review status `ready`: `editing` plans are executed, and adding an
-  issue to a `done` plan sets it back to `editing`
+- Reorganize `.reslop` settings into sections
+- Dashboard and run panel improvements
+- Optional line numbers in diff and file views (ctrl+l)
 
 ## [0.2.7][] - 2026-10-03
 
@@ -184,7 +187,8 @@
 - Feedback and todos that produce a repair plan for an agent
 - Intra-line highlighting in unified, mixed, and side-by-side layouts
 
-[unreleased]: https://github.com/tshemsedinov/reslop/compare/v0.2.7...HEAD
+[unreleased]: https://github.com/tshemsedinov/reslop/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/tshemsedinov/reslop/compare/v0.2.7...v0.3.0
 [0.2.7]: https://github.com/tshemsedinov/reslop/compare/v0.2.6...v0.2.7
 [0.2.6]: https://github.com/tshemsedinov/reslop/compare/v0.2.5...v0.2.6
 [0.2.5]: https://github.com/tshemsedinov/reslop/compare/v0.2.4...v0.2.5
