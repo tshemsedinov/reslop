@@ -54,12 +54,14 @@ test('resolveReviewPath resumes editing and starts new otherwise', () => {
     assert.equal(editing.resume, true);
     assert.equal(editing.reviewPath, current);
     writeStatus('ready');
-    const ready = resolveReviewPath(dir, date, names);
-    assert.equal(ready.resume, false);
-    assert.equal(ready.reviewPath, path.join(dir, '.plan', '2026-09-07-01.md'));
+    assert.equal(resolveReviewPath(dir, date, names).resume, true);
     writeStatus('pending');
-    assert.equal(resolveReviewPath(dir, date, names).resume, false);
+    assert.equal(resolveReviewPath(dir, date, names).resume, true);
     writeStatus('partial');
+    const partial = resolveReviewPath(dir, date, names);
+    assert.equal(partial.resume, false);
+    const next = path.join(dir, '.plan', '2026-09-07-01.md');
+    assert.equal(partial.reviewPath, next);
     assert.equal(resolveReviewPath(dir, date, names).resume, false);
     writeStatus('done');
     assert.equal(resolveReviewPath(dir, date, names).resume, false);
@@ -155,18 +157,16 @@ test('serializeReview groups todos then feedback with position', () => {
   assert.equal(hasNotes(store), true);
 });
 
-test('serializeReview writes ready when status is ready', () => {
+test('serializeReview writes the status and agent instructions', () => {
   const store = new ReviewStore('/repo/.plan/2026-09-07-00.md');
-  store.status = 'ready';
+  store.status = 'partial';
   store.addTask('a.js', 'follow up');
   const md = serializeReview(store);
-  assert.match(md, /status: ready/);
-  assert.match(md, /Execute reviews with `status` `ready, partial, editing`/);
+  assert.match(md, /status: partial/);
+  assert.match(md, /Execute reviews with `status` `editing, partial`/);
   assert.match(md, /Do not start or change `done` review files/);
-  assert.match(
-    md,
-    /If not `editing`, set `status` to `partial` if some remain/,
-  );
+  assert.match(md, /Set `status` to `partial` if some items remain/);
+  assert.doesNotMatch(md, /\bready\b/);
   assert.match(md, /Run the full check with `npm t`/);
   assert.match(
     md,
@@ -174,11 +174,28 @@ test('serializeReview writes ready when status is ready', () => {
   );
 });
 
-test('parseFrontmatterStatus maps pending to ready', () => {
+test('parseFrontmatterStatus maps pending and ready to editing', () => {
   const pending = '---\nstatus: pending\n---\n';
   const ready = '---\nstatus: ready\n---\n';
-  assert.equal(parseFrontmatterStatus(pending), 'ready');
-  assert.equal(parseFrontmatterStatus(ready), 'ready');
+  assert.equal(parseFrontmatterStatus(pending), 'editing');
+  assert.equal(parseFrontmatterStatus(ready), 'editing');
+});
+
+test('adding an issue to a done review sets it back to editing', () => {
+  const file = '/repo/.plan/2026-09-07-00.md';
+  const done = new ReviewStore(file);
+  done.status = 'done';
+  done.addTask('a.js', 'finished', true);
+  assert.equal(done.status, 'done');
+  const text = serializeReview(done);
+  const loaded = parseReview(text, file);
+  assert.equal(loaded.status, 'done');
+  loaded.addTask('a.js', 'one more');
+  assert.equal(loaded.status, 'editing');
+  assert.match(serializeReview(loaded), /status: editing/);
+  const noted = parseReview(text, file);
+  noted.setFeedback('a.js:1:1:0', { file: 'a.js', text: 'nit' });
+  assert.equal(noted.status, 'editing');
 });
 
 test('parseReview restores todos and feedback keys', () => {

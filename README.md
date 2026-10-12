@@ -68,10 +68,11 @@ Run the full check with `npm t`. Run one or more test files with `reslop t -- no
 
 Reviews go in `.plan/YYYY-MM-DD-NN.md` with frontmatter `status`:
 
-- `editing`: still writing the review in reslop
-- `ready`: ready for AI to work through the checkboxes
+- `editing`: writing the review in reslop; AI works through the checkboxes
 - `partial`: AI started; some items remain
-- `done`: all items marked `[x]`
+- `done`: all items marked `[x]`; adding an issue in reslop sets it back to `editing`
+
+`ready` and `pending` in older reviews are read as `editing`.
 
 ## Future
 

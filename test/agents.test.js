@@ -19,7 +19,7 @@ const { createGitRepo } = require('../lib/git/git.js');
 const { makeRepo, uiSink } = require('./helpers.js');
 const render = require('../lib/render/render.js');
 const { renderFrame } = render;
-const { stripAnsi, THEME, bg, RESET, BOLD } = require('../lib/term/ansi.js');
+const { stripAnsi, THEME, bg, RESET, BOLD, seq } = require('../lib/term/ansi.js');
 const { actionFromKey } = require('../lib/input/actions.js');
 const jobs = require('../lib/session/agents/jobs.js');
 const { runStats, launchJob } = jobs;
@@ -303,6 +303,26 @@ const openUi = async () => {
   return { ui, repo, stdout };
 };
 
+test('interactive startup begins loading agent models', async () => {
+  const ui = new Session({
+    cwd: process.cwd(),
+    stdout: uiSink(),
+    repo: {},
+    color: false,
+  });
+  let calls = 0;
+  ui.agents.loadModels = async () => {
+    calls += 1;
+  };
+  ui.openLoad = () => Promise.resolve();
+  ui.openUpdate = () => {};
+  ui.done = true;
+
+  await ui.startUi();
+
+  assert.equal(calls, 1);
+});
+
 test('agents screen lists clis and starts with the review plan', async () => {
   const { dir, bins, env } = fakePath('claude');
   const { ui, repo } = await openUi();
@@ -433,7 +453,7 @@ test('agent jobs keep running after leaving the log', async () => {
     const reviewDir = path.join(repo.dir, '.plan');
     fs.mkdirSync(reviewDir, { recursive: true });
     const other = '2020-01-01-00.md';
-    const body = '---\nstatus: ready\n---\n';
+    const body = '---\nstatus: editing\n---\n';
     fs.writeFileSync(path.join(reviewDir, other), body);
     ui.agents.refresh(env);
     await ui.agents.open();
@@ -857,7 +877,7 @@ test('start falls back to the latest review file', async () => {
     const reviewDir = path.join(repo.dir, '.plan');
     fs.mkdirSync(reviewDir, { recursive: true });
     const name = '2020-01-01-00.md';
-    fs.writeFileSync(path.join(reviewDir, name), '---\nstatus: ready\n---\n');
+    fs.writeFileSync(path.join(reviewDir, name), '---\nstatus: editing\n---\n');
     ui.review.store.reviewPath = '';
     ui.agents.listModels = async () => [];
     ui.agents.refresh(env);
@@ -889,7 +909,7 @@ test('agents screen runs the review file chosen in the combo', async () => {
     const newer = '2020-01-02-00.md';
     const olderBody = [
       '---',
-      'status: ready',
+      'status: editing',
       '---',
       '',
       '> a.js',
@@ -909,18 +929,18 @@ test('agents screen runs the review file chosen in the combo', async () => {
     assert.equal(ui.agents.pick.field, 'plan');
     assert.deepEqual(ui.agents.menuItems(), [
       `${newer}  partial  0/0`,
-      `${older}  ready    1/2`,
+      `${older}  editing  1/2`,
     ]);
     ui.draw();
     const menu = stripAnsi(ui.lastFrame.rows.join('\n'));
     assert.match(menu, /2020-01-02-00\.md {2}partial {2}0\/0/);
-    assert.match(menu, /2020-01-01-00\.md {2}ready {4}1\/2/);
+    assert.match(menu, /2020-01-01-00\.md {2}editing {2}1\/2/);
     ui.handleEvent({ type: 'key', key: 'down' });
     ui.handleEvent({ type: 'key', key: 'enter' });
     assert.equal(ui.agents.pick, null);
     ui.draw();
     const text = stripAnsi(ui.lastFrame.rows.join('\n'));
-    assert.match(text, new RegExp(`${older}  ready  1/2`));
+    assert.match(text, new RegExp(`${older}  editing  1/2`));
     const calls = [];
     ui.agents.spawn = (cwd, launch) => {
       calls.push(launch);
@@ -958,7 +978,7 @@ test('plan combo lists plain markdown and aligns columns', async () => {
     ].join('\n');
     const noteBody = [
       '---',
-      'status: ready',
+      'status: editing',
       '---',
       '',
       '> a.js',
@@ -978,7 +998,7 @@ test('plan combo lists plain markdown and aligns columns', async () => {
     assert.deepEqual(ui.agents.menuItems(), [
       `${dated}  partial  0/1`,
       ideas,
-      `${'note.md'.padEnd(dated.length)}  ready    1/1`,
+      `${'note.md'.padEnd(dated.length)}  editing  1/1`,
     ]);
     ui.handleEvent({ type: 'key', key: 'down' });
     ui.handleEvent({ type: 'key', key: 'enter' });
@@ -991,7 +1011,7 @@ test('plan combo lists plain markdown and aligns columns', async () => {
     ui.handleEvent({ type: 'key', key: 'down' });
     ui.handleEvent({ type: 'key', key: 'enter' });
     assert.equal(path.basename(ui.agents.planFile()), note);
-    assert.equal(ui.agents.planFace(), `${note}  ready  1/1`);
+    assert.equal(ui.agents.planFace(), `${note}  editing  1/1`);
   } finally {
     ui.agents.reset();
     repo.cleanup();
@@ -1393,10 +1413,15 @@ test('model menu uses background and a right scroller', async () => {
     ui.nav.agentCursor = 2;
     ui.draw();
     const fresh = ui.lastFrame.rows.find((row) =>
-      stripAnsi(row).includes('<new session>'),
+      stripAnsi(row).includes('<start new session>'),
     );
     assert.ok(fresh);
     assert.ok(fresh.includes(bg(THEME.checkBg)));
+    assert.ok(fresh.includes(seq(THEME.chromeFg, THEME.checkBg)));
+    assert.equal(
+      fresh.includes(seq(THEME.buttonHotFg, THEME.checkBg)),
+      false,
+    );
     const pickedCli = ui.lastFrame.rows.find((row) =>
       stripAnsi(row).includes('cursor'),
     );
@@ -1632,7 +1657,8 @@ test('recorded runs stay listed for the selected cli', async () => {
     ui.nav.agentCursor = at;
     ui.agents.choice('cursor').model = 'auto';
     const shown = ui.agents.sessionRows().map((row) => row.name);
-    assert.deepEqual(shown, ['<new session>', 'cursor-new', 'cursor-old']);
+    const expected = ['<start new session>', 'cursor-new', 'cursor-old'];
+    assert.deepEqual(shown, expected);
     ui.draw();
     const text = stripAnsi(ui.lastFrame.rows.join('\n'));
     assert.match(text, /cursor-new/);
@@ -1640,7 +1666,7 @@ test('recorded runs stay listed for the selected cli', async () => {
     const claudeAt = ui.agents.rows().findIndex((row) => row.id === 'claude');
     ui.nav.agentCursor = claudeAt;
     const claudeRuns = ui.agents.sessionRows().map((row) => row.name);
-    assert.deepEqual(claudeRuns, ['<new session>', 'claude-only']);
+    assert.deepEqual(claudeRuns, ['<start new session>', 'claude-only']);
   } finally {
     ui.agents.reset();
     repo.cleanup();
@@ -1663,7 +1689,7 @@ test('agents screen lists sessions for the selected cli', async () => {
     ui.draw();
     const lines = stripAnsi(ui.lastFrame.rows.join('\n')).split('\n');
     assert.ok(lines.some((row) => /claude/.test(row)));
-    assert.ok(lines.some((row) => /<new session>/.test(row)));
+    assert.ok(lines.some((row) => /<start new session>/.test(row)));
     const title = lines.findIndex((line) => /agent\s+model/.test(line));
     const runHit = ui.lastFrame.fileHits.find((hit) => hit.side === 'runs');
     assert.ok(runHit);
@@ -1703,7 +1729,7 @@ test('a new agent session is its own run with status', async () => {
     const file = path.join(reviewDir, name);
     const body = [
       '---',
-      'status: ready',
+      'status: editing',
       '---',
       '',
       '> a.js',
@@ -1725,7 +1751,7 @@ test('a new agent session is its own run with status', async () => {
     assert.match(banner, /-agent-\d+$/);
     ui.agents.closeView();
     const rows = ui.agents.sessionRows();
-    assert.equal(rows[0].name, '<new session>');
+    assert.equal(rows[0].name, '<start new session>');
     assert.equal(rows[0].fresh, true);
     assert.equal(rows[0].status, undefined);
     assert.equal(rows[1].name, banner);
@@ -1734,11 +1760,11 @@ test('a new agent session is its own run with status', async () => {
     assert.equal(rows[1].progress, '1/2');
     assert.equal(rows[1].fresh, undefined);
     assert.equal(rows[1].session, undefined);
-    assert.notEqual(rows[1].name, '<new session>');
+    assert.notEqual(rows[1].name, '<start new session>');
     stdout.columns = 160;
     ui.draw();
     const lines = stripAnsi(ui.lastFrame.rows.join('\n')).split('\n');
-    const fresh = lines.find((line) => line.includes('<new session>'));
+    const fresh = lines.find((line) => line.includes('<start new session>'));
     const live = lines.find((line) => line.includes('running'));
     assert.ok(fresh);
     assert.equal(fresh.includes('running'), false);
@@ -1755,7 +1781,7 @@ test('a new agent session is its own run with status', async () => {
     const sessionId = '2fa698ba-9a19-4a84-8134-5a7cd9ec2c56';
     ui.agents.jobs[0].session = sessionId;
     const next = ui.agents.sessionRows();
-    const starters = next.filter((row) => row.name === '<new session>');
+    const starters = next.filter((row) => row.name === '<start new session>');
     const active = next.filter((row) => row.status === 'running');
     assert.equal(starters.length, 1);
     assert.equal(active.length, 1);
@@ -1820,7 +1846,7 @@ test('agents screen blocks a review file that is already running', async () => {
     fs.mkdirSync(reviewDir, { recursive: true });
     const older = '2020-01-01-00.md';
     const newer = '2020-01-02-00.md';
-    const body = '---\nstatus: ready\n---\n';
+    const body = '---\nstatus: editing\n---\n';
     fs.writeFileSync(path.join(reviewDir, older), body);
     fs.writeFileSync(path.join(reviewDir, newer), body);
     ui.review.store.reviewPath = '';
@@ -1842,8 +1868,8 @@ test('agents screen blocks a review file that is already running', async () => {
     assert.equal(ui.status, `busy ${newer}`);
     ui.handleEvent({ type: 'key', key: 'p' });
     assert.deepEqual(ui.agents.menuItems(), [
-      `${newer}  ready  0/0`,
-      `${older}  ready  0/0`,
+      `${newer}  editing  0/0`,
+      `${older}  editing  0/0`,
     ]);
     assert.equal(ui.agents.pick.cursor, 1);
     ui.agents.pick.cursor = 0;
@@ -2106,7 +2132,7 @@ test('agent history keeps the launch, output, time, and progress', async () => {
     const name = '2020-01-01-00.md';
     const body = [
       '---',
-      'status: ready',
+      'status: editing',
       '---',
       '',
       '> a.js',
@@ -2162,7 +2188,7 @@ test('agent history keeps the launch, output, time, and progress', async () => {
     const list = stripAnsi(ui.lastFrame.rows.join('\n'));
     assert.equal(list.includes('▶'), false);
     assert.equal(list.includes('status'), false);
-    assert.match(list, /<new session>/);
+    assert.match(list, /<start new session>/);
     assert.match(list, /-agent-/);
     assert.equal(list.includes('exit 0'), false);
     ui.handleEvent({ type: 'key', key: 'down' });
@@ -2411,7 +2437,7 @@ test('starting an agent uses the selected session', async () => {
     };
     ui.draw();
     const chooser = stripAnsi(ui.lastFrame.rows.join('\n'));
-    assert.match(chooser, /<new session>/);
+    assert.match(chooser, /<start new session>/);
     assert.equal(chooser.includes('session?'), false);
     ui.agents.start();
     assert.equal(ui.mode, 'review');
@@ -2561,6 +2587,108 @@ test('a session opens on its last run and loads older on scroll', async () => {
     const olderAt = ui.agents.historyText.indexOf('older line');
     const newerAt = ui.agents.historyText.indexOf('newer line');
     assert.ok(olderAt < newerAt);
+  } finally {
+    ui.agents.reset();
+    repo.cleanup();
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('a completed session reopens with its captured output', async () => {
+  const { dir, env } = fakePath('claude');
+  const { ui, repo } = await openUi();
+  try {
+    ui.agents.listModels = async () => [];
+    ui.agents.refresh(env);
+    await ui.agents.open();
+    const sessionId = '2fa698ba-9a19-4a84-8134-5a7cd9ec2c56';
+    ui.agents.jobs = [
+      {
+        id: 1,
+        cliId: 'claude',
+        session: sessionId,
+        logName: '2026-10-09-agent-01.log',
+        output: 'completed agent output\n',
+        startedAt: 1,
+      },
+    ];
+    ui.agents.focusRuns();
+    ui.agents.move(1);
+    ui.handleEvent({ type: 'key', key: 'enter' });
+    assert.equal(ui.agents.viewing, true);
+    assert.match(ui.agents.historyText, /completed agent output/);
+  } finally {
+    ui.agents.reset();
+    repo.cleanup();
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('saved runs reload when the repository root changes', async () => {
+  const { dir, env } = fakePath('claude');
+  const { ui, repo } = await openUi();
+  try {
+    ui.agents.listModels = async () => [];
+    ui.agents.refresh(env);
+    const sessionId = '2fa698ba-9a19-4a84-8134-5a7cd9ec2c56';
+    const folder = path.join(repo.dir, '.log');
+    fs.mkdirSync(folder, { recursive: true });
+    const stem = '2026-10-09-agent-01';
+    const saved = {
+      id: 1,
+      cliId: 'claude',
+      action: 'run',
+      exit: 0,
+      startedAt: 1,
+      session: sessionId,
+      log: `${stem}.log`,
+      raw: `${stem}.raw`,
+    };
+    fs.writeFileSync(path.join(folder, `${stem}.json`), JSON.stringify(saved));
+    fs.writeFileSync(path.join(folder, `${stem}.raw`), 'saved line\n');
+    ui.agents.runsRoot = path.join(repo.dir, 'elsewhere');
+    ui.agents.jobs = [];
+    await ui.agents.open();
+    const rows = ui.agents.sessionRows();
+    assert.equal(rows.length, 2);
+    assert.equal(rows[1].id, sessionId);
+    ui.agents.focusRuns();
+    ui.agents.move(1);
+    ui.handleEvent({ type: 'key', key: 'enter' });
+    assert.equal(ui.agents.viewing, true);
+    assert.match(ui.agents.historyText, /saved line/);
+  } finally {
+    ui.agents.reset();
+    repo.cleanup();
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('reopening the agents screen restores both selections', async () => {
+  const { dir, env } = fakePath('claude', 'codex');
+  const { ui, repo } = await openUi();
+  try {
+    ui.agents.listModels = async () => [];
+    ui.agents.refresh(env);
+    await ui.agents.open();
+    assert.equal(ui.agents.selected().id, 'claude');
+    const codex = ui.agents.list.findIndex((row) => row.id === 'codex');
+    ui.nav.agentCursor = codex;
+    ui.agents.jobs = ['one', 'two'].map((session, at) => ({
+      id: at + 1,
+      cliId: 'codex',
+      session,
+      logName: `2026-10-09-agent-0${at + 1}.log`,
+      startedAt: at + 1,
+    }));
+    ui.agents.focusRuns();
+    ui.agents.move(1);
+    assert.equal(ui.agents.runCursor, 1);
+    await ui.agents.open();
+    assert.equal(ui.nav.agentCursor, codex);
+    assert.equal(ui.agents.focus, 'runs');
+    assert.equal(ui.agents.runCursor, 1);
+    assert.equal(ui.agents.viewing, false);
   } finally {
     ui.agents.reset();
     repo.cleanup();

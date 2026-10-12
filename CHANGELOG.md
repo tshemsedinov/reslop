@@ -10,6 +10,9 @@
 - Save agent settings `.reslop`
 - Show agent execution and progress
 - Rename `.review` to `.plan`
+- Remember the agents screen selection and reload saved runs with the repository
+- Drop the review status `ready`: `editing` plans are executed, and adding an
+  issue to a `done` plan sets it back to `editing`
 
 ## [0.2.7][] - 2026-10-03
 

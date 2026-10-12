@@ -2439,14 +2439,14 @@ test('quit with notes keeps the review status', async () => {
   session.dispatch('feedback');
   session.pushInput('nits');
   session.handleEvent({ type: 'key', key: 'ctrl-s' });
-  session.notes.status = 'ready';
+  session.notes.status = 'partial';
   session.notes.dirty = true;
   session.dispatch('quit');
   assert.equal(session.done, true);
   assert.equal(session.mode, 'review');
   const md = fs.readFileSync(session.notes.reviewPath, 'utf8');
   assert.match(md, /nits/);
-  assert.match(md, /status: ready/);
+  assert.match(md, /status: partial/);
 });
 
 test('quit warns before terminating a running test or agent', async () => {
@@ -2516,12 +2516,12 @@ test('initReview resumes latest editing file', async () => {
   );
 });
 
-test('initReview starts a new file when latest is ready', async () => {
+test('initReview starts a new file when latest is partial', async () => {
   const cwd = tempDir('reslop-ui-');
   const name = `${dateStamp()}-00.md`;
   const reviewPath = path.join(cwd, REVIEW_DIR, name);
   const draft = new ReviewStore(reviewPath);
-  draft.status = 'ready';
+  draft.status = 'partial';
   draft.addTask('a.js', 'rewrite loop');
   fs.mkdirSync(path.dirname(reviewPath), { recursive: true });
   fs.writeFileSync(reviewPath, serializeReview(draft), 'utf8');
