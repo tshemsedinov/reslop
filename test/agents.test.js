@@ -108,7 +108,15 @@ test('buildLaunch passes the review plan model and extra flags', () => {
   const launch = buildLaunch(row, choice, '/tmp/plan.md');
   assert.equal(launch.ok, true);
   assert.equal(launch.cmd, '/usr/bin/claude');
-  assert.deepEqual(launch.args.slice(0, 7), [
+  const head = [
+    '--print',
+    '--permission-mode',
+    'acceptEdits',
+    '--permission-prompts',
+    'none',
+  ];
+  assert.deepEqual(launch.args.slice(0, head.length), head);
+  assert.deepEqual(launch.args.slice(head.length), [
     '--model',
     'sonnet',
     '--effort',
@@ -118,17 +126,28 @@ test('buildLaunch passes the review plan model and extra flags', () => {
     planPrompt('/tmp/plan.md'),
   ]);
   const plain = buildLaunch(row, emptyChoice(row), '/tmp/plan.md');
-  assert.equal(plain.args[0], planPrompt('/tmp/plan.md'));
-  assert.equal(plain.command, 'claude /tmp/plan.md');
+  assert.deepEqual(plain.args.slice(0, head.length), head);
+  const plainCmd = ['claude', ...head, '/tmp/plan.md'].join(' ');
+  assert.equal(plain.command, plainCmd);
   assert.equal(launch.plan, '/tmp/plan.md');
-  const shown = 'claude --model sonnet --effort high --foo bar /tmp/plan.md';
+  const tail = '--model sonnet --effort high --foo bar /tmp/plan.md';
+  const shown = ['claude', ...head, tail].join(' ');
   assert.equal(launch.command, shown);
   assert.deepEqual(splitArgs('  --a   b  '), ['--a', 'b']);
   assert.equal(commandLine(launch), shown);
   const rel = buildLaunch(row, choice, '/tmp/work/.plan/a.md', '/tmp/work');
   assert.equal(rel.plan, '.plan/a.md');
   assert.equal(rel.prompt, planPrompt('.plan/a.md'));
-  const relCmd = 'claude --model sonnet --effort high --foo bar .plan/a.md';
+  const relHead = [
+    'claude',
+    '--print',
+    '--permission-mode',
+    'acceptEdits',
+    '--permission-prompts',
+    'none',
+    '--model sonnet --effort high --foo bar .plan/a.md',
+  ];
+  const relCmd = relHead.join(' ');
   assert.equal(rel.command, relCmd);
 });
 
@@ -348,8 +367,10 @@ test('agents screen lists clis and starts with the review plan', async () => {
     ui.handleEvent({ type: 'key', key: 'enter' });
     assert.equal(calls.length, 1);
     assert.equal(calls[0].launch.cmd, bins.claude);
-    assert.equal(calls[0].launch.args[0], '--model');
-    assert.equal(calls[0].launch.args[1], 'sonnet');
+    assert.equal(calls[0].launch.args[0], '--print');
+    assert.ok(calls[0].launch.args.includes('--permission-mode'));
+    assert.ok(calls[0].launch.args.includes('acceptEdits'));
+    assert.ok(calls[0].launch.args.includes('sonnet'));
     assert.ok(calls[0].launch.args.includes('--effort'));
     assert.ok(calls[0].launch.args.includes('medium'));
     assert.equal(calls[0].launch.args.includes('--max-turns'), false);
@@ -361,7 +382,7 @@ test('agents screen lists clis and starts with the review plan', async () => {
     assert.equal(ui.agents.jobs[0].status, 'running');
     assert.match(
       ui.agents.jobs[0].command,
-      /^claude --model sonnet --effort medium \.plan\//,
+      /^claude --print .* --model sonnet --effort medium \.plan\//,
     );
     const listed = ui.agents.rows().some((row) => row.kind === 'job');
     assert.equal(listed, false);
@@ -535,7 +556,7 @@ test('agent launch builds model, effort, fast, and login options', () => {
   );
   assert.equal(
     reasoned.command,
-    'codex -c model_reasoning_effort=high /tmp/plan.md',
+    'codex exec -c model_reasoning_effort=high /tmp/plan.md',
   );
   const login = buildLogin(row);
   assert.deepEqual(login.args, ['login']);
@@ -1371,6 +1392,16 @@ test('model menu uses background and a right scroller', async () => {
     assert.equal(ui.agents.selected().id, 'cursor');
     ui.nav.agentCursor = 2;
     ui.draw();
+    const fresh = ui.lastFrame.rows.find((row) =>
+      stripAnsi(row).includes('<new session>'),
+    );
+    assert.ok(fresh);
+    assert.ok(fresh.includes(bg(THEME.checkBg)));
+    const pickedCli = ui.lastFrame.rows.find((row) =>
+      stripAnsi(row).includes('cursor'),
+    );
+    assert.ok(pickedCli);
+    assert.ok(pickedCli.includes(bg(THEME.buttonBg)));
     const head = ui.lastFrame.rows.find((row) => {
       const plain = stripAnsi(row);
       return plain.includes('model') && plain.includes('plan');
@@ -1637,7 +1668,8 @@ test('agents screen lists sessions for the selected cli', async () => {
     const runHit = ui.lastFrame.fileHits.find((hit) => hit.side === 'runs');
     assert.ok(runHit);
     assert.equal(runHit.y, title + 1);
-    assert.match(ui.agents.jobs[0].command, /claude --model sonnet/);
+    assert.match(ui.agents.jobs[0].command, /claude --print /);
+    assert.match(ui.agents.jobs[0].command, /--model sonnet/);
     ui.handleEvent({ type: 'key', key: 'right' });
     assert.equal(ui.agents.focus, 'runs');
     ui.handleEvent({ type: 'key', key: 'tab' });
@@ -1689,11 +1721,14 @@ test('a new agent session is its own run with status', async () => {
     ui.agents.spawn = () => ({ kill() {} });
     ui.agents.start();
     assert.equal(ui.agents.viewing, true);
+    const banner = ui.agents.jobView().agentCommand;
+    assert.match(banner, /-agent-\d+$/);
     ui.agents.closeView();
     const rows = ui.agents.sessionRows();
     assert.equal(rows[0].name, '<new session>');
     assert.equal(rows[0].fresh, true);
     assert.equal(rows[0].status, undefined);
+    assert.equal(rows[1].name, banner);
     assert.equal(rows[1].status, 'running');
     assert.match(rows[1].elapsed, /^\d+:\d{2}$/);
     assert.equal(rows[1].progress, '1/2');
@@ -1709,6 +1744,14 @@ test('a new agent session is its own run with status', async () => {
     assert.equal(fresh.includes('running'), false);
     assert.ok(live);
     assert.match(live, /1\/2/);
+    const job = ui.agents.jobs[0];
+    job.status = 'exit 0';
+    const finished = ui.agents.sessionRows();
+    const kept = finished.find((row) => row.name === banner);
+    assert.ok(kept);
+    assert.equal(kept.id, banner);
+    assert.equal(ui.agents.sessionView(kept.id).agentCommand, banner);
+    job.status = 'running';
     const sessionId = '2fa698ba-9a19-4a84-8134-5a7cd9ec2c56';
     ui.agents.jobs[0].session = sessionId;
     const next = ui.agents.sessionRows();
@@ -1717,6 +1760,8 @@ test('a new agent session is its own run with status', async () => {
     assert.equal(starters.length, 1);
     assert.equal(active.length, 1);
     assert.equal(active[0].id, sessionId);
+    assert.equal(active[0].name, banner);
+    assert.equal(ui.agents.sessionView(sessionId).agentCommand, banner);
     ui.agents.focusRuns();
     ui.agents.move(1);
     ui.agents.start();
@@ -2099,13 +2144,13 @@ test('agent history keeps the launch, output, time, and progress', async () => {
     const rows = ui.lastFrame.rows.map((row) => stripAnsi(row));
     const log = rows.join('\n');
     assert.equal(rows[1].trim(), '');
-    const command = rows.find((row) => row.includes('.plan/'));
+    const command = rows.find((row) => /-agent-\d+/.test(row));
     const status = rows.find((row) => row.includes('exit 0'));
     assert.match(command, /^ {2}\S/);
     assert.match(status, /^ {2}exit 0/);
     assert.equal(command.slice(-2), '  ');
     assert.equal(status.slice(-2), '  ');
-    assert.match(log, /claude/);
+    assert.match(log, /-agent-/);
     assert.match(log, /hello from agent/);
     assert.match(log, /exit 0/);
     assert.match(log, /\d+:\d{2}/);
@@ -2343,8 +2388,9 @@ test('buildLaunch continues a previous session', () => {
     '/tmp',
     sessionId,
   );
-  assert.equal(resumed.args[0], 'resume');
-  assert.equal(resumed.args[1], sessionId);
+  assert.equal(resumed.args[0], 'exec');
+  assert.equal(resumed.args[1], 'resume');
+  assert.equal(resumed.args[2], sessionId);
   assert.ok(resumed.args.includes('--model'));
   assert.ok(resumed.args.includes('model_reasoning_effort=high'));
 });
