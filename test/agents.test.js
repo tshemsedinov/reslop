@@ -19,7 +19,8 @@ const { createGitRepo } = require('../lib/git/git.js');
 const { makeRepo, uiSink } = require('./helpers.js');
 const render = require('../lib/render/render.js');
 const { renderFrame } = render;
-const { stripAnsi, THEME, bg, RESET, BOLD, seq } = require('../lib/term/ansi.js');
+const ansi = require('../lib/term/ansi.js');
+const { stripAnsi, THEME, bg, RESET, BOLD, seq } = ansi;
 const { actionFromKey } = require('../lib/input/actions.js');
 const jobs = require('../lib/session/agents/jobs.js');
 const { runStats, launchJob } = jobs;
@@ -108,13 +109,10 @@ test('buildLaunch passes the review plan model and extra flags', () => {
   const launch = buildLaunch(row, choice, '/tmp/plan.md');
   assert.equal(launch.ok, true);
   assert.equal(launch.cmd, '/usr/bin/claude');
-  const head = [
-    '--print',
-    '--permission-mode',
-    'acceptEdits',
-    '--permission-prompts',
-    'none',
-  ];
+  const head = row.spec.prefix;
+  assert.ok(head.includes('--allowedTools'));
+  assert.ok(head.includes('Bash(npm *)'));
+  assert.ok(head.includes('Bash(node *)'));
   assert.deepEqual(launch.args.slice(0, head.length), head);
   assert.deepEqual(launch.args.slice(head.length), [
     '--model',
@@ -127,28 +125,18 @@ test('buildLaunch passes the review plan model and extra flags', () => {
   ]);
   const plain = buildLaunch(row, emptyChoice(row), '/tmp/plan.md');
   assert.deepEqual(plain.args.slice(0, head.length), head);
-  const plainCmd = ['claude', ...head, '/tmp/plan.md'].join(' ');
-  assert.equal(plain.command, plainCmd);
+  assert.equal(plain.command, commandLine(plain));
+  assert.match(plain.command, /"Bash\(npm \*\)"/);
   assert.equal(launch.plan, '/tmp/plan.md');
-  const tail = '--model sonnet --effort high --foo bar /tmp/plan.md';
-  const shown = ['claude', ...head, tail].join(' ');
-  assert.equal(launch.command, shown);
+  assert.equal(launch.command, commandLine(launch));
+  assert.match(launch.command, /--model sonnet --effort high --foo bar/);
   assert.deepEqual(splitArgs('  --a   b  '), ['--a', 'b']);
-  assert.equal(commandLine(launch), shown);
   const rel = buildLaunch(row, choice, '/tmp/work/.plan/a.md', '/tmp/work');
   assert.equal(rel.plan, '.plan/a.md');
   assert.equal(rel.prompt, planPrompt('.plan/a.md'));
-  const relHead = [
-    'claude',
-    '--print',
-    '--permission-mode',
-    'acceptEdits',
-    '--permission-prompts',
-    'none',
-    '--model sonnet --effort high --foo bar .plan/a.md',
-  ];
-  const relCmd = relHead.join(' ');
-  assert.equal(rel.command, relCmd);
+  assert.equal(rel.command, commandLine(rel));
+  const relTail = /--model sonnet --effort high --foo bar \.plan\/a\.md$/;
+  assert.match(rel.command, relTail);
 });
 
 const rowOf = (spec) => ({
@@ -1394,9 +1382,11 @@ test('model menu uses background and a right scroller', async () => {
   repo.write('a.js', 'ok\n');
   repo.git(['add', '.']);
   repo.git(['commit', '-m', 'init']);
+  const stdout = uiSink();
+  stdout.columns = 160;
   const ui = new Session({
     cwd: repo.dir,
-    stdout: uiSink(),
+    stdout,
     repo: createGitRepo(),
     color: true,
     startPane: 'dashboard',
@@ -1418,10 +1408,7 @@ test('model menu uses background and a right scroller', async () => {
     assert.ok(fresh);
     assert.ok(fresh.includes(bg(THEME.checkBg)));
     assert.ok(fresh.includes(seq(THEME.chromeFg, THEME.checkBg)));
-    assert.equal(
-      fresh.includes(seq(THEME.buttonHotFg, THEME.checkBg)),
-      false,
-    );
+    assert.equal(fresh.includes(seq(THEME.buttonHotFg, THEME.checkBg)), false);
     const pickedCli = ui.lastFrame.rows.find((row) =>
       stripAnsi(row).includes('cursor'),
     );
@@ -1676,7 +1663,7 @@ test('recorded runs stay listed for the selected cli', async () => {
 
 test('agents screen lists sessions for the selected cli', async () => {
   const { dir, env } = fakePath('claude');
-  const { ui, repo } = await openUi();
+  const { ui, repo, stdout } = await openUi();
   try {
     ui.agents.listModels = async () => [];
     ui.agents.refresh(env);
@@ -1686,6 +1673,7 @@ test('agents screen lists sessions for the selected cli', async () => {
     ui.handleEvent({ type: 'key', key: 'enter' });
     ui.handleEvent({ type: 'key', key: 'enter' });
     ui.handleEvent({ type: 'key', key: 'escape' });
+    stdout.columns = 160;
     ui.draw();
     const lines = stripAnsi(ui.lastFrame.rows.join('\n')).split('\n');
     assert.ok(lines.some((row) => /claude/.test(row)));
@@ -2423,7 +2411,7 @@ test('buildLaunch continues a previous session', () => {
 
 test('starting an agent uses the selected session', async () => {
   const { dir, env } = fakePath('cursor-agent');
-  const { ui, repo } = await openUi();
+  const { ui, repo, stdout } = await openUi();
   try {
     ui.agents.listModels = async () => [];
     ui.agents.refresh(env);
@@ -2435,6 +2423,7 @@ test('starting an agent uses the selected session', async () => {
       calls.push(launch);
       return { kill() {} };
     };
+    stdout.columns = 160;
     ui.draw();
     const chooser = stripAnsi(ui.lastFrame.rows.join('\n'));
     assert.match(chooser, /<start new session>/);

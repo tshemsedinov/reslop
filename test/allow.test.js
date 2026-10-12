@@ -66,7 +66,11 @@ test('an agent with an allow list gets the plan entries', async () => {
   const config = path.join(dir, 'cli-config.json');
   const previous = process.env.RESLOP_CURSOR_CONFIG;
   process.env.RESLOP_CURSOR_CONFIG = config;
-  const script = 'process.stdout.write("tty=" + Boolean(process.stdout.isTTY))';
+  const script = [
+    'const tty = Boolean(process.stdout.isTTY)',
+    'const mode = process.env.RESLOP_OUTPUT || ""',
+    'process.stdout.write("tty=" + tty + " mode=" + mode)',
+  ].join(';');
   const args = ['-e', script];
   try {
     const base = { cmd: process.execPath, args, kind: 'run' };
@@ -77,7 +81,7 @@ test('an agent with an allow list gets the plan entries', async () => {
     const cursor = { ...base, id: 'cursor' };
     const second = await runToEnd(dir, cursor);
     assert.equal(second.status, 0);
-    assert.match(second.text, /tty=false/);
+    assert.match(second.text, /tty=false mode=$/);
     const saved = JSON.parse(fs.readFileSync(config, 'utf8'));
     assert.ok(saved.permissions.allow.includes('Write(.plan/**/*.md)'));
     assert.ok(saved.permissions.allow.includes('Shell(npm)'));
