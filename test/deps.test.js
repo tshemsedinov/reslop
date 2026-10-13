@@ -9,7 +9,7 @@ const manifest = require('../lib/deps/manifest.js');
 const { parseDiff, itemsFromFiles } = require('../lib/diff/diff.js');
 const git = require('../lib/git/git.js');
 const gitDeps = require('../lib/git/deps.js');
-const { proposedNpmPlan } = gitDeps;
+const { proposedNpmPlan, stagePath } = gitDeps;
 const render = require('../lib/render/render.js');
 const { Session } = require('../lib/session/session.js');
 const fs = require('node:fs');
@@ -1778,6 +1778,84 @@ test('add unstage and revert apply to both dependency files', async () => {
     assert.equal(
       repo.read('package-lock.json'),
       lockV3(oldDeps, { lodash: '4.17.20' }),
+    );
+  } finally {
+    repo.cleanup();
+  }
+});
+
+test('staging a package.json diff installs its lockfile', async () => {
+  const repo = makeRepo();
+  try {
+    const dependencies = { lodash: '^4.17.20' };
+    repo.write('package.json', pkgJson(dependencies, { version: '0.1.0' }));
+    repo.write(
+      'package-lock.json',
+      lockV3(dependencies, { lodash: '4.17.20' }),
+    );
+    repo.git(['add', '.']);
+    repo.git(['commit', '-m', 'init']);
+    repo.write('package.json', pkgJson(dependencies, { version: '0.1.1' }));
+    const loaded = await load(repo.dir, [], { deferExtras: false });
+    const item = loaded.items.find((entry) => !entry.dep);
+    assert.ok(item);
+    let installed = '';
+    await addItem(loaded.top, item, {
+      run: (cwd, args) => {
+        installed = `${cwd}\0${args.join(' ')}`;
+        repo.write(
+          'package-lock.json',
+          lockV3(dependencies, { lodash: '4.17.21' }),
+        );
+        return { status: 0 };
+      },
+    });
+    assert.equal(installed, `${repo.dir}\0i`);
+    assert.equal(
+      parseGitJson(repo, ':package-lock.json').packages['node_modules/lodash']
+        .version,
+      '4.17.21',
+    );
+    assert.match(
+      repo.git(['diff', '--cached', '--name-only']),
+      /package\.json/,
+    );
+    assert.match(
+      repo.git(['diff', '--cached', '--name-only']),
+      /package-lock\.json/,
+    );
+  } finally {
+    repo.cleanup();
+  }
+});
+
+test('staging a package.json path installs its lockfile', async () => {
+  const repo = makeRepo();
+  try {
+    const dependencies = { lodash: '^4.17.20' };
+    repo.write('package.json', pkgJson(dependencies, { version: '0.1.0' }));
+    repo.git(['add', '.']);
+    repo.git(['commit', '-m', 'init']);
+    repo.write('package.json', pkgJson(dependencies, { version: '0.1.1' }));
+    let installed = '';
+    await stagePath(repo.dir, 'package.json', {
+      run: (cwd, args) => {
+        installed = `${cwd}\0${args.join(' ')}`;
+        repo.write(
+          'package-lock.json',
+          lockV3(dependencies, { lodash: '4.17.21' }),
+        );
+        return { status: 0 };
+      },
+    });
+    assert.equal(installed, `${repo.dir}\0i`);
+    assert.match(
+      repo.git(['diff', '--cached', '--name-only']),
+      /package\.json/,
+    );
+    assert.match(
+      repo.git(['diff', '--cached', '--name-only']),
+      /package-lock\.json/,
     );
   } finally {
     repo.cleanup();
