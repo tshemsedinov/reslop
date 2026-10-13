@@ -100,6 +100,14 @@ test('ctrl arrows move by word in compose editors', () => {
   }
 });
 
+test('ctrl backspace deletes the previous word in compose editors', () => {
+  const { composer } = setup();
+  composer.openCompose('feedback', 'hello world');
+  composer.handleKey('ctrl-backspace');
+  assert.equal(composer.editor.text, 'hello ');
+  assert.equal(composer.editor.cursor, 6);
+});
+
 test('escape cancels branch compose without a command', () => {
   const { composer, getMode, getStatus } = setup();
   composer.openCompose('branch', 'feat');

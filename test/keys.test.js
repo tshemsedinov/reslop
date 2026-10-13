@@ -27,6 +27,8 @@ test('decodeChunk maps letters and arrows', () => {
   assert.equal(enter.key, 'enter');
   const back = decodeChunk('\x7f').events[0];
   assert.equal(back.key, 'backspace');
+  const ctrlBackspace = decodeChunk('\x1b[127;5u').events[0];
+  assert.equal(ctrlBackspace.key, 'ctrl-backspace');
   const tab = decodeChunk('\t').events[0];
   assert.equal(tab.key, 'tab');
   const backTab = decodeChunk('\x1b[Z').events[0];

@@ -91,6 +91,16 @@ test('moveWord jumps by identifier', () => {
   assert.equal(editor.cursor, 0);
 });
 
+test('backspaceWord deletes the previous word', () => {
+  const editor = new Editor('hello world');
+  editor.backspaceWord();
+  assert.equal(editor.text, 'hello ');
+  assert.equal(editor.cursor, 6);
+  editor.backspaceWord();
+  assert.equal(editor.text, '');
+  assert.equal(editor.cursor, 0);
+});
+
 test('shift movement selects and edits replace the span', () => {
   const editor = new Editor('hello');
   editor.move(-2, true);
