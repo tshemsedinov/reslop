@@ -2211,7 +2211,10 @@ test('continue starts the session selected in the right panel', async () => {
     ui.agents.focusRuns();
     ui.agents.move(1);
     assert.equal(ui.view().agentCanContinue, true);
-    ui.handleEvent({ type: 'key', key: 'c' });
+    const footer = stripAnsi(ui.lastFrame.rows.at(-1));
+    assert.match(footer, /start/);
+    assert.equal(footer.includes('continue'), false);
+    ui.handleEvent({ type: 'key', key: 's' });
     assert.equal(calls.length, 2);
     assert.equal(calls[1].session, sessionId);
     assert.deepEqual(calls[1].args, ['acp']);
