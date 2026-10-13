@@ -1836,6 +1836,24 @@ test('tasks import asks for a url and applies the pull request', async () => {
   assert.match(session.notes.tasks[0].text, /add tests/);
 });
 
+test('tasks import prefills an editable repository url', async () => {
+  const item = sampleItem('a.js');
+  const cwd = tempDir('reslop-ui-');
+  const repo = mockRepo([item], cwd);
+  const load = repo.load;
+  repo.load = () => ({
+    ...load(),
+    repositoryUrl: 'https://github.com/acme/demo',
+  });
+  const { session } = await openSession([item], { cwd, repo });
+  session.dispatch('tasks');
+  session.handleEvent({ type: 'key', key: 'escape' });
+  session.handleEvent({ type: 'key', key: 'i' });
+  assert.equal(session.nav.import.url, 'https://github.com/acme/demo');
+  session.pushInput('/issues/4');
+  assert.equal(session.nav.import.url, 'https://github.com/acme/demo/issues/4');
+});
+
 test('tasks import accepts a github or gitlab issue url', async () => {
   const { session } = await openSession([sampleItem('a.js')], {
     loadGithubIssue: async () => ({

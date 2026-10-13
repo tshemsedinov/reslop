@@ -51,6 +51,17 @@ test('AC4 add stages an unstaged block', async () => {
   }
 });
 
+test('load exposes the origin as a browser repository url', async () => {
+  const repo = makeRepo();
+  try {
+    repo.git(['remote', 'add', 'origin', 'git@github.com:acme/demo.git']);
+    const loaded = await load(repo.dir, [], { deferExtras: false });
+    assert.equal(loaded.repositoryUrl, 'https://github.com/acme/demo');
+  } finally {
+    repo.cleanup();
+  }
+});
+
 test('AC5 revert restores worktree to HEAD', async () => {
   const repo = makeRepo();
   try {
