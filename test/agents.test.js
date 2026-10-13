@@ -1223,6 +1223,22 @@ test('effort encoded in a model id is chosen separately', () => {
     '/tmp/plan.md',
   );
   assert.ok(half.args.includes('grok-4.7-high[context=500k]'));
+  const composer = buildLaunch(
+    row,
+    { model: 'composer-2.5', effort: 'medium', extra: '' },
+    '/tmp/plan.md',
+  );
+  const composerCmd =
+    'cursor-agent --print --trust --model composer-2.5 /tmp/plan.md';
+  assert.equal(composer.command, composerCmd);
+  const composerFast = buildLaunch(
+    row,
+    { model: 'composer-2.5', effort: 'medium', extra: '', fast: true },
+    '/tmp/plan.md',
+  );
+  const composerFastCmd =
+    'cursor-agent --print --trust --model composer-2.5-fast /tmp/plan.md';
+  assert.equal(composerFast.command, composerFastCmd);
 });
 
 test('model menu omits a fast name that has a plain sibling', async () => {
