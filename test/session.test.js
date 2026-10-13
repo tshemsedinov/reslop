@@ -6233,6 +6233,17 @@ test('editors select with shift and copy cut paste', async () => {
   assert.equal(session.editor.text, 'ab\ncd');
   assert.equal(session.editor.hasSelect(), true);
   assert.equal(session.composeKind, 'tasks');
+  session.editor.replace('zxqv');
+  session.draw();
+  const taskBefore = rowOf('zxqv');
+  press(session, 'shift-left');
+  press(session, 'shift-left');
+  assert.equal(session.editor.selectedText(), 'qv');
+  assert.equal(session.view().taskEdit.anchor, 4);
+  session.draw();
+  const taskAfter = rowOf('zxqv');
+  assert.equal(stripAnsi(taskBefore), stripAnsi(taskAfter));
+  assert.notEqual(taskBefore, taskAfter);
 });
 
 test('find import and plan lines select and use the clipboard', async () => {
