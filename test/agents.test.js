@@ -2196,7 +2196,9 @@ test('continue starts the session selected in the right panel', async () => {
     const chooser = stripAnsi(ui.lastFrame.rows.join('\n'));
     assert.match(chooser, /<start new session>/);
     assert.equal(chooser.includes('session?'), false);
-    ui.agents.start();
+    assert.equal(ui.agents.focus, 'cli');
+    assert.equal(ui.view().agentCanStart, true);
+    ui.handleEvent({ type: 'key', key: 's' });
     assert.equal(ui.mode, 'review');
     assert.equal(calls.length, 1);
     assert.equal(calls[0].session, '');
@@ -2210,7 +2212,9 @@ test('continue starts the session selected in the right panel', async () => {
     ui.agents.closeView();
     ui.agents.focusRuns();
     ui.agents.move(1);
-    assert.equal(ui.view().agentCanContinue, true);
+    ui.agents.focusCli();
+    assert.equal(ui.view().agentCanStart, true);
+    ui.draw();
     const footer = stripAnsi(ui.lastFrame.rows.at(-1));
     assert.match(footer, /start/);
     assert.equal(footer.includes('continue'), false);
