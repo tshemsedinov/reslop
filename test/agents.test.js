@@ -12,6 +12,7 @@ const { emptyChoice, buildLaunch, AGENTS } = agents;
 const { catalogOf, parseModelId, fitEffort } = agents;
 const { modelChange, effortChange, fastChange, modeChange } = agents;
 const { contextChange } = agents;
+const { captionFromPlan } = require('../lib/session/agents/plans.js');
 const { Session } = require('../lib/session/session.js');
 const { createGitRepo } = require('../lib/git/git.js');
 const { makeRepo, uiSink } = require('./helpers.js');
@@ -448,6 +449,22 @@ test('a finished run reports its session, files and tokens', () => {
   ]);
   assert.equal(restored.jobs.length, 1);
   assert.equal(restored.jobs[0].choice.model, 'opus');
+});
+
+test('a plan caption prefers a heading over a dated review title', () => {
+  const dated = [
+    '---',
+    'status: editing',
+    '---',
+    '',
+    '# reslop review 2026-10-14-00',
+    '',
+    '- [ ] F1: use start instead of continue',
+  ].join('\n');
+  assert.equal(captionFromPlan(dated), 'use start instead of continue');
+  const titled = '# Fix the login form\n\n- [ ] F2: retry the request\n';
+  assert.equal(captionFromPlan(titled), 'Fix the login form');
+  assert.equal(captionFromPlan(''), '');
 });
 
 const openUi = async () => {
@@ -1452,7 +1469,8 @@ test('a new agent session is its own run with status', async () => {
     ui.agents.start();
     assert.equal(ui.agents.viewing, true);
     const banner = ui.agents.jobView().agentCommand;
-    assert.match(banner, /-agent-\d+$/);
+    assert.equal(banner, 'rewrite loop');
+    assert.match(ui.agents.jobs[0].logName, /-agent-\d+\.log$/);
     ui.agents.closeView();
     const rows = ui.agents.sessionRows();
     assert.equal(rows[0].name, '<start new session>');
@@ -1479,7 +1497,7 @@ test('a new agent session is its own run with status', async () => {
     const finished = ui.agents.sessionRows();
     const kept = finished.find((row) => row.name === banner);
     assert.ok(kept);
-    assert.equal(kept.id, banner);
+    assert.match(kept.id, /-agent-\d+$/);
     assert.equal(ui.agents.sessionView(kept.id).agentCommand, banner);
     job.status = 'running';
     const sessionId = '2fa698ba-9a19-4a84-8134-5a7cd9ec2c56';
@@ -1972,13 +1990,14 @@ test('agent history keeps the launch, output, time, and progress', async () => {
     const rows = ui.lastFrame.rows.map((row) => stripAnsi(row));
     const log = rows.join('\n');
     assert.equal(rows[1].trim(), '');
-    const command = rows.find((row) => /-agent-\d+/.test(row));
+    const command = rows.find((row) => row.includes('rewrite loop'));
     const status = rows.find((row) => row.includes('exit 0'));
     assert.match(command, /^ {2}\S/);
     assert.match(status, /^ {2}exit 0/);
     assert.equal(command.slice(-2), '  ');
     assert.equal(status.slice(-2), '  ');
-    assert.match(log, /-agent-/);
+    assert.match(log, /rewrite loop/);
+    assert.match(ui.agents.jobs[0].logName, /-agent-\d+\.log$/);
     assert.match(log, /hello from agent/);
     assert.match(log, /exit 0/);
     assert.match(log, /\d+:\d{2}/);
@@ -1991,7 +2010,8 @@ test('agent history keeps the launch, output, time, and progress', async () => {
     assert.equal(list.includes('▶'), false);
     assert.equal(list.includes('status'), false);
     assert.match(list, /<start new session>/);
-    assert.match(list, /-agent-/);
+    assert.match(list, /rewrite loop/);
+    assert.equal(/-agent-\d+/.test(list), false);
     assert.equal(list.includes('exit 0'), false);
     ui.handleEvent({ type: 'key', key: 'down' });
     ui.handleEvent({ type: 'key', key: 'enter' });
@@ -2028,6 +2048,7 @@ test('agent history keeps the launch, output, time, and progress', async () => {
     assert.equal(session.files, 9);
     assert.equal(session.tokens, 1234);
     assert.match(session.name, /-agent-/);
+    assert.equal(session.title, 'rewrite loop');
     assert.equal(fs.existsSync(path.join(repo.dir, '.reslop')), false);
     ui.agents.reset();
     assert.equal(ui.agents.jobs[0].status, 'exit 0');
