@@ -7,13 +7,11 @@ const os = require('node:os');
 const path = require('node:path');
 
 const agents = require('../lib/agents/agents.js');
-const { detectAgents, findBin, splitArgs, planPrompt } = agents;
-const { emptyChoice, buildLaunch, buildLogin, AGENTS, listModels } = agents;
-const { mergeModels, parseCursorModels, parseCursorWide } = agents;
-const { parseNameList } = agents;
-const { parseJsonModels, commandLine, needsAuth, authState } = agents;
-const { groupModels, catalogOf } = agents;
-const { optionValues, parseHelpModels, parseJsonEfforts } = agents;
+const { detectAgents, findBin, planPrompt } = agents;
+const { emptyChoice, buildLaunch, AGENTS } = agents;
+const { catalogOf, parseModelId, fitEffort } = agents;
+const { modelChange, effortChange, fastChange, modeChange } = agents;
+const { contextChange } = agents;
 const { Session } = require('../lib/session/session.js');
 const { createGitRepo } = require('../lib/git/git.js');
 const { makeRepo, uiSink } = require('./helpers.js');
@@ -23,7 +21,9 @@ const ansi = require('../lib/term/ansi.js');
 const { stripAnsi, THEME, bg, RESET, BOLD, seq } = ansi;
 const { actionFromKey } = require('../lib/input/actions.js');
 const jobs = require('../lib/session/agents/jobs.js');
-const { runStats, launchJob } = jobs;
+const { launchJob } = jobs;
+
+const FIXTURE = path.join(__dirname, 'acp-agent.js');
 
 const makeBin = (dir, name) => {
   const file = path.join(dir, name);
@@ -39,6 +39,89 @@ const fakePath = (...names) => {
   return { dir, bins, env: { PATH: dir } };
 };
 
+const select = (id, category, currentValue, values) => ({
+  id,
+  category,
+  type: 'select',
+  currentValue,
+  options: values.map((value) => ({ value, name: value })),
+});
+
+// What an agent answers to session/new, as far as the panel reads it
+const acpState = (given) => {
+  const { models, efforts, fast, listed, modes } = given;
+  const configOptions = [];
+  const current = given.current ?? models[0];
+  if (modes) configOptions.push(select('mode', 'mode', modes[0], modes));
+  if (!given.bare) {
+    configOptions.push(select('model', 'model', current, models));
+  }
+  if (efforts) {
+    const level = given.effort ?? 'high';
+    configOptions.push(select('effort', 'thought_level', level, efforts));
+  }
+  if (fast) {
+    configOptions.push(select('fast', 'model_config', 'off', ['on', 'off']));
+  }
+  const ids = listed ?? (given.bare ? models : null);
+  const availableModels = (ids ?? []).map((modelId) => ({ modelId }));
+  const listing = { currentModelId: current, availableModels };
+  return {
+    sessionId: 'session-1',
+    configOptions,
+    models: ids ? listing : null,
+  };
+};
+
+const CLAUDE_STATE = acpState({
+  models: ['sonnet', 'opus', 'haiku'],
+  efforts: ['default', 'low', 'medium', 'high', 'max'],
+  fast: true,
+  modes: ['default', 'acceptEdits'],
+});
+
+const CURSOR_STATE = acpState({
+  models: [
+    'default[]',
+    'grok-4.6[effort=high,fast=true]',
+    'composer-2[fast=true]',
+    'gpt-5[context=272k,reasoning=low,fast=false]',
+    'gpt-5[context=1m,reasoning=low,fast=false]',
+    'gpt-5[context=272k,reasoning=high,fast=false]',
+    'gpt-5[context=1m,reasoning=high,fast=false]',
+  ],
+});
+
+const CODEX_STATE = acpState({
+  models: ['gpt-a', 'gpt-b'],
+  efforts: ['low', 'medium', 'high'],
+  listed: [
+    'gpt-a[low]',
+    'gpt-a[high]',
+    'gpt-a[ultra]',
+    'gpt-b[low]',
+    'gpt-b[medium]',
+  ],
+});
+
+const STATES = {
+  claude: CLAUDE_STATE,
+  cursor: CURSOR_STATE,
+  codex: CODEX_STATE,
+};
+
+const listed = async (row) => STATES[row.id] ?? null;
+
+const rowOf = (spec, catalog = null) => {
+  const [name, ...args] = spec.commands[0];
+  const { id } = spec;
+  return { id, name: spec.name, bin: `/usr/bin/${name}`, args, spec, catalog };
+};
+
+const specOf = (id) => AGENTS.find((spec) => spec.id === id);
+
+const SH_ONLY = { skip: process.platform === 'win32' };
+
 test('findBin returns the first executable on PATH', () => {
   const { dir, bins, env } = fakePath('claude');
   try {
@@ -50,227 +133,321 @@ test('findBin returns the first executable on PATH', () => {
   }
 });
 
-test('detectAgents finds claude opencode cursor codex and agy clis', () => {
+test('detectAgents finds the acp command of every agent', () => {
   const { dir, bins, env } = fakePath(
-    'claude',
+    'claude-agent-acp',
     'opencode',
     'cursor-agent',
-    'codex',
-    'agy',
+    'codex-acp',
+    'agy-acp',
   );
   try {
     const list = detectAgents(env);
     assert.equal(list.length, AGENTS.length);
-    assert.equal(list[0].id, 'claude');
-    assert.equal(list[0].bin, bins.claude);
-    assert.equal(list[1].id, 'opencode');
-    assert.equal(list[1].bin, bins.opencode);
-    assert.equal(list[2].id, 'cursor');
-    assert.equal(list[2].bin, bins['cursor-agent']);
-    assert.equal(list[3].id, 'codex');
-    assert.equal(list[3].bin, bins.codex);
-    assert.equal(list[4].id, 'agy');
-    assert.equal(list[4].bin, bins.agy);
+    const found = list.map((row) => [row.id, row.bin, row.args]);
+    assert.deepEqual(found, [
+      ['claude', bins['claude-agent-acp'], []],
+      ['opencode', bins.opencode, ['acp']],
+      ['cursor', bins['cursor-agent'], ['acp']],
+      ['codex', bins['codex-acp'], []],
+      ['agy', bins['agy-acp'], []],
+    ]);
+    assert.equal(list[0].catalog, null);
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
   }
 });
 
-test('detectAgents prefers cursor-agent over agent', () => {
-  const { dir, bins, env } = fakePath('agent');
+test('detectAgents falls back to the next command of an agent', () => {
+  const { dir, bins, env } = fakePath('agent', 'claude-code-acp', 'claude');
   try {
     const list = detectAgents(env);
     const cursor = list.find((row) => row.id === 'cursor');
     assert.equal(cursor.bin, bins.agent);
-    const none = detectAgents({ PATH: `${dir}-missing` }).find(
-      (row) => row.id === 'claude',
-    );
-    assert.equal(none.bin, '');
+    assert.deepEqual(cursor.args, ['acp']);
+    const claude = list.find((row) => row.id === 'claude');
+    assert.equal(claude.bin, bins['claude-code-acp']);
+    const codex = list.find((row) => row.id === 'codex');
+    assert.equal(codex.bin, '');
+    assert.equal(codex.needs, 'codex-acp');
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
   }
 });
 
-test('buildLaunch passes the review plan model and extra flags', () => {
-  const row = {
-    id: 'claude',
-    name: 'claude',
-    bin: '/usr/bin/claude',
-    spec: AGENTS[0],
-    models: AGENTS[0].models,
-  };
-  const missing = buildLaunch({ ...row, bin: '' }, emptyChoice(row), '/r.md');
-  assert.equal(missing.ok, false);
-  assert.equal(missing.error, 'not installed');
-  const noPlan = buildLaunch(row, emptyChoice(row), '');
-  assert.equal(noPlan.ok, false);
-  assert.equal(noPlan.error, 'no plan');
-  const choice = { model: 'sonnet', extra: '--foo bar', effort: 'high' };
-  const launch = buildLaunch(row, choice, '/tmp/plan.md');
-  assert.equal(launch.ok, true);
-  assert.equal(launch.cmd, '/usr/bin/claude');
-  const head = row.spec.prefix;
-  assert.ok(head.includes('--allowedTools'));
-  assert.ok(head.includes('Bash(npm *)'));
-  assert.ok(head.includes('Bash(node *)'));
-  assert.ok(head.includes('Bash(git *)'));
-  assert.deepEqual(launch.args.slice(0, head.length), head);
-  assert.deepEqual(launch.args.slice(head.length), [
-    '--model',
-    'sonnet',
-    '--effort',
-    'high',
-    '--foo',
-    'bar',
-    planPrompt('/tmp/plan.md'),
-  ]);
-  const plain = buildLaunch(row, emptyChoice(row), '/tmp/plan.md');
-  assert.deepEqual(plain.args.slice(0, head.length), head);
-  assert.equal(plain.command, commandLine(plain));
-  assert.match(plain.command, /"Bash\(npm \*\)"/);
-  assert.equal(launch.plan, '/tmp/plan.md');
-  assert.equal(launch.command, commandLine(launch));
-  assert.match(launch.command, /--model sonnet --effort high --foo bar/);
-  assert.deepEqual(splitArgs('  --a   b  '), ['--a', 'b']);
-  const rel = buildLaunch(row, choice, '/tmp/work/.plan/a.md', '/tmp/work');
-  assert.equal(rel.plan, '.plan/a.md');
-  assert.equal(rel.prompt, planPrompt('.plan/a.md'));
-  assert.equal(rel.command, commandLine(rel));
-  const relTail = /--model sonnet --effort high --foo bar \.plan\/a\.md$/;
-  assert.match(rel.command, relTail);
-});
-
-const rowOf = (spec) => ({
-  id: spec.id,
-  name: spec.name,
-  bin: `/usr/bin/${spec.bins[0]}`,
-  spec,
-  models: spec.models,
-});
-
-const agyRow = () => rowOf(AGENTS.find((item) => item.id === 'agy'));
-
-const SKIP_ASKS = '--dangerously-skip-permissions';
-
-test('buildLaunch passes the plan to agy behind its prompt flag', () => {
-  const row = agyRow();
-  const prompt = planPrompt('/tmp/plan.md');
-  const plain = buildLaunch(row, emptyChoice(row), '/tmp/plan.md');
-  assert.equal(plain.ok, true);
-  assert.equal(plain.cmd, '/usr/bin/agy');
-  assert.deepEqual(plain.args, ['-p', prompt]);
-  assert.equal(plain.command, 'agy -p /tmp/plan.md');
-  const slug = { model: 'gemini-3.8-flash', effort: 'high', extra: '' };
-  const encoded = buildLaunch(row, slug, '/tmp/plan.md');
-  const model = ['--model', 'gemini-3.8-flash-high'];
-  assert.deepEqual(encoded.args, [...model, '-p', prompt]);
-  const shown = 'agy --model gemini-3.8-flash-high -p /tmp/plan.md';
-  assert.equal(encoded.command, shown);
-  const level = { model: 'default', effort: 'high', extra: '' };
-  const flagged = buildLaunch(row, level, '/tmp/plan.md');
-  assert.deepEqual(flagged.args, ['--effort', 'high', '-p', prompt]);
-  assert.equal(flagged.command, 'agy --effort high -p /tmp/plan.md');
-});
-
-test('buildLaunch continues an agy conversation', () => {
-  const row = agyRow();
-  const id = '11111111-2222-3333-4444-555555555555';
-  const prompt = planPrompt('plan.md');
-  const kept = buildLaunch(row, emptyChoice(row), '/tmp/plan.md', '/tmp', id);
-  assert.equal(kept.ok, true);
-  assert.deepEqual(kept.args, ['--conversation', id, '-p', prompt]);
-  assert.equal(kept.session, id);
-  const choice = { ...emptyChoice(row), extra: SKIP_ASKS };
-  const free = buildLaunch(row, choice, '/tmp/plan.md', '/tmp', id);
-  const resume = ['--conversation', id];
-  assert.deepEqual(free.args, [...resume, SKIP_ASKS, '-p', prompt]);
-  assert.equal(free.session, id);
-});
-
-test('agy skips permission prompts only when the extra flags say so', () => {
-  const row = agyRow();
-  const choice = {
-    model: 'gemini-3.8-flash',
-    effort: 'high',
-    extra: SKIP_ASKS,
-  };
-  const launch = buildLaunch(row, choice, '/tmp/plan.md');
-  const model = ['--model', 'gemini-3.8-flash-high'];
-  const prompt = planPrompt('/tmp/plan.md');
-  assert.deepEqual(launch.args, [...model, SKIP_ASKS, '-p', prompt]);
-  const shown = ['agy', ...model, SKIP_ASKS, '-p', '/tmp/plan.md'];
-  assert.equal(launch.command, shown.join(' '));
-  for (const spec of AGENTS) {
-    const any = rowOf(spec);
-    const plain = buildLaunch(any, emptyChoice(any), '/tmp/plan.md');
-    assert.equal(plain.ok, true);
-    assert.equal(plain.args.includes(SKIP_ASKS), false, spec.id);
-    const args = [any, emptyChoice(any), '/tmp/plan.md', '/tmp', 'some-id'];
-    const kept = buildLaunch(...args);
-    assert.equal(kept.ok, true);
-    assert.equal(kept.args.includes(SKIP_ASKS), false, spec.id);
+test('the cli of an agent alone does not make it runnable', () => {
+  const { dir, env } = fakePath('claude', 'codex', 'agy');
+  try {
+    const found = detectAgents(env).filter((row) => row.bin);
+    assert.deepEqual(found, []);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
   }
 });
 
-const runJob = (id, kind = 'run') => {
-  const launch = { id, name: id, cmd: `/usr/bin/${id}`, args: [], kind };
-  return launchJob(1, { ...launch, command: id, plan: '/tmp/plan.md' }, '');
-};
-
-test('an agy run that exits 0 without output has failed', () => {
-  const job = runJob('agy');
-  job.finish({ status: 0, text: '  \n' });
-  assert.equal(job.status, 'exit 1');
-  assert.equal(job.exit, 1);
-  assert.match(job.output, /exited without output/i);
-  const login = runJob('agy', 'login');
-  login.finish({ status: 0, text: '' });
-  assert.equal(login.status, 'exit 0');
-  const other = runJob('claude');
-  other.finish({ status: 0, text: '' });
-  assert.equal(other.status, 'exit 0');
-  assert.equal(other.output, '');
-  const failed = runJob('agy');
-  failed.finish({ status: 3, text: '' });
-  assert.equal(failed.status, 'exit 3');
-  assert.equal(failed.output, '');
+test('buildLaunch describes an acp run of the review plan', () => {
+  const row = rowOf(specOf('claude'));
+  const missing = buildLaunch({ ...row, bin: '' }, emptyChoice(), '/r.md');
+  assert.equal(missing.ok, false);
+  assert.equal(missing.error, 'not installed');
+  const noPlan = buildLaunch(row, emptyChoice(), '');
+  assert.equal(noPlan.ok, false);
+  assert.equal(noPlan.error, 'no plan');
+  const choice = { model: 'sonnet', effort: 'high', fast: true };
+  const launch = buildLaunch(row, choice, '/tmp/plan.md');
+  assert.equal(launch.ok, true);
+  assert.equal(launch.kind, 'run');
+  assert.equal(launch.cmd, '/usr/bin/claude-agent-acp');
+  assert.deepEqual(launch.args, []);
+  assert.equal(launch.mode, 'acceptEdits');
+  assert.deepEqual(launch.choice, {
+    model: 'sonnet',
+    effort: 'high',
+    fast: true,
+    context: '',
+  });
+  assert.equal(launch.plan, '/tmp/plan.md');
+  assert.equal(launch.prompt, planPrompt('/tmp/plan.md'));
+  assert.equal(launch.session, '');
+  assert.equal(launch.command, 'claude sonnet high fast /tmp/plan.md');
+  const plain = buildLaunch(row, emptyChoice(), '/tmp/plan.md');
+  assert.equal(plain.command, 'claude /tmp/plan.md');
+  const rel = buildLaunch(row, choice, '/tmp/work/.plan/a.md', '/tmp/work');
+  assert.equal(rel.plan, '.plan/a.md');
+  assert.equal(rel.prompt, planPrompt('.plan/a.md'));
+  assert.match(rel.command, /^claude sonnet high fast \.plan\/a\.md$/);
+  const cursor = buildLaunch(rowOf(specOf('cursor')), {}, '/tmp/plan.md');
+  assert.deepEqual(cursor.args, ['acp']);
+  assert.equal(cursor.mode, '');
 });
 
-test('an agy run that exits 0 on a permission denial has failed', () => {
-  const job = runJob('agy');
-  job.finish({ status: 0, text: 'Error: permission denied\n' });
-  assert.equal(job.status, 'exit 1');
-  assert.equal(job.exit, 1);
-  assert.equal(job.output, 'Error: permission denied\n');
-  const done = runJob('agy');
-  done.finish({ status: 0, text: 'Applied 3 fixes\n' });
-  assert.equal(done.status, 'exit 0');
-  const other = runJob('claude');
-  other.finish({ status: 0, text: 'Fixed the permission denied handling\n' });
-  assert.equal(other.status, 'exit 0');
-  assert.equal(other.exit, 0);
+test('the plan prompt tells the agent it runs unattended', () => {
+  const prompt = planPrompt('.plan/a.md');
+  assert.match(prompt, /^Read and execute repair plan at \.plan\/a\.md\n/);
+  assert.match(prompt, /unattended/);
+  assert.match(prompt, /npm, npx, node, reslop, git/);
 });
 
-test('agy lists models and parses model names', () => {
-  const { spec } = agyRow();
-  const sample =
-    'Fetching available models...\n' +
-    'gemini-3.8-flash-high     Gemini 3.8 Flash (High)\n' +
-    'gemini-3.8-flash-medium   Gemini 3.8 Flash (Medium)\n' +
-    'claude-sonnet-4-6         Claude Sonnet 4.6 (Thinking)\n';
-  assert.deepEqual(spec.listCmds, [['models']]);
-  assert.deepEqual(spec.parseModels(sample), [
-    'gemini-3.8-flash-high',
-    'gemini-3.8-flash-medium',
-    'claude-sonnet-4-6',
+test('buildLaunch continues a previous session for every agent', () => {
+  const sessionId = '2fa698ba-9a19-4a84-8134-5a7cd9ec2c56';
+  for (const spec of AGENTS) {
+    const row = rowOf(spec);
+    const args = [row, emptyChoice(), '/tmp/plan.md', '/tmp'];
+    const kept = buildLaunch(...args, sessionId);
+    assert.equal(kept.session, sessionId, spec.id);
+    assert.equal(kept.prompt, planPrompt('plan.md'), spec.id);
+    assert.equal(buildLaunch(...args).session, '', spec.id);
+  }
+});
+
+test('a codex run may write to the git directory of its repository', () => {
+  const row = rowOf(specOf('codex'));
+  const scratch = fs.mkdtempSync(path.join(os.tmpdir(), 'reslop-codex-git-'));
+  const gitRoots = (launch) => {
+    const config = JSON.parse(launch.env.CODEX_CONFIG);
+    return config.sandbox_workspace_write.writable_roots;
+  };
+  try {
+    const repo = path.join(scratch, 'repo');
+    const dot = path.join(repo, '.git');
+    fs.mkdirSync(dot, { recursive: true });
+    const plan = path.join(repo, 'plan.md');
+    const rooted = buildLaunch(row, emptyChoice(), plan, repo);
+    assert.equal(rooted.mode, 'workspace-write');
+    assert.deepEqual(gitRoots(rooted), [fs.realpathSync.native(dot)]);
+    const gitdir = path.join(dot, 'worktrees', 'wt');
+    const work = path.join(scratch, 'work');
+    fs.mkdirSync(gitdir, { recursive: true });
+    fs.writeFileSync(path.join(gitdir, 'commondir'), '../..\n');
+    fs.mkdirSync(work);
+    fs.writeFileSync(path.join(work, '.git'), `gitdir: ${gitdir}\n`);
+    const linked = buildLaunch(
+      row,
+      emptyChoice(),
+      path.join(work, 'plan.md'),
+      work,
+    );
+    const common = fs.realpathSync.native(dot);
+    const linkedDir = fs.realpathSync.native(gitdir);
+    assert.deepEqual(gitRoots(linked), [linkedDir, common]);
+    const bare = buildLaunch(row, emptyChoice(), '/tmp/plan.md', scratch);
+    assert.deepEqual(bare.env, {});
+    const claude = buildLaunch(rowOf(specOf('claude')), {}, plan, repo);
+    assert.deepEqual(claude.env, {});
+  } finally {
+    fs.rmSync(scratch, { recursive: true, force: true });
+  }
+});
+
+test('a model id carries its settings in brackets', () => {
+  assert.deepEqual(parseModelId('opus'), {
+    id: 'opus',
+    name: 'opus',
+    effort: '',
+    context: '',
+    fast: '',
+  });
+  const cursor = 'gpt-5[context=272k,reasoning=medium,fast=false]';
+  assert.deepEqual(parseModelId(cursor), {
+    id: cursor,
+    name: 'gpt-5',
+    effort: 'medium',
+    context: '272k',
+    fast: 'off',
+  });
+  const grok = parseModelId('grok[reasoning_effort=high,fast=true]');
+  assert.equal(grok.effort, 'high');
+  assert.equal(grok.fast, 'on');
+  assert.equal(
+    parseModelId('claude[thinking=true,effort=xhigh]').effort,
+    'xhigh',
+  );
+  assert.equal(parseModelId('gpt-6[high]').effort, 'high');
+  assert.equal(parseModelId('default[]').name, 'default');
+});
+
+test('a session lists its models, efforts and fast mode', () => {
+  const catalog = catalogOf(CLAUDE_STATE);
+  assert.equal(catalog.loaded, true);
+  assert.deepEqual(catalog.names, ['sonnet', 'opus', 'haiku']);
+  assert.equal(catalog.current, 'sonnet');
+  assert.deepEqual(catalog.efforts('opus'), ['low', 'medium', 'high', 'max']);
+  assert.deepEqual(catalog.fasts('opus'), ['off', 'on']);
+  assert.deepEqual(catalog.contexts('opus'), []);
+  assert.equal(catalogOf(CLAUDE_STATE), catalog);
+  const none = catalogOf(null);
+  assert.equal(none.loaded, false);
+  assert.deepEqual(none.names, []);
+  const grouped = acpState({ models: ['a', 'b'] });
+  grouped.configOptions[0].options = [
+    { group: 'one', name: 'One', options: [{ value: 'a', name: 'A' }] },
+    { group: 'two', name: 'Two', options: [{ value: 'b', name: 'B' }] },
+  ];
+  assert.deepEqual(catalogOf(grouped).names, ['a', 'b']);
+});
+
+test('settings a model id fixes are shown and not chosen', () => {
+  const catalog = catalogOf(CURSOR_STATE);
+  const names = ['default', 'grok-4.6', 'composer-2', 'gpt-5'];
+  assert.deepEqual(catalog.names, names);
+  assert.equal(catalog.current, 'default');
+  assert.deepEqual(catalog.efforts('default'), []);
+  assert.deepEqual(catalog.efforts('grok-4.6'), ['high']);
+  assert.deepEqual(catalog.fasts('grok-4.6'), ['on']);
+  assert.deepEqual(catalog.fasts('default'), []);
+  assert.deepEqual(catalog.efforts('gpt-5'), ['low', 'high']);
+  assert.deepEqual(catalog.contexts('gpt-5'), ['272k', '1m']);
+  const fixed = catalog.resolve('grok-4.6', { effort: 'low', fast: false });
+  assert.deepEqual(fixed, {
+    id: 'grok-4.6[effort=high,fast=true]',
+    effort: 'high',
+    context: '',
+    fast: 'on',
+  });
+  const wide = catalog.resolve('gpt-5', { effort: 'high', context: '1m' });
+  assert.equal(wide.id, 'gpt-5[context=1m,reasoning=high,fast=false]');
+  const plain = catalog.resolve('gpt-5', {});
+  assert.equal(plain.id, 'gpt-5[context=272k,reasoning=low,fast=false]');
+  assert.equal(plain.effort, 'low');
+  assert.equal(plain.context, '272k');
+});
+
+test('the model list names the efforts of each model', () => {
+  const catalog = catalogOf(CODEX_STATE);
+  assert.deepEqual(catalog.names, ['gpt-a', 'gpt-b']);
+  assert.deepEqual(catalog.efforts('gpt-a'), ['low', 'high', 'ultra']);
+  assert.deepEqual(catalog.efforts('gpt-b'), ['low', 'medium']);
+  const bare = acpState({
+    models: ['gpt-a[low]', 'gpt-a[high]', 'gpt-b[low]'],
+    current: 'gpt-a[high]',
+    bare: true,
+  });
+  const listing = catalogOf(bare);
+  assert.deepEqual(listing.names, ['gpt-a', 'gpt-b']);
+  assert.equal(listing.current, 'gpt-a');
+  assert.deepEqual(listing.efforts('gpt-a'), ['low', 'high']);
+  assert.equal(listing.resolve('gpt-a', {}).id, 'gpt-a[high]');
+  assert.deepEqual(modelChange(bare, { model: 'gpt-a', effort: 'low' }), {
+    method: 'session/set_model',
+    params: { modelId: 'gpt-a[low]' },
+  });
+  assert.equal(modelChange(bare, { model: 'gpt-a', effort: 'high' }), null);
+});
+
+test('a choice becomes the requests that configure a session', () => {
+  const set = (configId, value) => ({
+    method: 'session/set_config_option',
+    params: { configId, value },
+  });
+  const picked = { model: 'opus', effort: 'medium', fast: true };
+  assert.deepEqual(modelChange(CLAUDE_STATE, picked), set('model', 'opus'));
+  assert.deepEqual(effortChange(CLAUDE_STATE, picked), set('effort', 'medium'));
+  assert.deepEqual(fastChange(CLAUDE_STATE, picked), set('fast', 'on'));
+  assert.deepEqual(
+    modeChange(CLAUDE_STATE, 'acceptEdits'),
+    set('mode', 'acceptEdits'),
+  );
+  const same = { model: 'sonnet', effort: 'high', fast: false };
+  assert.equal(modelChange(CLAUDE_STATE, same), null);
+  assert.equal(effortChange(CLAUDE_STATE, same), null);
+  assert.equal(fastChange(CLAUDE_STATE, same), null);
+  assert.equal(modeChange(CLAUDE_STATE, 'default'), null);
+  assert.equal(modeChange(CLAUDE_STATE, 'unknown'), null);
+  assert.equal(modeChange(CLAUDE_STATE, ''), null);
+  assert.equal(modelChange(CLAUDE_STATE, emptyChoice()), null);
+  assert.equal(effortChange(CLAUDE_STATE, { effort: 'ultra' }), null);
+  assert.equal(modelChange(CLAUDE_STATE, { model: 'gone' }), null);
+  assert.equal(fastChange(CURSOR_STATE, { fast: true }), null);
+  const cursor = { model: 'gpt-5', effort: 'high', context: '1m' };
+  const wide = 'gpt-5[context=1m,reasoning=high,fast=false]';
+  assert.deepEqual(modelChange(CURSOR_STATE, cursor), set('model', wide));
+  const modes = { currentModeId: 'ask', availableModes: [{ id: 'code' }] };
+  const legacy = { configOptions: [], models: null, modes };
+  assert.deepEqual(modeChange(legacy, 'code'), {
+    method: 'session/set_mode',
+    params: { modeId: 'code' },
+  });
+  assert.equal(modeChange(legacy, 'plan'), null);
+});
+
+test('an effort a model lacks moves to the nearest it offers', () => {
+  const levels = ['low', 'medium', 'high'];
+  assert.equal(fitEffort(levels, 'medium'), 'medium');
+  assert.equal(fitEffort(levels, 'max'), 'high');
+  assert.equal(fitEffort(levels, 'minimal'), 'low');
+  assert.equal(fitEffort(levels, ''), '');
+  assert.equal(fitEffort(levels, 'default'), '');
+  assert.equal(fitEffort(['high'], 'low'), 'high');
+  assert.equal(fitEffort([], 'low'), 'low');
+});
+
+test('a finished run reports its session, files and tokens', () => {
+  const launch = buildLaunch(rowOf(specOf('claude')), {}, '/tmp/plan.md');
+  const job = launchJob(1, launch, 'sonnet');
+  assert.equal(job.status, 'running');
+  job.child = { stats: () => ({ session: 'live-1', files: null }) };
+  assert.equal(job.record().session, 'live-1');
+  const stats = { session: 'done-1', files: 8, tokens: 1234 };
+  job.finish({ status: 0, text: 'Done\n', stats });
+  assert.equal(job.status, 'exit 0');
+  assert.equal(job.output, 'Done\n');
+  const saved = job.record();
+  assert.equal(saved.session, 'done-1');
+  assert.equal(saved.files, 8);
+  assert.equal(job.tokens, 1234);
+  assert.deepEqual(saved.choice, launch.choice);
+  assert.equal(saved.cmd, undefined);
+  const failed = launchJob(2, launch, '');
+  failed.finish({ status: 1, text: '' });
+  assert.equal(failed.status, 'exit 1');
+  const continued = launchJob(3, { ...launch, session: 'old-1' }, '');
+  assert.equal(continued.record().resume, 'old-1');
+  const restored = jobs.restoreJobs([
+    { id: 5, cliId: 'claude', model: 'opus', exit: 0 },
+    { id: 6, cliId: 'cursor', action: 'login', exit: 0 },
   ]);
-});
-
-test('agy fallback models match the cli and stop at high effort', () => {
-  const { spec } = agyRow();
-  assert.deepEqual(spec.efforts, ['default', 'low', 'medium', 'high']);
-  assert.ok(spec.models.includes('gemini-3.8-flash-high'));
-  assert.ok(spec.models.includes('gpt-oss-120b-medium'));
+  assert.equal(restored.jobs.length, 1);
+  assert.equal(restored.jobs[0].choice.model, 'opus');
 });
 
 const openUi = async () => {
@@ -288,7 +465,6 @@ const openUi = async () => {
   });
   await ui.ensureRepo();
   await ui.load();
-  ui.agents.authProbe = () => true;
   return { ui, repo, stdout };
 };
 
@@ -312,21 +488,21 @@ test('interactive startup begins loading agent models', async () => {
   assert.equal(calls, 1);
 });
 
-test('agents screen lists clis and starts with the review plan', async () => {
-  const { dir, bins, env } = fakePath('claude');
+test('agents screen lists agents and starts with the review plan', async () => {
+  const { dir, bins, env } = fakePath('claude-agent-acp');
   const { ui, repo } = await openUi();
   try {
-    ui.agents.listModels = async () => [];
+    ui.agents.listModels = listed;
     ui.agents.refresh(env);
     await ui.agents.open();
     assert.equal(ui.pane, 'agents');
     assert.equal(actionFromKey('a', 'dashboard'), 'dashAgents');
     const rows = ui.agents.rows();
-    assert.equal(rows[0].bin, bins.claude);
+    assert.equal(rows[0].bin, bins['claude-agent-acp']);
     assert.equal(rows[0].model, 'sonnet');
     assert.equal(rows[0].effort, 'medium');
     assert.equal(rows[0].fast, 'off');
-    assert.equal(ui.agents.choice('claude').model, 'default');
+    assert.equal(ui.agents.choice('claude').model, '');
     assert.equal(rows[1].bin, '');
     ui.draw();
     const text = stripAnsi(ui.lastFrame.rows.join('\n'));
@@ -337,9 +513,9 @@ test('agents screen lists clis and starts with the review plan', async () => {
     assert.match(text, /opencode/);
     assert.match(text, /cursor/);
     assert.match(text, /codex/);
-    assert.match(text, /not installed/);
-    assert.equal(text.includes(bins.claude), false);
-    assert.match(text, /claude/);
+    assert.match(text, /needs opencode/);
+    assert.match(text, /needs codex-acp/);
+    assert.equal(text.includes(bins['claude-agent-acp']), false);
     assert.match(render.headerText(ui.view()), /agents/);
     ui.handleEvent({ type: 'key', key: 'm' });
     assert.equal(ui.agents.pick.field, 'model');
@@ -349,7 +525,7 @@ test('agents screen lists clis and starts with the review plan', async () => {
     assert.match(menu, /claude/);
     assert.match(menu, /opencode/);
     assert.match(menu, /sonnet/);
-    assert.equal(ui.agents.menuItems().includes('default'), false);
+    assert.deepEqual(ui.agents.menuItems(), ['sonnet', 'opus', 'haiku']);
     ui.handleEvent({ type: 'key', key: 'enter' });
     assert.equal(ui.agents.pick, null);
     assert.equal(ui.agents.choice('claude').model, 'sonnet');
@@ -357,11 +533,10 @@ test('agents screen lists clis and starts with the review plan', async () => {
     const after = stripAnsi(ui.lastFrame.rows.join('\n'));
     assert.match(after, /\d{4}-\d{2}-\d{2}-\d+\.md {2}editing {2}\d+\/\d+/);
     assert.equal(after.includes('default'), false);
-    assert.equal(after.includes('--model'), false);
-    assert.equal(after.includes('claude --'), false);
+    assert.equal(after.includes('claude-agent-acp'), false);
     ui.handleEvent({ type: 'key', key: 'e' });
     assert.equal(ui.agents.pick.field, 'effort');
-    assert.equal(ui.agents.menuItems().includes('default'), false);
+    assert.deepEqual(ui.agents.menuItems(), ['low', 'medium', 'high', 'max']);
     ui.handleEvent({ type: 'key', key: 'enter' });
     assert.equal(ui.agents.choice('claude').effort, 'medium');
     ui.draw();
@@ -375,27 +550,24 @@ test('agents screen lists clis and starts with the review plan', async () => {
     };
     ui.handleEvent({ type: 'key', key: 'enter' });
     assert.equal(calls.length, 1);
-    assert.equal(calls[0].launch.cmd, bins.claude);
-    assert.equal(calls[0].launch.args[0], '--print');
-    assert.ok(calls[0].launch.args.includes('--permission-mode'));
-    assert.ok(calls[0].launch.args.includes('acceptEdits'));
-    assert.ok(calls[0].launch.args.includes('sonnet'));
-    assert.ok(calls[0].launch.args.includes('--effort'));
-    assert.ok(calls[0].launch.args.includes('medium'));
-    assert.equal(calls[0].launch.args.includes('--max-turns'), false);
-    const prompt = calls[0].launch.args.at(-1);
-    assert.match(prompt, /repair plan/);
-    assert.match(prompt, /\.plan\//);
+    const { launch } = calls[0];
+    assert.equal(launch.cmd, bins['claude-agent-acp']);
+    assert.deepEqual(launch.args, []);
+    assert.equal(launch.mode, 'acceptEdits');
+    assert.deepEqual(launch.choice, {
+      model: 'sonnet',
+      effort: 'medium',
+      fast: false,
+      context: '',
+    });
+    assert.match(launch.prompt, /repair plan/);
+    assert.match(launch.prompt, /\.plan\//);
     assert.equal(ui.agents.viewing, true);
     assert.equal(ui.agents.jobs.length, 1);
     assert.equal(ui.agents.jobs[0].status, 'running');
-    assert.match(
-      ui.agents.jobs[0].command,
-      /^claude --print .* --model sonnet --effort medium \.plan\//,
-    );
-    const listed = ui.agents.rows().some((row) => row.kind === 'job');
-    assert.equal(listed, false);
-    assert.match(calls[0].launch.prompt, /\.plan\//);
+    assert.match(ui.agents.jobs[0].command, /^claude sonnet medium \.plan\//);
+    const jobRow = ui.agents.rows().some((row) => row.kind === 'job');
+    assert.equal(jobRow, false);
     ui.draw();
     const log = stripAnsi(ui.lastFrame.rows.join('\n'));
     assert.match(log, /hello/);
@@ -420,10 +592,6 @@ test('agents screen lists clis and starts with the review plan', async () => {
     assert.ok(frame.buttons.some((hit) => hit.id === 'agentModel'));
     assert.ok(frame.buttons.some((hit) => hit.id === 'agentEffort'));
     assert.ok(frame.buttons.some((hit) => hit.id === 'agentFast'));
-    assert.equal(
-      frame.buttons.some((hit) => hit.id === 'agentParams'),
-      false,
-    );
     const footer = stripAnsi(frame.rows.at(-1));
     assert.equal(footer.includes('stop'), false);
     assert.match(footer, /plan/);
@@ -435,10 +603,10 @@ test('agents screen lists clis and starts with the review plan', async () => {
 });
 
 test('agent jobs keep running after leaving the log', async () => {
-  const { dir, env } = fakePath('claude', 'cursor-agent');
+  const { dir, env } = fakePath('claude-agent-acp', 'cursor-agent');
   const { ui, repo } = await openUi();
   try {
-    ui.agents.listModels = async () => [];
+    ui.agents.listModels = listed;
     const reviewDir = path.join(repo.dir, '.plan');
     fs.mkdirSync(reviewDir, { recursive: true });
     const other = '2020-01-01-00.md';
@@ -493,10 +661,10 @@ test('agent jobs keep running after leaving the log', async () => {
 });
 
 test('r in the agent log repeats the command', async () => {
-  const { dir, env } = fakePath('claude');
+  const { dir, env } = fakePath('claude-agent-acp');
   const { ui, repo } = await openUi();
   try {
-    ui.agents.listModels = async () => [];
+    ui.agents.listModels = listed;
     ui.agents.refresh(env);
     await ui.agents.open();
     const calls = [];
@@ -529,331 +697,97 @@ test('r in the agent log repeats the command', async () => {
   }
 });
 
-test('agent launch builds model, effort, fast, and login options', () => {
-  const cursor = AGENTS.find((row) => row.id === 'cursor');
-  const row = {
-    id: cursor.id,
-    name: cursor.name,
-    bin: '/usr/bin/cursor-agent',
-    spec: cursor,
-    models: cursor.models,
-  };
-  const launch = buildLaunch(row, { model: 'auto', extra: '' }, '/tmp/plan.md');
-  assert.equal(launch.args[0], '--print');
-  const shown = 'cursor-agent --print --trust --model auto /tmp/plan.md';
-  assert.equal(launch.command, shown);
-  const hard = buildLaunch(
-    row,
-    { model: 'auto', extra: '', effort: 'xhigh' },
-    '/tmp/plan.md',
-  );
-  const hardCmd =
-    'cursor-agent --print --trust --model auto[effort=xhigh] /tmp/plan.md';
-  assert.equal(hard.command, hardCmd);
-  const codex = AGENTS.find((item) => item.id === 'codex');
-  const codexRow = {
-    id: codex.id,
-    name: codex.name,
-    bin: '/usr/bin/codex',
-    spec: codex,
-    models: codex.models,
-  };
-  const reasoned = buildLaunch(
-    codexRow,
-    { model: 'default', extra: '', effort: 'high' },
-    '/tmp/plan.md',
-  );
-  assert.equal(
-    reasoned.command,
-    'codex exec -c model_reasoning_effort=high /tmp/plan.md',
-  );
-  const scratch = fs.mkdtempSync(path.join(os.tmpdir(), 'reslop-codex-git-'));
-  const gitRoots = (launch) => {
-    const flag = launch.args.find((arg) =>
-      arg.startsWith('sandbox_workspace_write.writable_roots='),
-    );
-    return JSON.parse(flag.split('=').slice(1).join('='));
-  };
-  try {
-    const repo = path.join(scratch, 'repo');
-    const dot = path.join(repo, '.git');
-    fs.mkdirSync(dot, { recursive: true });
-    const rooted = buildLaunch(
-      codexRow,
-      { model: 'default', extra: '', effort: 'high' },
-      path.join(repo, 'plan.md'),
-      repo,
-    );
-    const sandboxAt = rooted.args.indexOf('--sandbox');
-    assert.equal(rooted.args[sandboxAt + 1], 'workspace-write');
-    assert.ok(sandboxAt > rooted.args.indexOf('-c'));
-    assert.deepEqual(gitRoots(rooted), [fs.realpathSync.native(dot)]);
-    const gitdir = path.join(dot, 'worktrees', 'wt');
-    const work = path.join(scratch, 'work');
-    fs.mkdirSync(gitdir, { recursive: true });
-    fs.writeFileSync(path.join(gitdir, 'commondir'), '../..\n');
-    fs.mkdirSync(work);
-    fs.writeFileSync(path.join(work, '.git'), `gitdir: ${gitdir}\n`);
-    const linked = buildLaunch(
-      codexRow,
-      emptyChoice(codexRow),
-      path.join(work, 'plan.md'),
-      work,
-    );
-    const common = fs.realpathSync.native(dot);
-    const linkedDir = fs.realpathSync.native(gitdir);
-    assert.deepEqual(gitRoots(linked), [linkedDir, common]);
-  } finally {
-    fs.rmSync(scratch, { recursive: true, force: true });
-  }
-  const login = buildLogin(row);
-  assert.deepEqual(login.args, ['login']);
-  assert.equal(login.kind, 'login');
-  assert.equal(login.command, 'cursor-agent login');
-  assert.equal(buildLogin({ ...row, spec: AGENTS[0] }).error, 'no login');
-  assert.equal(needsAuth('Error: Authentication required. Please run'), true);
-  const signedIn = '{"isAuthenticated":true,"status":"authenticated"}';
-  assert.equal(authState(signedIn), true);
-  assert.equal(authState('Not logged in'), false);
-  assert.equal(authState('✓ Logged in as a@b.c'), true);
-  assert.equal(authState(''), null);
-  const saved = buildLaunch(
-    row,
-    { model: 'grok-4.6', extra: '', effort: 'high', fast: true },
-    '/tmp/plan.md',
-  );
-  const savedCmd =
-    'cursor-agent --print --trust --model grok-4.6[effort=high,fast=true] ' +
-    '/tmp/plan.md';
-  assert.equal(saved.command, savedCmd);
-});
-
-test('cursor grok-4.6 uses the listed effort slug', () => {
-  const cursor = AGENTS.find((row) => row.id === 'cursor');
-  const row = {
-    id: cursor.id,
-    name: cursor.name,
-    bin: '/usr/bin/cursor-agent',
-    spec: cursor,
-    models: [
-      'grok-4.6',
-      'cursor-grok-4.6-low',
-      'cursor-grok-4.6-high',
-      'cursor-grok-4.6-high-fast',
-      'cursor-grok-4.6-xhigh',
-    ],
-  };
-  const launch = buildLaunch(
-    row,
-    {
-      model: 'grok-4.6',
-      extra: '',
-      effort: 'high',
-      fast: true,
-      context: '256k',
-    },
-    '/tmp/plan.md',
-  );
-  const cmd =
-    'cursor-agent --print --trust --model cursor-grok-4.6-high-fast ' +
-    '/tmp/plan.md';
-  assert.equal(launch.command, cmd);
-  assert.equal(launch.args.includes('--effort'), false);
-});
-
-test('parseCursorModels reads id dash name rows', () => {
-  const text = [
-    'Loading models...',
-    'Available models',
-    'auto - Auto',
-    'grok-4.6 - Grok 4.6',
-    'composer-2 - Composer 2',
-    'Tip: use --model',
-  ].join('\n');
-  assert.deepEqual(parseCursorModels(text), ['auto', 'grok-4.6', 'composer-2']);
-  const missing = 'No models available for this account.';
-  assert.deepEqual(parseCursorModels(missing), []);
-  assert.deepEqual(parseCursorModels('Available models: auto, grok-4.6'), [
-    'auto',
-    'grok-4.6',
-  ]);
-  const wide = [
-    'grok-4.7-high - Grok 4.7 High',
-    'gpt-5.6-sol-high - GPT-5.6 Sol 1M High',
-  ].join('\n');
-  assert.deepEqual(parseCursorWide(wide), ['gpt-5.6-sol-high']);
-});
-
-test('parseNameList and parseJsonModels keep model ids', () => {
-  const listed = parseNameList('anthropic/claude-sonnet-4\nopenai/gpt-5\n');
-  assert.deepEqual(listed, ['anthropic/claude-sonnet-4', 'openai/gpt-5']);
-  assert.deepEqual(parseNameList('Usage: claude [options]\n'), []);
-  const json = parseJsonModels('{"models":[{"id":"o3"},{"slug":"gpt-5"}]}');
-  assert.deepEqual(json, ['o3', 'gpt-5']);
-  const merged = mergeModels(['default', 'sonnet'], ['grok-4.6', 'sonnet']);
-  assert.deepEqual(merged, ['default', 'grok-4.6', 'sonnet']);
-});
-
-const CLAUDE_HELP = [
-  'Usage: claude [options] [command] [prompt]',
-  '',
-  'Options:',
-  '  --effort <level>                Effort level for the current session',
-  '                                  (low, medium, high, xhigh, max)',
-  '  --environment <environment_id>  Create a new cloud session (a, b)',
-  '  --model <model>                 Model for the current session. Provide',
-  '                                  an alias for the latest model (e.g.',
-  `                                  'fable', 'opus', or 'sonnet') or a`,
-  `                                  model's full name.`,
-  '  -v, --version                   Output the version number',
-  '',
-  'Commands:',
-  '  auth                            Manage authentication',
-].join('\n');
-
-test('optionValues reads the values an option lists in the help', () => {
-  const levels = ['low', 'medium', 'high', 'xhigh', 'max'];
-  assert.deepEqual(optionValues(CLAUDE_HELP, '--effort'), levels);
-  assert.deepEqual(optionValues(CLAUDE_HELP, '--model'), []);
-  assert.deepEqual(optionValues(CLAUDE_HELP, '--missing'), []);
-  assert.deepEqual(optionValues(CLAUDE_HELP, ''), []);
-  const piped =
-    '  -m, --model <slug>\n      --effort <low|medium|high>  Depth\n';
-  assert.deepEqual(optionValues(piped, '--effort'), ['low', 'medium', 'high']);
-  const clap = [
-    '  -e, --effort <EFFORT>',
-    '          Reasoning depth',
-    '',
-    '          [possible values: minimal, low, high]',
-    '',
-    '  -h, --help',
-    '          Print help (a, b)',
-  ].join('\n');
-  assert.deepEqual(optionValues(clap, '--effort'), ['minimal', 'low', 'high']);
-  const yargs = '  --effort  Depth  [choices: "low", "high"]\n';
-  assert.deepEqual(optionValues(yargs, '--effort'), ['low', 'high']);
-});
-
-test('listModels reads claude aliases and efforts in one call', async () => {
-  const spec = AGENTS.find((row) => row.id === 'claude');
-  const calls = [];
-  const run = async (bin, args) => {
-    calls.push([bin, ...args]);
-    return { status: 0, stdout: CLAUDE_HELP, stderr: '' };
-  };
-  const listed = await listModels('claude', spec, { run });
-  assert.deepEqual(calls, [['claude', '--help']]);
-  assert.deepEqual(parseHelpModels(CLAUDE_HELP), ['fable', 'opus', 'sonnet']);
-  assert.deepEqual(listed.names, ['fable', 'opus', 'sonnet']);
-  assert.deepEqual(listed.efforts, ['low', 'medium', 'high', 'xhigh', 'max']);
-  assert.equal(listed.modelEfforts, null);
-  const silent = async () => ({ status: 1, stdout: '', stderr: 'no help' });
-  const none = await listModels('claude', spec, { run: silent });
-  assert.deepEqual(none.names, []);
-  assert.equal(none.efforts, null);
-});
-
-test('listModels reads the efforts agy lists in its help', async () => {
-  const spec = AGENTS.find((row) => row.id === 'agy');
-  const calls = [];
-  const run = async (bin, args) => {
-    calls.push(args.join(' '));
-    const help =
-      '  --model <slug>   Model\n  --effort <low|medium|high>   Depth\n';
-    const models =
-      'Fetching available models...\ngemini-3.8-flash-high  High\n';
-    return { status: 0, stdout: args[0] === 'models' ? models : help };
-  };
-  const listed = await listModels('agy', spec, { run });
-  assert.deepEqual(calls, ['models', '--help']);
-  assert.deepEqual(listed.names, ['gemini-3.8-flash-high']);
-  assert.deepEqual(listed.efforts, ['low', 'medium', 'high']);
-});
-
-test('the codex catalog lists efforts per model and hides some', async () => {
-  const key = 'supported_reasoning_levels';
-  const model = (slug, visibility, efforts) => {
-    const levels = efforts.map((effort) => ({ effort, description: 'depth' }));
-    return { slug, visibility, [key]: levels };
-  };
-  const catalog = {
-    models: [
-      model('gpt-a', 'list', ['low', 'high', 'ultra']),
-      model('gpt-b', 'list', []),
-      model('gpt-review', 'hide', ['low']),
-    ],
-  };
-  const text = JSON.stringify(catalog);
-  assert.deepEqual(parseJsonModels(text), ['gpt-a', 'gpt-b']);
-  const efforts = parseJsonEfforts(text);
-  assert.deepEqual([...efforts], [['gpt-a', ['low', 'high', 'ultra']]]);
-  assert.equal(parseJsonEfforts('not json').size, 0);
-  const spec = AGENTS.find((row) => row.id === 'codex');
-  const run = async () => ({ status: 0, stdout: text, stderr: '' });
-  const listed = await listModels('codex', spec, { run });
-  assert.deepEqual(listed.names, ['gpt-a', 'gpt-b']);
-  assert.deepEqual(listed.modelEfforts.get('gpt-a'), ['low', 'high', 'ultra']);
-  assert.equal(listed.efforts, null);
-});
-
-test('a full model listing replaces the built-in names', () => {
-  const known = ['default', 'gpt-old', 'o3'];
-  const full = mergeModels(known, ['gpt-new', 'gpt-next']);
-  assert.deepEqual(full, ['default', 'gpt-new', 'gpt-next']);
-  assert.deepEqual(mergeModels(known, []), known);
-  const partial = mergeModels(['default', 'sonnet', 'haiku'], ['fable'], true);
-  assert.deepEqual(partial, ['default', 'fable', 'sonnet', 'haiku']);
-});
-
-test('listModels tries the next command after an empty list', async () => {
-  const spec = AGENTS.find((row) => row.id === 'cursor');
-  const calls = [];
-  const run = async (bin, args) => {
-    calls.push([bin, ...args]);
-    if (args[0] === '--list-models') {
-      return {
-        status: 1,
-        stdout: 'No models available for this account.\n',
-        stderr: '',
-      };
-    }
-    return {
-      status: 0,
-      stdout: 'Loading models...\nauto - Auto\ngrok-4.6 - Grok 4.6\n',
-      stderr: '',
-    };
-  };
-  const listed = await listModels('agent', spec, { run });
-  assert.deepEqual(listed.names, ['auto', 'grok-4.6']);
-  assert.deepEqual(calls, [
-    ['agent', '--list-models'],
-    ['agent', 'models'],
-  ]);
-});
-
-test('agents screen offers the efforts the cli lists', async () => {
-  const { dir, env } = fakePath('claude', 'codex');
+test('agents screen offers the efforts the agent lists', async () => {
+  const { dir, env } = fakePath('claude-agent-acp', 'codex-acp');
   const { ui, repo } = await openUi();
   try {
-    const perModel = new Map([['gpt-a', ['low', 'ultra']]]);
-    ui.agents.listModels = async (bin, spec) => {
-      if (spec.id === 'claude') return { names: [], efforts: ['low', 'xhigh'] };
-      return { names: ['gpt-a', 'gpt-b'], modelEfforts: perModel };
+    const calls = [];
+    ui.agents.listModels = async (row, options) => {
+      calls.push([row.id, options.cwd]);
+      return listed(row);
+    };
+    ui.agents.refresh(env);
+    assert.equal(ui.agents.rows()[0].model, '');
+    assert.deepEqual(ui.agents.rows()[0].efforts, []);
+    await ui.agents.open();
+    assert.deepEqual(calls, [
+      ['claude', repo.dir],
+      ['codex', repo.dir],
+    ]);
+    await ui.agents.open();
+    assert.equal(calls.length, 2);
+    const row = (id) => ui.agents.rows().find((item) => item.id === id);
+    assert.deepEqual(row('claude').efforts, ['low', 'medium', 'high', 'max']);
+    assert.equal(row('claude').effort, 'medium');
+    assert.equal(row('codex').model, 'gpt-a');
+    assert.deepEqual(row('codex').efforts, ['low', 'high', 'ultra']);
+    assert.equal(row('codex').effort, 'high');
+    ui.agents.choice('codex').effort = 'max';
+    assert.equal(row('codex').effort, 'ultra');
+    assert.equal(ui.agents.choice('codex').effort, 'ultra');
+    ui.agents.choice('codex').model = 'gpt-b';
+    assert.deepEqual(row('codex').efforts, ['low', 'medium']);
+    assert.equal(row('codex').effort, 'medium');
+  } finally {
+    ui.agents.reset();
+    repo.cleanup();
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('a saved choice survives until the agent lists its models', async () => {
+  const { dir, env } = fakePath('claude-agent-acp');
+  const { ui, repo } = await openUi();
+  try {
+    const file = path.join(repo.dir, '.reslop');
+    const claude = { model: 'opus', effort: 'max', fast: true };
+    fs.writeFileSync(file, `${JSON.stringify({ agents: { claude } })}\n`);
+    let answer = null;
+    ui.agents.listModels = () =>
+      new Promise((resolve) => {
+        answer = resolve;
+      });
+    ui.agents.refresh(env);
+    const opening = ui.agents.open();
+    const before = ui.agents.rows()[0];
+    assert.equal(before.model, 'opus');
+    assert.equal(before.effort, 'max');
+    assert.equal(before.fast, 'on');
+    answer(CLAUDE_STATE);
+    await opening;
+    const after = ui.agents.rows()[0];
+    assert.equal(after.model, 'opus');
+    assert.equal(after.effort, 'max');
+    assert.equal(after.fast, 'on');
+    assert.deepEqual(ui.agents.choice('claude'), { ...claude, context: '' });
+  } finally {
+    ui.agents.reset();
+    repo.cleanup();
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('an agent that lists nothing runs with its own defaults', async () => {
+  const { dir, env } = fakePath('claude-agent-acp');
+  const { ui, repo } = await openUi();
+  try {
+    ui.agents.listModels = async () => {
+      throw new Error('probe failed');
     };
     ui.agents.refresh(env);
     await ui.agents.open();
-    const row = (id) => ui.agents.rows().find((item) => item.id === id);
-    assert.deepEqual(row('claude').efforts, ['low', 'xhigh']);
-    assert.ok(row('claude').models.includes('haiku'));
-    assert.deepEqual(row('codex').models, ['default', 'gpt-a', 'gpt-b']);
-    const fallback = AGENTS.find((spec) => spec.id === 'codex').efforts;
-    assert.deepEqual(row('codex').efforts, fallback.slice(1));
-    ui.agents.choice('codex').model = 'gpt-a';
-    ui.agents.choice('codex').effort = 'medium';
-    assert.deepEqual(row('codex').efforts, ['low', 'ultra']);
-    assert.equal(row('codex').effort, 'low');
-    ui.agents.choice('codex').model = 'gpt-b';
-    assert.deepEqual(row('codex').efforts, fallback.slice(1));
+    const row = ui.agents.rows()[0];
+    assert.equal(row.model, '');
+    assert.deepEqual(row.efforts, []);
+    ui.handleEvent({ type: 'key', key: 'm' });
+    assert.equal(ui.agents.pick, null);
+    const calls = [];
+    ui.agents.spawn = (cwd, launch) => {
+      calls.push(launch);
+      return { kill() {} };
+    };
+    ui.agents.start();
+    assert.deepEqual(calls[0].choice, emptyChoice());
   } finally {
     ui.agents.reset();
     repo.cleanup();
@@ -865,18 +799,16 @@ test('agents screen picks a model from the list', async () => {
   const { dir, env } = fakePath('cursor-agent');
   const { ui, repo } = await openUi();
   try {
-    ui.agents.listModels = async (bin, spec) => {
-      if (spec.id === 'cursor') return ['auto', 'grok-4.6'];
-      return [];
-    };
+    ui.agents.listModels = listed;
     ui.agents.refresh(env);
     await ui.agents.open();
     ui.nav.agentCursor = 2;
     const row = ui.agents.selected();
     assert.equal(row.id, 'cursor');
     assert.equal(row.name, 'cursor');
-    assert.ok(row.models.includes('grok-4.6'));
+    assert.equal(ui.agents.rows()[2].model, 'default');
     ui.handleEvent({ type: 'key', key: 'm' });
+    assert.ok(ui.agents.menuItems().includes('default'));
     ui.handleEvent({ type: 'key', key: 'g' });
     ui.handleEvent({ type: 'key', key: 'r' });
     ui.handleEvent({ type: 'key', key: 'o' });
@@ -884,13 +816,20 @@ test('agents screen picks a model from the list', async () => {
     ui.handleEvent({ type: 'key', key: 'enter' });
     assert.equal(ui.agents.choice('cursor').model, 'grok-4.6');
     assert.equal(ui.agents.selected().name, 'cursor');
+    const picked = ui.agents.rows()[2];
+    assert.equal(picked.effort, 'high');
+    assert.equal(picked.fast, 'on');
     ui.draw();
     const text = stripAnsi(ui.lastFrame.rows.join('\n'));
-    assert.match(text, /cursor\s+grok-4/);
+    assert.match(text, /cursor\s+grok-4\.6\s+high\s+on/);
     assert.match(text, /\d{4}-\d{2}-\d{2}-\d+\.md/);
-    assert.equal(text.includes('default'), false);
     assert.equal(text.includes('cursor-agent'), false);
-    assert.equal(text.includes('--print'), false);
+    assert.equal(text.includes('effort='), false);
+    ui.handleEvent({ type: 'key', key: 'e' });
+    assert.equal(ui.agents.pick, null);
+    ui.handleEvent({ type: 'key', key: 'a' });
+    assert.equal(ui.agents.choice('cursor').fast, false);
+    assert.equal(ui.status, 'fast on');
   } finally {
     ui.agents.reset();
     repo.cleanup();
@@ -899,7 +838,7 @@ test('agents screen picks a model from the list', async () => {
 });
 
 test('start falls back to the latest review file', async () => {
-  const { dir, env } = fakePath('claude');
+  const { dir, env } = fakePath('claude-agent-acp');
   const { ui, repo } = await openUi();
   try {
     const reviewDir = path.join(repo.dir, '.plan');
@@ -907,7 +846,7 @@ test('start falls back to the latest review file', async () => {
     const name = '2020-01-01-00.md';
     fs.writeFileSync(path.join(reviewDir, name), '---\nstatus: editing\n---\n');
     ui.review.store.reviewPath = '';
-    ui.agents.listModels = async () => [];
+    ui.agents.listModels = listed;
     ui.agents.refresh(env);
     await ui.agents.open();
     const calls = [];
@@ -928,7 +867,7 @@ test('start falls back to the latest review file', async () => {
 });
 
 test('agents screen runs the review file chosen in the combo', async () => {
-  const { dir, env } = fakePath('claude');
+  const { dir, env } = fakePath('claude-agent-acp');
   const { ui, repo } = await openUi();
   try {
     const reviewDir = path.join(repo.dir, '.plan');
@@ -950,7 +889,7 @@ test('agents screen runs the review file chosen in the combo', async () => {
     const newerBody = '---\nstatus: partial\n---\n';
     fs.writeFileSync(path.join(reviewDir, newer), newerBody);
     ui.review.store.reviewPath = '';
-    ui.agents.listModels = async () => [];
+    ui.agents.listModels = listed;
     ui.agents.refresh(env);
     await ui.agents.open();
     ui.handleEvent({ type: 'key', key: 'p' });
@@ -986,7 +925,7 @@ test('agents screen runs the review file chosen in the combo', async () => {
 });
 
 test('plan combo lists plain markdown and aligns columns', async () => {
-  const { dir, env } = fakePath('claude');
+  const { dir, env } = fakePath('claude-agent-acp');
   const { ui, repo } = await openUi();
   try {
     const reviewDir = path.join(repo.dir, '.plan');
@@ -1019,7 +958,7 @@ test('plan combo lists plain markdown and aligns columns', async () => {
     fs.writeFileSync(path.join(reviewDir, ideas), '# ideas\n\nJust a note.\n');
     fs.writeFileSync(path.join(reviewDir, '.templates'), '[]\n');
     ui.review.store.reviewPath = '';
-    ui.agents.listModels = async () => [];
+    ui.agents.listModels = listed;
     ui.agents.refresh(env);
     await ui.agents.open();
     ui.handleEvent({ type: 'key', key: 'p' });
@@ -1047,282 +986,18 @@ test('plan combo lists plain markdown and aligns columns', async () => {
   }
 });
 
-test('agents screen logs in before a run when signed out', async () => {
-  const { dir, bins, env } = fakePath('cursor-agent');
-  const { ui, repo } = await openUi();
-  try {
-    ui.agents.listModels = async () => [];
-    ui.agents.refresh(env);
-    await ui.agents.open();
-    const at = ui.agents.rows().findIndex((row) => row.id === 'cursor');
-    ui.nav.agentCursor = at;
-    const ready = renderFrame(ui.view(), {
-      width: 80,
-      height: 24,
-      color: false,
-    });
-    const footer = stripAnsi(ready.rows.at(-1));
-    assert.equal(
-      ready.buttons.some((hit) => hit.id === 'agentLogin'),
-      false,
-    );
-    assert.equal(footer.includes('login'), false);
-    const calls = [];
-    let finishLogin = null;
-    ui.agents.spawn = (cwd, launch, onData, onClose) => {
-      calls.push(launch);
-      if (launch.kind === 'login') {
-        onData('open a browser to finish login\n');
-        finishLogin = (status) => onClose({ status, text: 'done\n' });
-        return { kill() {} };
-      }
-      onData('hello\n');
-      return { kill() {} };
-    };
-    ui.agents.authProbe = () => false;
-    ui.agents.start();
-    assert.equal(calls.length, 1);
-    assert.equal(calls[0].cmd, bins['cursor-agent']);
-    assert.deepEqual(calls[0].args, ['login']);
-    assert.equal(calls[0].command, 'cursor-agent login');
-    assert.equal(ui.status, 'not logged in');
-    assert.equal(ui.agents.viewing, false);
-    assert.equal(ui.agents.jobs[0].action, 'login');
-    finishLogin(1);
-    assert.equal(calls.length, 1);
-    assert.equal(ui.status, 'not logged in');
-    ui.agents.start();
-    assert.equal(calls.length, 2);
-    assert.equal(calls[1].kind, 'login');
-    finishLogin(0);
-    assert.equal(calls.length, 3);
-    assert.equal(calls[2].kind, 'run');
-    assert.equal(ui.agents.viewing, true);
-  } finally {
-    ui.agents.reset();
-    repo.cleanup();
-    fs.rmSync(dir, { recursive: true, force: true });
-  }
-});
-
-test('agents screen runs cursor login when auth is required', async () => {
-  const { dir, env } = fakePath('cursor-agent');
-  const { ui, repo } = await openUi();
-  try {
-    ui.agents.listModels = async () => [];
-    ui.agents.refresh(env);
-    await ui.agents.open();
-    ui.nav.agentCursor = 2;
-    const calls = [];
-    ui.agents.spawn = (cwd, launch, onData, onClose) => {
-      calls.push(launch);
-      if (launch.kind === 'login') {
-        onData('open a browser to finish login\n');
-        return { kill() {} };
-      }
-      const text = 'Error: Authentication required. Please run agent login\n';
-      onData(text);
-      onClose({ status: 1, text });
-      return { kill() {} };
-    };
-    ui.agents.start();
-    assert.equal(calls.length, 2);
-    assert.equal(calls[0].kind, 'run');
-    assert.equal(calls[1].kind, 'login');
-    assert.equal(ui.agents.viewing, false);
-    assert.equal(ui.status, 'logging in');
-    assert.equal(ui.agents.jobs.at(-1).action, 'login');
-    ui.handleEvent({ type: 'key', key: 'enter' });
-    assert.equal(ui.agents.viewing, true);
-    ui.handleEvent({ type: 'key', key: 's' });
-    assert.equal(ui.agents.jobs.at(-1).status, 'stopped');
-    ui.handleEvent({ type: 'key', key: 'escape' });
-    assert.equal(ui.agents.viewing, false);
-    assert.equal(ui.status, '');
-  } finally {
-    ui.agents.reset();
-    repo.cleanup();
-    fs.rmSync(dir, { recursive: true, force: true });
-  }
-});
-
-test('effort encoded in a model id is chosen separately', () => {
-  const ids = [
-    'auto',
-    'composer-2.5',
-    'composer-2.5-fast',
-    'gpt-5.6-sol-high',
-    'gpt-5.6-sol-low',
-    'gpt-5.6-sol-low-fast',
-    'gpt-5.6-sol-medium',
-    'gpt-5.3-codex',
-    'gpt-5.3-codex-fast',
-    'gpt-5.3-codex-high',
-    'gpt-5.3-codex-high-fast',
-    'claude-opus-5-thinking-high',
-    'claude-opus-5-thinking-xhigh',
-    'claude-4.6-sonnet-medium-thinking',
-    'gpt-5.5-extra-high',
-    'gpt-5.5-extra-high-fast',
-  ];
-  const models = groupModels(ids);
-  const names = models.map((item) => item.model);
-  assert.ok(names.includes('gpt-5.6-sol'));
-  assert.ok(names.includes('gpt-5.6-sol-fast'));
-  assert.equal(names.includes('gpt-5.6-sol-high'), false);
-  assert.equal(names.includes('gpt-5.6-sol-low'), false);
-  const sol = models.find((item) => item.model === 'gpt-5.6-sol');
-  assert.deepEqual(sol.levels, ['low', 'medium', 'high']);
-  assert.equal(sol.ids.get('low'), 'gpt-5.6-sol-low');
-  const codex = models.find((item) => item.model === 'gpt-5.3-codex');
-  assert.ok(codex.levels.includes('default'));
-  assert.equal(codex.ids.get('default'), 'gpt-5.3-codex');
-  assert.equal(codex.ids.get('high'), 'gpt-5.3-codex-high');
-  const codexFast = models.find((item) => item.model === 'gpt-5.3-codex-fast');
-  assert.equal(codexFast.ids.get('default'), 'gpt-5.3-codex-fast');
-  assert.equal(codexFast.ids.get('high'), 'gpt-5.3-codex-high-fast');
-  const fastName = names.filter((name) => name === 'gpt-5.3-codex-fast');
-  assert.equal(fastName.length, 1);
-  const thinking = models.find(
-    (item) => item.model === 'claude-opus-5-thinking',
-  );
-  assert.deepEqual(thinking.levels, ['high', 'xhigh']);
-  const legacy = models.find(
-    (item) => item.model === 'claude-4.6-sonnet-thinking',
-  );
-  assert.equal(legacy.ids.get('medium'), 'claude-4.6-sonnet-medium-thinking');
-  const fast = models.find((item) => item.model === 'composer-2.5-fast');
-  assert.equal(fast.encoded, false);
-  const plain = models.find((item) => item.model === 'gpt-5.5');
-  assert.deepEqual(plain.levels, ['extra-high']);
-  const plainFast = models.find((item) => item.model === 'gpt-5.5-fast');
-  assert.equal(plainFast.ids.get('extra-high'), 'gpt-5.5-extra-high-fast');
-  const cursor = AGENTS.find((row) => row.id === 'cursor');
-  const row = {
-    id: cursor.id,
-    name: cursor.name,
-    bin: '/usr/bin/cursor-agent',
-    spec: cursor,
-    models: ids,
-  };
-  const low = catalogOf(row.models).resolve({
-    model: 'gpt-5.6-sol',
-    effort: 'low',
-    extra: '',
-  });
-  assert.equal(low.model, 'gpt-5.6-sol-low');
-  assert.equal(low.encoded, true);
-  const launch = buildLaunch(
-    row,
-    { model: 'gpt-5.6-sol-high', effort: 'low', extra: '' },
-    '/tmp/plan.md',
-  );
-  const cmd =
-    'cursor-agent --print --trust --model gpt-5.6-sol-low /tmp/plan.md';
-  assert.equal(launch.command, cmd);
-  assert.equal(launch.command.includes('--effort'), false);
-  const fastOn = buildLaunch(
-    row,
-    { model: 'gpt-5.6-sol', effort: 'low', extra: '', fast: true },
-    '/tmp/plan.md',
-  );
-  const fastCmd =
-    'cursor-agent --print --trust --model gpt-5.6-sol-low-fast /tmp/plan.md';
-  assert.equal(fastOn.command, fastCmd);
-  const sized = buildLaunch(
-    row,
-    { model: 'gpt-5.6-sol', effort: 'low', extra: '', context: '1m' },
-    '/tmp/plan.md',
-  );
-  const sizedCmd =
-    'cursor-agent --print --trust --model gpt-5.6-sol-low[context=1m] ' +
-    '/tmp/plan.md';
-  assert.equal(sized.command, sizedCmd);
-  const normal = buildLaunch(
-    row,
-    { model: 'gpt-5.6-sol', effort: 'low', extra: '', context: '256k' },
-    '/tmp/plan.md',
-  );
-  assert.equal(normal.command, cmd);
-  const grok = buildLaunch(
-    row,
-    { model: 'grok-4.7-high', effort: 'high', extra: '', context: '256k' },
-    '/tmp/plan.md',
-  );
-  assert.equal(grok.args.includes('grok-4.7-high[context=256k]'), false);
-  assert.ok(grok.args.includes('grok-4.7-high'));
-  const half = buildLaunch(
-    row,
-    {
-      model: 'grok-4.7-high',
-      effort: 'high',
-      extra: '',
-      fast: false,
-      context: '500k',
-    },
-    '/tmp/plan.md',
-  );
-  assert.ok(half.args.includes('grok-4.7-high[context=500k]'));
-  const composer = buildLaunch(
-    row,
-    { model: 'composer-2.5', effort: 'medium', extra: '' },
-    '/tmp/plan.md',
-  );
-  const composerCmd =
-    'cursor-agent --print --trust --model composer-2.5 /tmp/plan.md';
-  assert.equal(composer.command, composerCmd);
-  const composerFast = buildLaunch(
-    row,
-    { model: 'composer-2.5', effort: 'medium', extra: '', fast: true },
-    '/tmp/plan.md',
-  );
-  const composerFastCmd =
-    'cursor-agent --print --trust --model composer-2.5-fast /tmp/plan.md';
-  assert.equal(composerFast.command, composerFastCmd);
-});
-
-test('model menu omits a fast name that has a plain sibling', async () => {
-  const { dir, env } = fakePath('cursor-agent');
-  const { ui, repo } = await openUi();
-  try {
-    ui.agents.listModels = async () => [
-      'gpt-5.6-sol-high',
-      'gpt-5.6-sol-low',
-      'gpt-5.6-sol-low-fast',
-      'gpt-5.6-sol-high-fast',
-      'composer-2.5-fast',
-    ];
-    ui.agents.refresh(env);
-    await ui.agents.open();
-    ui.nav.agentCursor = 2;
-    ui.handleEvent({ type: 'key', key: 'm' });
-    const items = ui.agents.menuItems();
-    assert.ok(items.includes('gpt-5.6-sol'));
-    assert.ok(items.includes('composer-2.5-fast'));
-    assert.equal(
-      items.some((name) => name === 'gpt-5.6-sol-fast'),
-      false,
-    );
-    ui.handleEvent({ type: 'key', key: 'escape' });
-    ui.draw();
-    const text = stripAnsi(ui.lastFrame.rows.join('\n'));
-    assert.equal(text.includes('gpt-5.6-sol-fast'), false);
-  } finally {
-    ui.agents.reset();
-    repo.cleanup();
-    fs.rmSync(dir, { recursive: true, force: true });
-  }
-});
-
 test('clicking the model column opens the model list', async () => {
   const { dir, env } = fakePath('cursor-agent');
   const { ui, repo } = await openUi();
   try {
-    ui.agents.listModels = async () => [
-      'gpt-5.6-sol-high',
-      'gpt-5.6-sol-low',
-      'auto',
-    ];
+    const state = acpState({
+      models: [
+        'default[]',
+        'gpt-5.6-sol[effort=high]',
+        'gpt-5.6-sol[effort=low]',
+      ],
+    });
+    ui.agents.listModels = async () => state;
     ui.agents.refresh(env);
     await ui.agents.open();
     ui.nav.agentCursor = 2;
@@ -1344,8 +1019,7 @@ test('clicking the model column opens the model list', async () => {
     assert.match(text, /claude/);
     assert.match(text, /cursor/);
     assert.match(text, /gpt-5\.6-sol/);
-    assert.equal(text.includes('gpt-5.6-sol-high'), false);
-    assert.equal(text.includes('gpt-5.6-sol-low'), false);
+    assert.equal(text.includes('effort='), false);
     ui.handleEvent({ type: 'key', key: 's' });
     ui.handleEvent({ type: 'key', key: 'o' });
     ui.draw();
@@ -1373,7 +1047,7 @@ test('clicking the model column opens the model list', async () => {
     ui.handleEvent({ type: 'key', key: 'l' });
     ui.handleEvent({ type: 'key', key: 'enter' });
     assert.equal(ui.agents.choice('cursor').model, 'gpt-5.6-sol');
-    assert.equal(ui.agents.choice('cursor').effort, 'low');
+    assert.equal(ui.agents.rows()[2].effort, 'high');
     ui.handleEvent({ type: 'key', key: 'e' });
     assert.deepEqual(ui.agents.menuItems(), ['low', 'high']);
     ui.handleEvent({ type: 'key', key: 'up' });
@@ -1390,11 +1064,12 @@ test('clicking another column switches the open combo', async () => {
   const { dir, env } = fakePath('cursor-agent');
   const { ui, repo } = await openUi();
   try {
-    ui.agents.listModels = async () => [];
+    ui.agents.listModels = listed;
     ui.agents.refresh(env);
     await ui.agents.open();
     const at = ui.agents.rows().findIndex((row) => row.id === 'cursor');
     ui.nav.agentCursor = at;
+    ui.agents.choice('cursor').model = 'gpt-5';
     ui.draw();
     const clickAt = (hit) => {
       const click = {
@@ -1451,8 +1126,9 @@ test('model menu uses background and a right scroller', async () => {
   await ui.load();
   try {
     const models = Array.from({ length: 16 }, (_, i) => `model-${i}`);
-    ui.agents.listModels = async (bin, spec) =>
-      spec.id === 'cursor' ? models : [];
+    const efforts = ['low', 'medium', 'high'];
+    const state = acpState({ models, efforts });
+    ui.agents.listModels = async () => state;
     ui.agents.refresh(env);
     await ui.agents.open();
     assert.equal(ui.agents.selected().id, 'cursor');
@@ -1548,57 +1224,27 @@ test('model menu uses background and a right scroller', async () => {
 });
 
 test('agents screen remembers model and effort in .reslop', async () => {
-  const { dir, env } = fakePath('claude');
+  const { dir, env } = fakePath('claude-agent-acp');
   const { ui, repo } = await openUi();
   try {
-    ui.agents.listModels = async () => [];
+    ui.agents.listModels = listed;
     ui.agents.refresh(env);
     await ui.agents.open();
     ui.handleEvent({ type: 'key', key: 'm' });
+    ui.handleEvent({ type: 'key', key: 'down' });
     ui.handleEvent({ type: 'key', key: 'enter' });
-    ui.handleEvent({ type: 'key', key: 'e' });
-    ui.handleEvent({ type: 'key', key: 'enter' });
-    assert.equal(ui.agents.choice('claude').model, 'sonnet');
-    assert.equal(ui.agents.choice('claude').effort, 'medium');
-    const file = path.join(repo.dir, '.reslop');
-    const saved = JSON.parse(fs.readFileSync(file, 'utf8'));
-    assert.deepEqual(saved.agents.claude, {
-      model: 'sonnet',
-      effort: 'medium',
-    });
-    ui.agents.choices = new Map();
-    ui.agents.refresh(env);
-    assert.equal(ui.agents.choice('claude').model, 'sonnet');
-    assert.equal(ui.agents.choice('claude').effort, 'medium');
-  } finally {
-    ui.agents.reset();
-    repo.cleanup();
-    fs.rmSync(dir, { recursive: true, force: true });
-  }
-});
-
-test('agents screen keeps extra flags written in .reslop', async () => {
-  const { dir, env } = fakePath('agy');
-  const { ui, repo } = await openUi();
-  try {
-    const file = path.join(repo.dir, '.reslop');
-    const agy = { extra: SKIP_ASKS, model: 'gemini-3.8-flash' };
-    const initial = { agents: { agy } };
-    fs.writeFileSync(file, `${JSON.stringify(initial, null, 2)}\n`);
-    ui.agents.listModels = async () => [];
-    ui.agents.refresh(env);
-    await ui.agents.open();
-    assert.equal(ui.agents.choice('agy').extra, SKIP_ASKS);
-    ui.nav.agentCursor = AGENTS.findIndex((spec) => spec.id === 'agy');
     ui.handleEvent({ type: 'key', key: 'e' });
     ui.handleEvent({ type: 'key', key: 'down' });
     ui.handleEvent({ type: 'key', key: 'enter' });
+    assert.equal(ui.agents.choice('claude').model, 'opus');
+    assert.equal(ui.agents.choice('claude').effort, 'high');
+    const file = path.join(repo.dir, '.reslop');
     const saved = JSON.parse(fs.readFileSync(file, 'utf8'));
-    assert.equal(saved.agents.agy.effort, 'high');
-    assert.equal(saved.agents.agy.extra, SKIP_ASKS);
+    assert.deepEqual(saved.agents.claude, { model: 'opus', effort: 'high' });
     ui.agents.choices = new Map();
     ui.agents.refresh(env);
-    assert.equal(ui.agents.choice('agy').extra, SKIP_ASKS);
+    assert.equal(ui.agents.choice('claude').model, 'opus');
+    assert.equal(ui.agents.choice('claude').effort, 'high');
   } finally {
     ui.agents.reset();
     repo.cleanup();
@@ -1606,18 +1252,17 @@ test('agents screen keeps extra flags written in .reslop', async () => {
   }
 });
 
-test('only agy keeps extra flags in .reslop', async () => {
-  const { dir, env } = fakePath('claude');
+test('flags written for the cli runs are not read from .reslop', async () => {
+  const { dir, env } = fakePath('claude-agent-acp');
   const { ui, repo } = await openUi();
   try {
     const file = path.join(repo.dir, '.reslop');
     const claude = { model: 'sonnet', extra: '--unsafe-example' };
-    const initial = { agents: { claude } };
-    fs.writeFileSync(file, `${JSON.stringify(initial, null, 2)}\n`);
-    ui.agents.listModels = async () => [];
+    fs.writeFileSync(file, `${JSON.stringify({ agents: { claude } })}\n`);
+    ui.agents.listModels = listed;
     ui.agents.refresh(env);
-    assert.equal(ui.agents.choice('claude').extra, '');
-    ui.agents.choice('claude').extra = '--new-example';
+    await ui.agents.open();
+    assert.equal(ui.agents.choice('claude').extra, undefined);
     ui.agents.saveChoice('claude');
     const saved = JSON.parse(fs.readFileSync(file, 'utf8'));
     assert.deepEqual(saved.agents.claude, {
@@ -1632,7 +1277,7 @@ test('only agy keeps extra flags in .reslop', async () => {
 });
 
 test('recorded runs stay listed for the selected cli', async () => {
-  const { dir, env } = fakePath('cursor-agent', 'claude');
+  const { dir, env } = fakePath('cursor-agent', 'claude-agent-acp');
   const { ui, repo } = await openUi();
   try {
     const plan = path.join(repo.dir, '.plan');
@@ -1692,7 +1337,7 @@ test('recorded runs stay listed for the selected cli', async () => {
     ];
     const file = path.join(plan, '.runs');
     fs.writeFileSync(file, `${JSON.stringify(recorded, null, 2)}\n`);
-    ui.agents.listModels = async () => [];
+    ui.agents.listModels = listed;
     ui.agents.refresh(env);
     ui.agents.loadRuns();
     await ui.agents.open();
@@ -1718,10 +1363,10 @@ test('recorded runs stay listed for the selected cli', async () => {
 });
 
 test('agents screen lists sessions for the selected cli', async () => {
-  const { dir, env } = fakePath('claude');
+  const { dir, env } = fakePath('claude-agent-acp');
   const { ui, repo, stdout } = await openUi();
   try {
-    ui.agents.listModels = async () => [];
+    ui.agents.listModels = listed;
     ui.agents.refresh(env);
     await ui.agents.open();
     ui.agents.spawn = () => ({ kill() {} });
@@ -1738,8 +1383,7 @@ test('agents screen lists sessions for the selected cli', async () => {
     const runHit = ui.lastFrame.fileHits.find((hit) => hit.side === 'runs');
     assert.ok(runHit);
     assert.equal(runHit.y, title + 1);
-    assert.match(ui.agents.jobs[0].command, /claude --print /);
-    assert.match(ui.agents.jobs[0].command, /--model sonnet/);
+    assert.match(ui.agents.jobs[0].command, /^claude sonnet medium /);
     ui.handleEvent({ type: 'key', key: 'right' });
     assert.equal(ui.agents.focus, 'runs');
     ui.handleEvent({ type: 'key', key: 'tab' });
@@ -1764,7 +1408,7 @@ test('agents screen lists sessions for the selected cli', async () => {
 });
 
 test('a new agent session is its own run with status', async () => {
-  const { dir, env } = fakePath('claude');
+  const { dir, env } = fakePath('claude-agent-acp');
   const { ui, repo, stdout } = await openUi();
   try {
     const reviewDir = path.join(repo.dir, '.plan');
@@ -1784,7 +1428,7 @@ test('a new agent session is its own run with status', async () => {
     ];
     fs.writeFileSync(file, `${body.join('\n')}\n`);
     ui.review.store.reviewPath = '';
-    ui.agents.listModels = async () => [];
+    ui.agents.listModels = listed;
     ui.agents.refresh(env);
     await ui.agents.open();
     ui.agents.planPath = file;
@@ -1846,10 +1490,10 @@ test('a new agent session is its own run with status', async () => {
 });
 
 test('agents panels scroll past one screen', async () => {
-  const { dir, env } = fakePath('claude');
+  const { dir, env } = fakePath('claude-agent-acp');
   const { ui, repo } = await openUi();
   try {
-    ui.agents.listModels = async () => [];
+    ui.agents.listModels = listed;
     ui.agents.refresh(env);
     await ui.agents.open();
     ui.agents.choice('claude').model = 'sonnet';
@@ -1883,7 +1527,7 @@ test('agents panels scroll past one screen', async () => {
 });
 
 test('agents screen blocks a review file that is already running', async () => {
-  const { dir, env } = fakePath('claude', 'cursor-agent');
+  const { dir, env } = fakePath('claude-agent-acp', 'cursor-agent');
   const { ui, repo } = await openUi();
   try {
     const reviewDir = path.join(repo.dir, '.plan');
@@ -1894,7 +1538,7 @@ test('agents screen blocks a review file that is already running', async () => {
     fs.writeFileSync(path.join(reviewDir, older), body);
     fs.writeFileSync(path.join(reviewDir, newer), body);
     ui.review.store.reviewPath = '';
-    ui.agents.listModels = async () => [];
+    ui.agents.listModels = listed;
     ui.agents.refresh(env);
     await ui.agents.open();
     const calls = [];
@@ -1936,15 +1580,16 @@ test('agents screen blocks a review file that is already running', async () => {
 });
 
 test('agents screen toggles fast mode with a', async () => {
-  const { dir, env } = fakePath('claude');
+  const { dir, env } = fakePath('claude-agent-acp', 'opencode');
   const { ui, repo } = await openUi();
   try {
-    ui.agents.listModels = async () => [];
+    ui.agents.listModels = listed;
     ui.agents.refresh(env);
     await ui.agents.open();
     ui.handleEvent({ type: 'key', key: 'a' });
     assert.equal(ui.agents.choice('claude').fast, true);
     assert.equal(ui.agents.rows()[0].fast, 'on');
+    assert.equal(ui.status, 'fast on');
     ui.draw();
     const on = stripAnsi(ui.lastFrame.rows.join('\n'));
     assert.match(on, /claude\s+sonnet\s+medium\s+on/);
@@ -1957,6 +1602,10 @@ test('agents screen toggles fast mode with a', async () => {
       fs.readFileSync(path.join(repo.dir, '.reslop'), 'utf8'),
     );
     assert.equal(cleared.agents.claude.fast, undefined);
+    ui.nav.agentCursor = 1;
+    ui.handleEvent({ type: 'key', key: 'a' });
+    assert.equal(ui.agents.choice('opencode').fast, false);
+    assert.equal(ui.status, 'fast off');
   } finally {
     ui.agents.reset();
     repo.cleanup();
@@ -1965,10 +1614,10 @@ test('agents screen toggles fast mode with a', async () => {
 });
 
 test('single click on the fast column toggles it', async () => {
-  const { dir, env } = fakePath('claude');
+  const { dir, env } = fakePath('claude-agent-acp');
   const { ui, repo } = await openUi();
   try {
-    ui.agents.listModels = async () => [];
+    ui.agents.listModels = listed;
     ui.agents.refresh(env);
     await ui.agents.open();
     ui.draw();
@@ -1995,51 +1644,190 @@ test('single click on the fast column toggles it', async () => {
   }
 });
 
-test('selecting a model keeps only context sizes it offers', async () => {
+test('a model listed in several context sizes offers them', async () => {
   const { dir, env } = fakePath('cursor-agent');
   const { ui, repo } = await openUi();
   try {
-    ui.agents.listModels = async (bin, spec) => {
-      if (spec.id !== 'cursor') return [];
-      const names = [
-        'grok-4.7-high',
-        'gpt-5.6-sol-high',
-        'gpt-5.6-sol-low',
-        'gpt-5.6-sol-low-fast',
-      ];
-      names.wide = ['gpt-5.6-sol-high', 'gpt-5.6-sol-low'];
-      return names;
-    };
+    ui.agents.listModels = listed;
     ui.agents.refresh(env);
     await ui.agents.open();
     const at = ui.agents.rows().findIndex((row) => row.id === 'cursor');
     ui.nav.agentCursor = at;
-    ui.handleEvent({ type: 'key', key: 'm' });
-    ui.handleEvent({ type: 'key', key: 'down' });
-    ui.handleEvent({ type: 'key', key: 'enter' });
-    assert.equal(ui.agents.choice('cursor').model, 'gpt-5.6-sol');
-    assert.equal(ui.agents.choice('cursor').effort, 'high');
-    ui.handleEvent({ type: 'key', key: 'a' });
-    assert.equal(ui.agents.choice('cursor').fast, true);
     ui.handleEvent({ type: 'key', key: 't' });
-    assert.deepEqual(ui.agents.menuItems(), ['256k', '1m']);
+    assert.equal(ui.agents.pick, null);
+    ui.handleEvent({ type: 'key', key: 'm' });
+    ui.handleEvent({ type: 'key', key: 'end' });
+    ui.handleEvent({ type: 'key', key: 'enter' });
+    assert.equal(ui.agents.choice('cursor').model, 'gpt-5');
+    assert.equal(ui.agents.rows()[at].effort, 'low');
+    assert.equal(ui.agents.rows()[at].context, '272k');
+    ui.handleEvent({ type: 'key', key: 't' });
+    assert.equal(ui.agents.pick.field, 'context');
+    assert.deepEqual(ui.agents.menuItems(), ['272k', '1m']);
     ui.handleEvent({ type: 'key', key: 'down' });
     ui.handleEvent({ type: 'key', key: 'enter' });
     assert.equal(ui.agents.choice('cursor').context, '1m');
+    ui.handleEvent({ type: 'key', key: 'e' });
+    assert.deepEqual(ui.agents.menuItems(), ['low', 'high']);
+    ui.handleEvent({ type: 'key', key: 'down' });
+    ui.handleEvent({ type: 'key', key: 'enter' });
+    assert.equal(ui.agents.choice('cursor').effort, 'high');
+    ui.draw();
+    const text = stripAnsi(ui.lastFrame.rows.join('\n'));
+    assert.match(text, /context/);
+    assert.match(text, /cursor\s+gpt-5\s+high\s+off\s+1m/);
+    const file = path.join(repo.dir, '.reslop');
+    const saved = JSON.parse(fs.readFileSync(file, 'utf8'));
+    assert.equal(saved.agents.cursor.context, '1m');
+    const calls = [];
+    ui.agents.spawn = (cwd, launch) => {
+      calls.push(launch);
+      return { kill() {} };
+    };
+    ui.agents.start();
+    assert.equal(calls.length, 1);
+    const { choice } = calls[0];
+    assert.deepEqual(modelChange(CURSOR_STATE, choice).params, {
+      configId: 'model',
+      value: 'gpt-5[context=1m,reasoning=high,fast=false]',
+    });
+    ui.handleEvent({ type: 'key', key: 'escape' });
     ui.handleEvent({ type: 'key', key: 'm' });
     ui.handleEvent({ type: 'key', key: 'up' });
     ui.handleEvent({ type: 'key', key: 'enter' });
-    assert.equal(ui.agents.choice('cursor').model, 'grok-4.7');
-    assert.equal(ui.agents.choice('cursor').context, '256k');
-    assert.equal(ui.agents.choice('cursor').fast, false);
-    assert.equal(ui.agents.choice('cursor').effort, 'high');
+    assert.equal(ui.agents.choice('cursor').model, 'composer-2');
+    assert.equal(ui.agents.rows()[at].context, '');
+    assert.deepEqual(ui.agents.rows()[at].contexts, []);
+  } finally {
+    ui.agents.reset();
+    repo.cleanup();
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+const paramOption = (id, category, current, values) =>
+  select(id, category, current, values);
+
+const GROK_OPTIONS = [
+  paramOption('context', 'model_config', '256k', ['256k', '500k']),
+  paramOption('reasoning_effort', 'thought_level', 'high', ['low', 'high']),
+  paramOption('fast', 'model_config', 'true', ['false', 'true']),
+];
+
+// An agent whose options belong to a model: only an asked model has them
+const perModelAgent = () => {
+  const base = acpState({ models: ['composer', 'grok'] });
+  const own = [paramOption('fast', 'model_config', 'true', ['false', 'true'])];
+  base.configOptions.push(...own);
+  const asked = [];
+  const listModels = async (row, options) => {
+    asked.push(options.models);
+    const byModel = new Map([['composer', base.configOptions]]);
+    const grok = [base.configOptions[0], ...GROK_OPTIONS];
+    if (options.models.includes('grok')) byModel.set('grok', grok);
+    return { ...base, byModel };
+  };
+  return { asked, listModels };
+};
+
+const settled = () =>
+  new Promise((resolve) => {
+    setImmediate(resolve);
+  });
+
+test('picking a model asks the agent for its settings', async () => {
+  const { dir, env } = fakePath('cursor-agent');
+  const { ui, repo } = await openUi();
+  try {
+    const { asked, listModels } = perModelAgent();
+    ui.agents.listModels = listModels;
+    ui.agents.refresh(env);
+    await ui.agents.open();
+    assert.deepEqual(asked, [[]]);
+    const at = ui.agents.rows().findIndex((row) => row.id === 'cursor');
+    ui.nav.agentCursor = at;
+    const row = () => ui.agents.rows()[at];
+    assert.equal(row().model, 'composer');
+    assert.deepEqual(row().efforts, []);
+    assert.equal(row().fast, 'off');
+    ui.handleEvent({ type: 'key', key: 'm' });
+    ui.handleEvent({ type: 'key', key: 'down' });
+    ui.handleEvent({ type: 'key', key: 'enter' });
+    assert.equal(ui.agents.choice('cursor').model, 'grok');
+    assert.deepEqual(row().efforts, []);
+    assert.deepEqual(row().contexts, []);
+    await settled();
+    assert.deepEqual(asked, [[], ['grok']]);
+    assert.deepEqual(row().efforts, ['low', 'high']);
+    assert.deepEqual(row().contexts, ['256k', '500k']);
+    assert.equal(row().effort, 'high');
+    assert.equal(row().context, '256k');
+    assert.equal(row().fast, 'off');
+    ui.handleEvent({ type: 'key', key: 'e' });
+    assert.deepEqual(ui.agents.menuItems(), ['low', 'high']);
+    ui.handleEvent({ type: 'key', key: 'up' });
+    ui.handleEvent({ type: 'key', key: 'enter' });
     ui.handleEvent({ type: 'key', key: 't' });
     assert.deepEqual(ui.agents.menuItems(), ['256k', '500k']);
     ui.handleEvent({ type: 'key', key: 'down' });
     ui.handleEvent({ type: 'key', key: 'enter' });
-    assert.equal(ui.agents.choice('cursor').context, '500k');
-    assert.equal(ui.agents.choice('cursor').effort, 'high');
-    assert.equal(ui.agents.choice('cursor').fast, false);
+    ui.handleEvent({ type: 'key', key: 'a' });
+    assert.equal(ui.status, 'fast on');
+    ui.draw();
+    const text = stripAnsi(ui.lastFrame.rows.join('\n'));
+    assert.match(text, /cursor\s+grok\s+low\s+on\s+500k/);
+    const calls = [];
+    ui.agents.spawn = (cwd, launch) => {
+      calls.push(launch);
+      return { kill() {} };
+    };
+    ui.agents.start();
+    const { choice } = calls[0];
+    assert.deepEqual(choice, {
+      model: 'grok',
+      effort: 'low',
+      fast: true,
+      context: '500k',
+    });
+    const live = { configOptions: GROK_OPTIONS };
+    const set = (change) => [change.params.configId, change.params.value];
+    assert.deepEqual(set(effortChange(live, choice)), [
+      'reasoning_effort',
+      'low',
+    ]);
+    assert.deepEqual(set(contextChange(live, choice)), ['context', '500k']);
+    assert.equal(fastChange(live, choice), null);
+    const slow = { ...choice, fast: false };
+    assert.deepEqual(set(fastChange(live, slow)), ['fast', 'false']);
+    ui.handleEvent({ type: 'key', key: 'escape' });
+    ui.handleEvent({ type: 'key', key: 'm' });
+    ui.handleEvent({ type: 'key', key: 'enter' });
+    await settled();
+    assert.equal(asked.length, 2);
+  } finally {
+    ui.agents.reset();
+    repo.cleanup();
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('the settings of a saved model are asked for on load', async () => {
+  const { dir, env } = fakePath('cursor-agent');
+  const { ui, repo } = await openUi();
+  try {
+    const file = path.join(repo.dir, '.reslop');
+    const cursor = { model: 'grok', effort: 'low', context: '500k' };
+    fs.writeFileSync(file, `${JSON.stringify({ agents: { cursor } })}\n`);
+    const { asked, listModels } = perModelAgent();
+    ui.agents.listModels = listModels;
+    ui.agents.refresh(env);
+    await ui.agents.open();
+    assert.deepEqual(asked, [['grok']]);
+    const row = ui.agents.rows().find((item) => item.id === 'cursor');
+    assert.equal(row.model, 'grok');
+    assert.equal(row.effort, 'low');
+    assert.equal(row.context, '500k');
+    assert.deepEqual(row.efforts, ['low', 'high']);
   } finally {
     ui.agents.reset();
     repo.cleanup();
@@ -2051,17 +1839,12 @@ test('clicking the context column drops the size list', async () => {
   const { dir, env } = fakePath('cursor-agent');
   const { ui, repo } = await openUi();
   try {
-    ui.agents.listModels = async () => {
-      const names = ['grok-4.7-high', 'gpt-5.6-sol-high'];
-      names.wide = ['gpt-5.6-sol-high'];
-      return names;
-    };
+    ui.agents.listModels = listed;
     ui.agents.refresh(env);
     await ui.agents.open();
     const at = ui.agents.rows().findIndex((row) => row.id === 'cursor');
     ui.nav.agentCursor = at;
-    ui.agents.choice('cursor').model = 'grok-4.7';
-    ui.agents.choice('cursor').effort = 'high';
+    ui.agents.choice('cursor').model = 'gpt-5';
     const calls = [];
     ui.agents.spawn = () => {
       calls.push('start');
@@ -2085,7 +1868,7 @@ test('clicking the context column drops the size list', async () => {
     press('press');
     press('release');
     assert.equal(ui.agents.pick && ui.agents.pick.field, 'context');
-    assert.deepEqual(ui.agents.menuItems(), ['256k', '500k']);
+    assert.deepEqual(ui.agents.menuItems(), ['272k', '1m']);
     assert.equal(calls.length, 0);
     press('press');
     press('release');
@@ -2098,47 +1881,11 @@ test('clicking the context column drops the size list', async () => {
   }
 });
 
-test('agents screen selects a cursor context size', async () => {
-  const { dir, env } = fakePath('cursor-agent');
-  const { ui, repo } = await openUi();
-  try {
-    ui.agents.listModels = async () => [];
-    ui.agents.refresh(env);
-    await ui.agents.open();
-    ui.nav.agentCursor = 2;
-    ui.handleEvent({ type: 'key', key: 't' });
-    assert.equal(ui.agents.pick.field, 'context');
-    assert.deepEqual(ui.agents.menuItems(), ['256k', '1m']);
-    ui.handleEvent({ type: 'key', key: 'down' });
-    ui.handleEvent({ type: 'key', key: 'enter' });
-    assert.equal(ui.agents.choice('cursor').context, '1m');
-    ui.draw();
-    const text = stripAnsi(ui.lastFrame.rows.join('\n'));
-    assert.match(text, /context/);
-    assert.match(text, /cursor\s+\S+\s+\S+\s+off\s+1m/);
-    const file = path.join(repo.dir, '.reslop');
-    const saved = JSON.parse(fs.readFileSync(file, 'utf8'));
-    assert.equal(saved.agents.cursor.context, '1m');
-    const calls = [];
-    ui.agents.spawn = (cwd, launch) => {
-      calls.push(launch);
-      return { kill() {} };
-    };
-    ui.agents.choice('cursor').model = 'grok-4.6';
-    ui.agents.start();
-    assert.equal(calls.length, 1);
-    assert.ok(calls[0].args.includes('grok-4.6[context=1m,effort=medium]'));
-  } finally {
-    ui.agents.reset();
-    repo.cleanup();
-    fs.rmSync(dir, { recursive: true, force: true });
-  }
-});
-
 test('agent columns fill the row in proportion to their content', async () => {
-  const { dir, env } = fakePath('claude');
+  const { dir, env } = fakePath('claude-agent-acp');
   const { ui, repo, stdout } = await openUi();
   try {
+    ui.agents.listModels = listed;
     ui.agents.refresh(env);
     await ui.agents.open();
     stdout.columns = 160;
@@ -2168,7 +1915,7 @@ test('agent columns fill the row in proportion to their content', async () => {
 });
 
 test('agent history keeps the launch, output, time, and progress', async () => {
-  const { dir, env } = fakePath('claude');
+  const { dir, env } = fakePath('claude-agent-acp');
   const { ui, repo, stdout } = await openUi();
   try {
     const reviewDir = path.join(repo.dir, '.plan');
@@ -2187,20 +1934,15 @@ test('agent history keeps the launch, output, time, and progress', async () => {
     ].join('\n');
     fs.writeFileSync(path.join(reviewDir, name), body);
     ui.review.store.reviewPath = '';
-    ui.agents.listModels = async () => [];
+    ui.agents.listModels = listed;
     ui.agents.refresh(env);
     await ui.agents.open();
     const sessionId = '2fa698ba-9a19-4a84-8134-5a7cd9ec2c56';
-    const text = [
-      'hello from agent',
-      'total tokens: 1,234',
-      'Grok 4.7 256K High · 44.3% · 9 files edited',
-      `To resume this session: agent --resume=${sessionId}`,
-      '',
-    ].join('\n');
+    const text = 'hello from agent\n';
+    const stats = { session: sessionId, files: 9, tokens: 1234 };
     ui.agents.spawn = (cwd, launch, onData, onClose) => {
       onData(text);
-      onClose({ status: 0, text });
+      onClose({ status: 0, text, stats });
       return { kill() {} };
     };
     ui.agents.start();
@@ -2283,7 +2025,7 @@ test('agent history keeps the launch, output, time, and progress', async () => {
 });
 
 test('agent output shows a scroller when the log overflows', async () => {
-  const { dir, env } = fakePath('claude');
+  const { dir, env } = fakePath('claude-agent-acp');
   const repo = makeRepo();
   repo.write('a.js', 'ok\n');
   repo.git(['add', '.']);
@@ -2301,7 +2043,7 @@ test('agent output shows a scroller when the log overflows', async () => {
   await ui.ensureRepo();
   await ui.load();
   try {
-    ui.agents.listModels = async () => [];
+    ui.agents.listModels = listed;
     ui.agents.refresh(env);
     await ui.agents.open();
     const text = Array.from({ length: 80 }, (_, i) => `line ${i}`).join('\n');
@@ -2339,7 +2081,7 @@ test('agent output shows a scroller when the log overflows', async () => {
 });
 
 test('dragging the agent output scroller scrolls the log', async () => {
-  const { dir, env } = fakePath('claude');
+  const { dir, env } = fakePath('claude-agent-acp');
   const repo = makeRepo();
   repo.write('a.js', 'ok\n');
   repo.git(['add', '.']);
@@ -2357,7 +2099,7 @@ test('dragging the agent output scroller scrolls the log', async () => {
   await ui.ensureRepo();
   await ui.load();
   try {
-    ui.agents.listModels = async () => [];
+    ui.agents.listModels = listed;
     ui.agents.refresh(env);
     await ui.agents.open();
     const text = Array.from({ length: 80 }, (_, i) => `line ${i}`).join('\n');
@@ -2419,47 +2161,11 @@ test('dragging the agent output scroller scrolls the log', async () => {
   }
 });
 
-test('buildLaunch continues a previous session for every agent', () => {
-  const sessionId = '2fa698ba-9a19-4a84-8134-5a7cd9ec2c56';
-  const expected = {
-    claude: ['--resume', sessionId],
-    opencode: ['--session', sessionId],
-    cursor: [`--resume=${sessionId}`],
-    codex: ['resume', sessionId],
-    agy: ['--conversation', sessionId],
-  };
-  for (const spec of AGENTS) {
-    const row = {
-      id: spec.id,
-      name: spec.name,
-      bin: `/usr/bin/${spec.bins[0]}`,
-      spec,
-      models: spec.models,
-    };
-    const kept = buildLaunch(
-      row,
-      emptyChoice(row),
-      '/tmp/plan.md',
-      '/tmp',
-      sessionId,
-    );
-    const at = spec.prefix.length;
-    assert.deepEqual(
-      kept.args.slice(at, at + expected[spec.id].length),
-      expected[spec.id],
-      spec.id,
-    );
-    assert.equal(kept.session, sessionId, spec.id);
-    const fresh = buildLaunch(row, emptyChoice(row), '/tmp/plan.md', '/tmp');
-    assert.equal(fresh.session, undefined, spec.id);
-  }
-});
-
 test('continue starts the session selected in the right panel', async () => {
   const { dir, env } = fakePath('cursor-agent');
   const { ui, repo, stdout } = await openUi();
   try {
-    ui.agents.listModels = async () => [];
+    ui.agents.listModels = listed;
     ui.agents.refresh(env);
     await ui.agents.open();
     const at = ui.agents.rows().findIndex((row) => row.id === 'cursor');
@@ -2477,7 +2183,7 @@ test('continue starts the session selected in the right panel', async () => {
     ui.agents.start();
     assert.equal(ui.mode, 'review');
     assert.equal(calls.length, 1);
-    assert.equal(calls[0].args.includes('--continue'), false);
+    assert.equal(calls[0].session, '');
     const started = ui.agents.jobs.find((job) => job.status === 'running');
     const sessionId = '2fa698ba-9a19-4a84-8134-5a7cd9ec2c56';
     started.status = 'exit 0';
@@ -2491,12 +2197,16 @@ test('continue starts the session selected in the right panel', async () => {
     assert.equal(ui.view().agentCanContinue, true);
     ui.handleEvent({ type: 'key', key: 'c' });
     assert.equal(calls.length, 2);
-    const resume = `--resume=${sessionId}`;
-    const lead = calls[1].args.slice(0, 3);
-    assert.deepEqual(lead, ['--print', '--trust', resume]);
     assert.equal(calls[1].session, sessionId);
-    assert.match(calls[1].command, /--resume=/);
+    assert.deepEqual(calls[1].args, ['acp']);
     assert.match(calls[1].prompt, /repair plan/);
+    const continued = ui.agents.jobs.at(-1);
+    assert.equal(continued.resume, sessionId);
+    continued.status = 'exit 1';
+    continued.child = null;
+    ui.handleEvent({ type: 'key', key: 'r' });
+    assert.equal(calls.length, 3);
+    assert.equal(calls[2].session, sessionId);
   } finally {
     ui.agents.reset();
     repo.cleanup();
@@ -2505,10 +2215,10 @@ test('continue starts the session selected in the right panel', async () => {
 });
 
 test('agent raw log keeps terminal escapes', async () => {
-  const { dir, env } = fakePath('claude');
+  const { dir, env } = fakePath('claude-agent-acp');
   const { ui, repo } = await openUi();
   try {
-    ui.agents.listModels = async () => [];
+    ui.agents.listModels = listed;
     ui.agents.refresh(env);
     await ui.agents.open();
     const colored = '\x1b[31mred\x1b[0m\n';
@@ -2545,45 +2255,51 @@ test('agent raw log keeps terminal escapes', async () => {
   }
 });
 
-const SH_ONLY = { skip: process.platform === 'win32' };
-
-test(
-  'an agent process runs to its exit and keeps its output',
-  SH_ONLY,
-  async () => {
-    const { dir, bins, env } = fakePath('claude');
-    fs.writeFileSync(bins.claude, '#!/bin/sh\necho "fixed by $0"\n');
-    const { ui, repo } = await openUi();
-    try {
-      ui.agents.listModels = async () => [];
-      ui.agents.refresh(env);
-      await ui.agents.open();
-      ui.agents.start();
-      const job = ui.agents.jobs[0];
-      assert.equal(job.status, 'running');
-      await new Promise((resolve) => {
-        const check = () => {
-          if (job.status === 'running') setTimeout(check, 5);
-          else resolve();
-        };
-        check();
-      });
-      assert.equal(job.status, 'exit 0');
-      assert.equal(job.output, `fixed by ${bins.claude}\n`);
-      assert.equal(job.rawText, job.output);
-    } finally {
-      ui.agents.reset();
-      repo.cleanup();
-      fs.rmSync(dir, { recursive: true, force: true });
-    }
-  },
-);
-
-test('a session opens on its last run and loads older on scroll', async () => {
-  const { dir, env } = fakePath('claude');
+test('a plan runs through an acp agent to its end', SH_ONLY, async () => {
+  const name = 'claude-agent-acp';
+  const { dir, bins, env } = fakePath(name);
+  const script = `#!/bin/sh\nexec "${process.execPath}" "${FIXTURE}" --acp\n`;
+  fs.writeFileSync(bins[name], script);
   const { ui, repo } = await openUi();
   try {
-    ui.agents.listModels = async () => [];
+    ui.agents.refresh(env);
+    await ui.agents.open();
+    const row = ui.agents.rows()[0];
+    assert.equal(row.model, 'opus');
+    assert.deepEqual(row.efforts, ['low', 'medium', 'high']);
+    assert.equal(row.effort, 'medium');
+    ui.agents.start();
+    const job = ui.agents.jobs[0];
+    assert.equal(job.status, 'running');
+    await new Promise((resolve) => {
+      const check = () => {
+        if (job.status === 'running') setTimeout(check, 5);
+        else resolve();
+      };
+      check();
+    });
+    assert.equal(job.status, 'exit 0');
+    assert.match(job.output, /got: Read and execute repair plan at \.plan\//);
+    assert.match(job.output, /settings: acceptEdits opus medium off/);
+    assert.match(job.output, /✔ Edit a\.js/);
+    assert.equal(job.rawText, job.output);
+    assert.equal(job.session, 'session-1');
+    assert.equal(job.files, 1);
+    assert.equal(job.tokens, 1234);
+    const rows = ui.agents.sessionRows();
+    assert.equal(rows[1].id, 'session-1');
+  } finally {
+    ui.agents.reset();
+    repo.cleanup();
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('a session opens on its last run and loads older on scroll', async () => {
+  const { dir, env } = fakePath('claude-agent-acp');
+  const { ui, repo } = await openUi();
+  try {
+    ui.agents.listModels = listed;
     ui.agents.refresh(env);
     await ui.agents.open();
     const sessionId = '2fa698ba-9a19-4a84-8134-5a7cd9ec2c56';
@@ -2630,10 +2346,10 @@ test('a session opens on its last run and loads older on scroll', async () => {
 });
 
 test('a completed session reopens with its captured output', async () => {
-  const { dir, env } = fakePath('claude');
+  const { dir, env } = fakePath('claude-agent-acp');
   const { ui, repo } = await openUi();
   try {
-    ui.agents.listModels = async () => [];
+    ui.agents.listModels = listed;
     ui.agents.refresh(env);
     await ui.agents.open();
     const sessionId = '2fa698ba-9a19-4a84-8134-5a7cd9ec2c56';
@@ -2660,10 +2376,10 @@ test('a completed session reopens with its captured output', async () => {
 });
 
 test('saved runs reload when the repository root changes', async () => {
-  const { dir, env } = fakePath('claude');
+  const { dir, env } = fakePath('claude-agent-acp');
   const { ui, repo } = await openUi();
   try {
-    ui.agents.listModels = async () => [];
+    ui.agents.listModels = listed;
     ui.agents.refresh(env);
     const sessionId = '2fa698ba-9a19-4a84-8134-5a7cd9ec2c56';
     const folder = path.join(repo.dir, '.log');
@@ -2700,10 +2416,10 @@ test('saved runs reload when the repository root changes', async () => {
 });
 
 test('reopening the agents screen restores both selections', async () => {
-  const { dir, env } = fakePath('claude', 'codex');
+  const { dir, env } = fakePath('claude-agent-acp', 'codex-acp');
   const { ui, repo } = await openUi();
   try {
-    ui.agents.listModels = async () => [];
+    ui.agents.listModels = listed;
     ui.agents.refresh(env);
     await ui.agents.open();
     assert.equal(ui.agents.selected().id, 'claude');
@@ -2731,42 +2447,11 @@ test('reopening the agents screen restores both selections', async () => {
   }
 });
 
-test('run output yields the session, files, and tokens', () => {
-  const sessionId = '2fa698ba-9a19-4a84-8134-5a7cd9ec2c56';
-  const text = [
-    'total tokens: 1,234',
-    '8 files edited',
-    `To resume this session: agent --resume=${sessionId}`,
-  ].join('\n');
-  assert.deepEqual(runStats(text), {
-    session: sessionId,
-    files: 8,
-    tokens: 1234,
-  });
-  const usage = '{"input_tokens": 10, "output_tokens": 5}';
-  assert.equal(runStats(usage).tokens, 15);
-  assert.deepEqual(runStats('hello'), {});
-  const spaced = `claude --resume ${sessionId}`;
-  assert.equal(runStats(spaced).session, sessionId);
-});
-
-test('agy output yields the conversation to continue', () => {
-  const sessionId = '2fa698ba-9a19-4a84-8134-5a7cd9ec2c56';
-  const spaced = `Continue with agy --conversation ${sessionId}`;
-  assert.equal(runStats(spaced).session, sessionId);
-  const joined = `Continue with agy --conversation=${sessionId}`;
-  assert.equal(runStats(joined).session, sessionId);
-  const job = runJob('agy');
-  job.finish({ status: 0, text: `Done\n${spaced}\n` });
-  assert.equal(job.record().session, sessionId);
-  assert.equal(job.status, 'exit 0');
-});
-
 test('legacy .reslop runs move into .log', async () => {
-  const { dir, env } = fakePath('claude');
+  const { dir, env } = fakePath('claude-agent-acp');
   const { ui, repo } = await openUi();
   try {
-    ui.agents.listModels = async () => [];
+    ui.agents.listModels = listed;
     ui.agents.refresh(env);
     const legacy = {
       id: 4,

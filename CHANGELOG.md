@@ -2,6 +2,10 @@
 
 ## [Unreleased][unreleased]
 
+- Run agents over the Agent Client Protocol instead of their cli
+- List models from the agent session and efforts, context, fast per model
+- Answer agent permission requests from the plan allow list
+
 ## [0.3.1][] - 2026-10-13
 
 - Allow agents to write to work with git

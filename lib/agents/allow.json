@@ -1,17 +1,19 @@
 {
-  "planAllows": [
-    "Write(.plan/**)",
-    "Write(.plan/**/*.md)",
-    "Write(**/.plan/**)",
-    "Write(**/.plan/**/*.md)",
-    "Shell(npm)",
-    "Shell(npm test)",
-    "Shell(npm t)",
-    "Shell(npx)",
-    "Shell(node)",
-    "Shell(node --test)",
-    "Shell(reslop)",
-    "Shell(reslop t)",
-    "Shell(git)"
+  "commands": ["npm", "npx", "node", "reslop", "git"],
+  "filters": [
+    "cd",
+    "cat",
+    "echo",
+    "grep",
+    "head",
+    "ls",
+    "printf",
+    "pwd",
+    "sort",
+    "tail",
+    "test",
+    "true",
+    "uniq",
+    "wc"
   ]
 }

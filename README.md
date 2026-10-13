@@ -31,8 +31,8 @@ Review → Plan → Repair → Verify
 - Review, renew, audit and update npm dependencies in `package.json` and the lockfile
 - Auto-update reslop patch and minor releases; confirm a new major
 - Work with git, npm, and fetch in the background; run tests in the background while you review
-- Execute the plan in local CLI agents: pick agent, model, and effort; watch progress; sessions, history, and continue or new runs
-- Agent defaults and extras in `.reslop` (grouped settings sections)
+- Execute the plan in local agents over ACP: pick agent, model, and effort; watch progress; sessions, history, and continue or new runs
+- Agent defaults in `.reslop` (grouped settings sections)
 - Optional line numbers in diff and file views (`Ctrl+L`)
 
 ## Install
@@ -75,6 +75,20 @@ Reviews go in `.plan/YYYY-MM-DD-NN.md` with frontmatter `status`:
 - `done`: all items marked `[x]`; adding an issue in reslop sets it back to `editing`
 
 `ready` and `pending` in older reviews are read as `editing`.
+
+## Agents
+
+reslop runs a plan in an agent over the [Agent Client Protocol](https://agentclientprotocol.com). An agent is listed as available when the command that serves ACP is on `PATH`:
+
+| Agent       | Command                           | Install                                          |
+| ----------- | --------------------------------- | ------------------------------------------------ |
+| Claude Code | `claude-agent-acp`                | `npm i -g @agentclientprotocol/claude-agent-acp` |
+| Codex       | `codex-acp`                       | `npm i -g @agentclientprotocol/codex-acp`        |
+| Cursor      | `cursor-agent acp`                | comes with the Cursor CLI                        |
+| OpenCode    | `opencode acp`                    | comes with OpenCode                              |
+| Antigravity | `agy-acp` or `agy_acp_server.par` | an ACP adapter for `agy`                         |
+
+Models are the ones the agent lists; efforts, context sizes, and fast mode are the ones it offers for the picked model. When a run ends, the session is set back to what it was, so the defaults of the agent's own CLI stay as they were. A run has nobody to ask, so reslop answers permission requests itself: edits inside the repository and `npm`, `npx`, `node`, `reslop`, and `git` commands, piped through read-only filters such as `grep` or `tail`, are allowed; everything else is refused.
 
 ## Future
 
