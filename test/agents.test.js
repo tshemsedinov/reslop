@@ -2380,53 +2380,43 @@ test('dragging the agent output scroller scrolls the log', async () => {
   }
 });
 
-test('buildLaunch continues a previous session', () => {
-  const cursor = AGENTS.find((row) => row.id === 'cursor');
-  const row = {
-    id: cursor.id,
-    name: cursor.name,
-    bin: '/usr/bin/cursor-agent',
-    spec: cursor,
-    models: cursor.models,
-  };
+test('buildLaunch continues a previous session for every agent', () => {
   const sessionId = '2fa698ba-9a19-4a84-8134-5a7cd9ec2c56';
-  const kept = buildLaunch(
-    row,
-    emptyChoice(row),
-    '/tmp/plan.md',
-    '/tmp',
-    sessionId,
-  );
-  const resume = `--resume=${sessionId}`;
-  assert.deepEqual(kept.args.slice(0, 3), ['--print', '--trust', resume]);
-  assert.equal(kept.session, sessionId);
-  assert.match(kept.command, /--resume=/);
-  const fresh = buildLaunch(row, emptyChoice(row), '/tmp/plan.md', '/tmp');
-  assert.equal(fresh.args.includes('--continue'), false);
-  assert.equal(fresh.session, undefined);
-  const codex = AGENTS.find((item) => item.id === 'codex');
-  const codexRow = {
-    id: codex.id,
-    name: codex.name,
-    bin: '/usr/bin/codex',
-    spec: codex,
-    models: codex.models,
+  const expected = {
+    claude: ['--resume', sessionId],
+    opencode: ['--session', sessionId],
+    cursor: [`--resume=${sessionId}`],
+    codex: ['resume', sessionId],
+    agy: ['--conversation', sessionId],
   };
-  const resumed = buildLaunch(
-    codexRow,
-    { model: 'gpt-5', extra: '', effort: 'high' },
-    '/tmp/plan.md',
-    '/tmp',
-    sessionId,
-  );
-  assert.equal(resumed.args[0], 'exec');
-  assert.equal(resumed.args[1], 'resume');
-  assert.equal(resumed.args[2], sessionId);
-  assert.ok(resumed.args.includes('--model'));
-  assert.ok(resumed.args.includes('model_reasoning_effort=high'));
+  for (const spec of AGENTS) {
+    const row = {
+      id: spec.id,
+      name: spec.name,
+      bin: `/usr/bin/${spec.bins[0]}`,
+      spec,
+      models: spec.models,
+    };
+    const kept = buildLaunch(
+      row,
+      emptyChoice(row),
+      '/tmp/plan.md',
+      '/tmp',
+      sessionId,
+    );
+    const at = spec.prefix.length;
+    assert.deepEqual(
+      kept.args.slice(at, at + expected[spec.id].length),
+      expected[spec.id],
+      spec.id,
+    );
+    assert.equal(kept.session, sessionId, spec.id);
+    const fresh = buildLaunch(row, emptyChoice(row), '/tmp/plan.md', '/tmp');
+    assert.equal(fresh.session, undefined, spec.id);
+  }
 });
 
-test('starting an agent uses the selected session', async () => {
+test('continue starts the session selected in the right panel', async () => {
   const { dir, env } = fakePath('cursor-agent');
   const { ui, repo, stdout } = await openUi();
   try {
@@ -2459,8 +2449,8 @@ test('starting an agent uses the selected session', async () => {
     ui.agents.closeView();
     ui.agents.focusRuns();
     ui.agents.move(1);
-    ui.agents.focusCli();
-    ui.agents.start();
+    assert.equal(ui.view().agentCanContinue, true);
+    ui.handleEvent({ type: 'key', key: 'c' });
     assert.equal(calls.length, 2);
     const resume = `--resume=${sessionId}`;
     const lead = calls[1].args.slice(0, 3);
