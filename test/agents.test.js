@@ -567,6 +567,45 @@ test('agent launch builds model, effort, fast, and login options', () => {
     reasoned.command,
     'codex exec -c model_reasoning_effort=high /tmp/plan.md',
   );
+  const scratch = fs.mkdtempSync(path.join(os.tmpdir(), 'reslop-codex-git-'));
+  const gitRoots = (launch) => {
+    const flag = launch.args.find((arg) =>
+      arg.startsWith('sandbox_workspace_write.writable_roots='),
+    );
+    return JSON.parse(flag.split('=').slice(1).join('='));
+  };
+  try {
+    const repo = path.join(scratch, 'repo');
+    const dot = path.join(repo, '.git');
+    fs.mkdirSync(dot, { recursive: true });
+    const rooted = buildLaunch(
+      codexRow,
+      { model: 'default', extra: '', effort: 'high' },
+      path.join(repo, 'plan.md'),
+      repo,
+    );
+    const sandboxAt = rooted.args.indexOf('--sandbox');
+    assert.equal(rooted.args[sandboxAt + 1], 'workspace-write');
+    assert.ok(sandboxAt > rooted.args.indexOf('-c'));
+    assert.deepEqual(gitRoots(rooted), [fs.realpathSync.native(dot)]);
+    const gitdir = path.join(dot, 'worktrees', 'wt');
+    const work = path.join(scratch, 'work');
+    fs.mkdirSync(gitdir, { recursive: true });
+    fs.writeFileSync(path.join(gitdir, 'commondir'), '../..\n');
+    fs.mkdirSync(work);
+    fs.writeFileSync(path.join(work, '.git'), `gitdir: ${gitdir}\n`);
+    const linked = buildLaunch(
+      codexRow,
+      emptyChoice(codexRow),
+      path.join(work, 'plan.md'),
+      work,
+    );
+    const common = fs.realpathSync.native(dot);
+    const linkedDir = fs.realpathSync.native(gitdir);
+    assert.deepEqual(gitRoots(linked), [linkedDir, common]);
+  } finally {
+    fs.rmSync(scratch, { recursive: true, force: true });
+  }
   const login = buildLogin(row);
   assert.deepEqual(login.args, ['login']);
   assert.equal(login.kind, 'login');
