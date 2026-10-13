@@ -1204,6 +1204,22 @@ test('model menu uses background and a right scroller', async () => {
       return row.slice(start, end);
     };
     assert.match(itemFace(open.find((row) => row.includes(thumb))), /^ /);
+    ui.handleEvent({ type: 'key', key: '1' });
+    ui.draw();
+    const filtered = ui.lastFrame.rows.find((row) =>
+      /model-1(?!\d)/.test(stripAnsi(row)),
+    );
+    assert.ok(filtered);
+    const onFocus = seq(THEME.warnFg, THEME.checkBg);
+    const onNote = seq(THEME.warnFg, THEME.noteBg);
+    const marked = filtered.includes(onFocus) || filtered.includes(onNote);
+    assert.ok(marked);
+    assert.equal(filtered.includes(bg(THEME.searchBg)), false);
+    const queryRow = ui.lastFrame.rows.find((line) =>
+      stripAnsi(line).includes('cursor'),
+    );
+    assert.ok(queryRow.includes(seq(THEME.warnFg, THEME.buttonBg)));
+    assert.equal(queryRow.includes(bg(THEME.searchBg)), false);
     ui.handleEvent({ type: 'key', key: 'escape' });
     ui.handleEvent({ type: 'key', key: 'e' });
     ui.draw();

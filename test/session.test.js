@@ -1696,7 +1696,10 @@ test('tasks plan combo filters in place and keeps the agent menu', async () => {
   );
   assert.ok(hit);
   assert.ok(hit.x0 >= status.indexOf('main') + 'main'.length);
-  assert.ok(session.lastFrame.rows.at(-2).includes(bg(THEME.searchBg)));
+  const statusRow = session.lastFrame.rows.at(-2);
+  const typedMark = seq(THEME.warnFg, THEME.chromeBg);
+  assert.ok(statusRow.includes(`${typedMark}m`));
+  assert.equal(statusRow.includes(bg(THEME.searchBg)), false);
   session.handleEvent({ type: 'key', key: 'backspace' });
   session.handleEvent({ type: 'key', key: 'b' });
   session.handleEvent({ type: 'key', key: 'e' });
@@ -1707,6 +1710,11 @@ test('tasks plan combo filters in place and keeps the agent menu', async () => {
   assert.equal(shown.includes('main-plan'), false);
   const lines = shown.split('\n').map((line) => line.trim());
   assert.equal(lines.includes('be'), false);
+  const beta = session.lastFrame.rows.find((row) =>
+    stripAnsi(row).includes('beta-plan.md'),
+  );
+  assert.ok(beta.includes(seq(THEME.warnFg, THEME.checkBg)));
+  assert.equal(beta.includes(bg(THEME.searchBg)), false);
   session.handleEvent({ type: 'key', key: 'enter' });
   assert.equal(session.composer.tasks.planName(), 'beta-plan.md');
 });
