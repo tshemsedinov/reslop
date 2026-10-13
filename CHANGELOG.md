@@ -2,6 +2,18 @@
 
 ## [Unreleased][unreleased]
 
+## [0.3.1][] - 2026-10-13
+
+- Allow agents to write to work with git
+- Add default URL for tasks import in UI
+- Implement session continue for supported agents
+- Fix scroller in agents sessions list
+- Multiple fixes in background agents and command runner
+- Sync the lockfile when a `package.json` change is staged
+- Update agent instructions to make commits
+- Support Ctrl+Backspace word deletion in editors
+- Support Shift-cursor selection in the tasks editor
+
 ## [0.3.0][] - 2026-10-12
 
 - Execute review results and plan in cli agents
@@ -187,7 +199,8 @@
 - Feedback and todos that produce a repair plan for an agent
 - Intra-line highlighting in unified, mixed, and side-by-side layouts
 
-[unreleased]: https://github.com/tshemsedinov/reslop/compare/v0.3.0...HEAD
+[unreleased]: https://github.com/tshemsedinov/reslop/compare/v0.3.1...HEAD
+[0.3.1]: https://github.com/tshemsedinov/reslop/compare/v0.3.0...v0.3.1
 [0.3.0]: https://github.com/tshemsedinov/reslop/compare/v0.2.7...v0.3.0
 [0.2.7]: https://github.com/tshemsedinov/reslop/compare/v0.2.6...v0.2.7
 [0.2.6]: https://github.com/tshemsedinov/reslop/compare/v0.2.5...v0.2.6
