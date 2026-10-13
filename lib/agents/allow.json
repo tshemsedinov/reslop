@@ -11,6 +11,7 @@
     "Shell(node)",
     "Shell(node --test)",
     "Shell(reslop)",
-    "Shell(reslop t)"
+    "Shell(reslop t)",
+    "Shell(git)"
   ]
 }

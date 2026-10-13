@@ -521,7 +521,7 @@ test('a pipe prints markdown and writes a log', async () => {
     assert.ok(logs.some((name) => name.endsWith('.json')));
     const saved = fs.readFileSync(path.join(dir, '.log', reduced), 'utf8');
     assert.equal(saved, text);
-    assert.match(text, /read the raw log `\.log\/.+\.raw`/);
+    assert.match(text, /the raw log if needed `\.log\/.+\.raw`/);
     const raw = fs.readFileSync(path.join(dir, '.log', rawName), 'utf8');
     assert.match(raw, /✔ hidden/);
     assert.match(raw, /ℹ tests 1/);

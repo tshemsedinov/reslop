@@ -113,6 +113,7 @@ test('buildLaunch passes the review plan model and extra flags', () => {
   assert.ok(head.includes('--allowedTools'));
   assert.ok(head.includes('Bash(npm *)'));
   assert.ok(head.includes('Bash(node *)'));
+  assert.ok(head.includes('Bash(git *)'));
   assert.deepEqual(launch.args.slice(0, head.length), head);
   assert.deepEqual(launch.args.slice(head.length), [
     '--model',

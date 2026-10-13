@@ -24,6 +24,7 @@ test('plan edits and test commands are remembered in the cursor config', () => {
   assert.ok(saved.permissions.allow.includes('Shell(ls)'));
   assert.ok(saved.permissions.allow.includes('Write(.plan/**/*.md)'));
   assert.ok(saved.permissions.allow.includes('Shell(npm)'));
+  assert.ok(saved.permissions.allow.includes('Shell(git)'));
   assert.ok(saved.permissions.allow.includes('Shell(reslop t)'));
   assert.equal(ensureAllows(file, PLAN_ALLOWS), true);
   const again = JSON.parse(fs.readFileSync(file, 'utf8'));
@@ -85,6 +86,7 @@ test('an agent with an allow list gets the plan entries', async () => {
     const saved = JSON.parse(fs.readFileSync(config, 'utf8'));
     assert.ok(saved.permissions.allow.includes('Write(.plan/**/*.md)'));
     assert.ok(saved.permissions.allow.includes('Shell(npm)'));
+    assert.ok(saved.permissions.allow.includes('Shell(git)'));
   } finally {
     if (previous === undefined) delete process.env.RESLOP_CURSOR_CONFIG;
     else process.env.RESLOP_CURSOR_CONFIG = previous;
