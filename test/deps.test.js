@@ -1810,7 +1810,9 @@ test('staging a package.json diff installs its lockfile', async () => {
         return { status: 0 };
       },
     });
-    assert.equal(installed, `${repo.dir}\0i`);
+    const [cwd, args] = installed.split('\0');
+    assert.equal(realpathSync.native(cwd), realpathSync.native(repo.dir));
+    assert.equal(args, 'i');
     assert.equal(
       parseGitJson(repo, ':package-lock.json').packages['node_modules/lodash']
         .version,
@@ -1848,7 +1850,9 @@ test('staging a package.json path installs its lockfile', async () => {
         return { status: 0 };
       },
     });
-    assert.equal(installed, `${repo.dir}\0i`);
+    const [cwd, args] = installed.split('\0');
+    assert.equal(realpathSync.native(cwd), realpathSync.native(repo.dir));
+    assert.equal(args, 'i');
     assert.match(
       repo.git(['diff', '--cached', '--name-only']),
       /package\.json/,
