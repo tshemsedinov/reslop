@@ -5,6 +5,8 @@
 - Run agents over the Agent Client Protocol instead of their cli
 - List models from the agent session and efforts, context, fast per model
 - Answer agent permission requests from the plan allow list
+- Install the npm package of a missing agent with `i` on the agents screen
+- Show a missing agent's install hint in the warning color
 
 ## [0.3.1][] - 2026-10-13
 

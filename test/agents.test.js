@@ -170,7 +170,12 @@ test('detectAgents falls back to the next command of an agent', () => {
     assert.equal(claude.bin, bins['claude-code-acp']);
     const codex = list.find((row) => row.id === 'codex');
     assert.equal(codex.bin, '');
-    assert.equal(codex.needs, 'codex-acp');
+    assert.equal(codex.package, '@agentclientprotocol/codex-acp');
+    assert.equal(codex.hint, 'npm i -g @agentclientprotocol/codex-acp');
+    assert.equal(cursor.package, '');
+    const agy = list.find((row) => row.id === 'agy');
+    assert.equal(agy.package, '');
+    assert.match(agy.hint, /acp adapter for agy/);
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
   }
@@ -530,8 +535,10 @@ test('agents screen lists agents and starts with the review plan', async () => {
     assert.match(text, /opencode/);
     assert.match(text, /cursor/);
     assert.match(text, /codex/);
-    assert.match(text, /needs opencode/);
-    assert.match(text, /needs codex-acp/);
+    assert.match(text, /opencode +npm i -g opencode-ai/);
+    assert.match(text, /codex +npm i -g @agentclientprotocol\/codex-acp/);
+    assert.match(text, /cursor +needs the Cursor CLI from cursor\.com\/cli/);
+    assert.equal(text.includes('not installed'), false);
     assert.equal(text.includes(bins['claude-agent-acp']), false);
     assert.match(render.headerText(ui.view()), /agents/);
     ui.handleEvent({ type: 'key', key: 'm' });
@@ -1179,7 +1186,17 @@ test('model menu uses background and a right scroller', async () => {
     assert.ok(claude);
     assert.ok(cursor);
     assert.equal(claude.includes(BOLD), false);
-    assert.ok(claude.includes('38;2;21;74;140'));
+    assert.ok(claude.includes('38;2;122;122;138'));
+    assert.ok(claude.includes(seq(THEME.warnFg, THEME.ctxBg)));
+    assert.match(stripAnsi(claude), /npm i -g @agentclientprotocol/);
+    ui.nav.agentCursor = 0;
+    ui.draw();
+    const pickedHint = ui.lastFrame.rows.find((row) =>
+      stripAnsi(row).includes('npm i -g @agentclientprotocol'),
+    );
+    assert.ok(pickedHint.includes(seq(THEME.warnFg, THEME.buttonBg)));
+    ui.nav.agentCursor = 2;
+    ui.draw();
     assert.ok(cursor.includes(BOLD));
     assert.ok(cursor.includes('38;2;86;156;214'));
     ui.handleEvent({ type: 'key', key: 'm' });
@@ -1739,6 +1756,145 @@ test('a model listed in several context sizes offers them', async () => {
   }
 });
 
+const pressKey = (ui, key) => ui.handleEvent({ type: 'key', key });
+
+const settled = () =>
+  new Promise((resolve) => {
+    setImmediate(resolve);
+  });
+
+test('i installs the npm package a missing agent needs', async () => {
+  const { dir, bins, env } = fakePath('cursor-agent');
+  const { ui, repo } = await openUi();
+  try {
+    ui.agents.listModels = listed;
+    ui.agents.refresh(env);
+    await ui.agents.open();
+    assert.equal(actionFromKey('i', 'agents'), 'agentInstall');
+    const calls = [];
+    let close = null;
+    ui.agents.spawn = (cwd, launch, onData, onClose) => {
+      calls.push(launch);
+      onData('added 120 packages\n');
+      close = onClose;
+      return { kill() {} };
+    };
+    const buttons = () => {
+      const size = { width: 120, height: 24, color: false };
+      return renderFrame(ui.view(), size).buttons;
+    };
+    const install = () => buttons().find((hit) => hit.id === 'agentInstall');
+    assert.equal(ui.agents.selected().id, 'cursor');
+    assert.equal(install(), undefined);
+    pressKey(ui, 'i');
+    assert.equal(calls.length, 0);
+    assert.equal(ui.status, 'installed');
+    ui.nav.agentCursor = AGENTS.findIndex((spec) => spec.id === 'agy');
+    assert.equal(install(), undefined);
+    pressKey(ui, 'i');
+    assert.equal(calls.length, 0);
+    assert.match(ui.status, /acp adapter for agy/);
+    ui.nav.agentCursor = 0;
+    assert.ok(install());
+    pressKey(ui, 'i');
+    assert.equal(calls.length, 1);
+    const name = '@agentclientprotocol/claude-agent-acp';
+    assert.equal(calls[0].kind, 'install');
+    assert.deepEqual(calls[0].args, ['install', '--global', name]);
+    assert.equal(calls[0].command, `npm install --global ${name}`);
+    assert.equal(ui.agents.viewing, true);
+    assert.equal(ui.agents.runningCount(), 1);
+    assert.equal(ui.agents.jobs.length, 0);
+    ui.draw();
+    const log = stripAnsi(ui.lastFrame.rows.join('\n'));
+    assert.match(log, /npm install --global @agentclientprotocol/);
+    assert.match(log, /added 120 packages/);
+    pressKey(ui, 'escape');
+    assert.equal(ui.agents.sessionRows().length, 1);
+    pressKey(ui, 'i');
+    assert.equal(calls.length, 1);
+    assert.equal(ui.agents.viewing, true);
+    bins.claude = makeBin(dir, 'claude-agent-acp');
+    close({ status: 0, text: 'added 120 packages\n' });
+    assert.equal(ui.status, 'installed claude');
+    assert.equal(ui.agents.runningCount(), 0);
+    assert.equal(ui.agents.rows()[0].bin, bins.claude);
+    await settled();
+    assert.equal(ui.agents.rows()[0].model, 'sonnet');
+    assert.equal(fs.existsSync(path.join(repo.dir, '.log')), false);
+    pressKey(ui, 'escape');
+    pressKey(ui, 'i');
+    assert.equal(calls.length, 1);
+    assert.equal(ui.status, 'installed');
+  } finally {
+    ui.agents.reset();
+    repo.cleanup();
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('an install is the npm command and its output', async () => {
+  const { buildInstall, startAgent } = agents;
+  const row = { ...rowOf(specOf('claude')), bin: '' };
+  const launch = buildInstall(row);
+  assert.equal(launch.ok, true);
+  assert.match(path.basename(launch.cmd), /^npm(\.cmd)?$/);
+  const name = '@agentclientprotocol/claude-agent-acp';
+  assert.deepEqual(launch.args, ['install', '--global', name]);
+  assert.equal(buildInstall(rowOf(specOf('claude'))).error, 'installed');
+  const cursor = { ...rowOf(specOf('cursor')), bin: '', hint: 'by hand' };
+  assert.equal(buildInstall(cursor).error, 'by hand');
+  assert.equal(buildInstall(null).ok, false);
+  const args = ['-e', 'console.log("added 1 package")'];
+  const plain = { ...launch, cmd: process.execPath, args };
+  const result = await new Promise((resolve) => {
+    startAgent(os.tmpdir(), plain, () => {}, resolve);
+  });
+  assert.equal(result.status, 0);
+  assert.equal(result.text, 'added 1 package\n');
+});
+
+test('a failed or stopped install leaves the agent missing', async () => {
+  const { dir, env } = fakePath('cursor-agent');
+  const { ui, repo } = await openUi();
+  try {
+    ui.agents.listModels = listed;
+    ui.agents.refresh(env);
+    await ui.agents.open();
+    ui.nav.agentCursor = AGENTS.findIndex((spec) => spec.id === 'codex');
+    const calls = [];
+    const killed = [];
+    let close = null;
+    ui.agents.spawn = (cwd, launch, onData, onClose) => {
+      calls.push(launch);
+      close = onClose;
+      return { kill: () => killed.push(launch.id) };
+    };
+    pressKey(ui, 'i');
+    close({ status: 243, text: 'npm error code EACCES\n' });
+    assert.equal(ui.status, 'install failed');
+    assert.equal(ui.agents.selected().bin, '');
+    ui.draw();
+    assert.match(stripAnsi(ui.lastFrame.rows.join('\n')), /EACCES/);
+    pressKey(ui, 'r');
+    assert.equal(calls.length, 2);
+    assert.equal(calls[1].command, calls[0].command);
+    pressKey(ui, 's');
+    assert.deepEqual(killed, ['codex']);
+    assert.equal(ui.status, 'stopped');
+    assert.equal(ui.agents.runningCount(), 0);
+    pressKey(ui, 'escape');
+    pressKey(ui, 'i');
+    assert.equal(calls.length, 3);
+    close({ status: 0, text: 'added 1 package\n' });
+    assert.equal(ui.status, 'installed, but not on PATH');
+  } finally {
+    ui.agents.reset();
+    repo.cleanup();
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 const paramOption = (id, category, current, values) =>
   select(id, category, current, values);
 
@@ -1763,11 +1919,6 @@ const perModelAgent = () => {
   };
   return { asked, listModels };
 };
-
-const settled = () =>
-  new Promise((resolve) => {
-    setImmediate(resolve);
-  });
 
 test('picking a model asks the agent for its settings', async () => {
   const { dir, env } = fakePath('cursor-agent');
