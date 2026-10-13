@@ -4501,7 +4501,7 @@ test('new branch action asks for a name', async () => {
   await session.ops.idle();
   assert.deepEqual(repo.created, ['topic']);
   assert.equal(repo.listed.length, 2);
-  assert.equal(session.pane, 'files');
+  assert.equal(session.pane, 'branches');
   assert.equal(session.mode, 'review');
   assert.match(session.status, /created topic/);
 });
