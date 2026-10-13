@@ -5440,6 +5440,48 @@ test('the run screen follows an outside reslop t', async () => {
   assert.equal(rows[0].total, '10');
 });
 
+test('an open run follows the next reslop t step in its script', async () => {
+  const { session, cwd } = await openSession([sampleItem('a.js')], {
+    startPane: 'files',
+  });
+  const dir = path.join(cwd, '.log');
+  fs.mkdirSync(dir);
+  const write = (id, command, startedAt, endedAt, output) => {
+    const record = {
+      v: 1,
+      id,
+      pid: process.pid,
+      command,
+      script: 'test',
+      startedAt,
+      endedAt,
+      status: 'passed',
+      exit: 0,
+      progress: { done: 0, failed: 0, lines: 0, expected: 0 },
+      result: null,
+      log: `${id}.log`,
+      raw: `${id}.raw`,
+    };
+    fs.writeFileSync(
+      path.join(dir, `${id}.json`),
+      `${JSON.stringify(record)}\n`,
+    );
+    fs.writeFileSync(path.join(dir, `${id}.log`), `${output}\n`);
+    fs.writeFileSync(path.join(dir, `${id}.raw`), `${output}\n`);
+  };
+  session.pushInput('r');
+  write('lint', 'npm run -s lint', 1_000, 3_000, 'lint output');
+  session.dashboard.noteDisk(['.log/lint.json', '.log/lint.log']);
+  session.handleEvent({ type: 'key', key: 'right' });
+  session.handleEvent({ type: 'key', key: 'enter' });
+  assert.equal(session.npm.viewedRun().externalId, 'lint');
+  assert.match(session.npm.output, /lint output/);
+  write('tests', 'node --test', 4_000, 9_000, 'test output');
+  session.dashboard.noteDisk(['.log/tests.json', '.log/tests.log']);
+  assert.equal(session.npm.viewedRun().externalId, 'tests');
+  assert.match(session.npm.output, /test output/);
+});
+
 test('a finished outside run drops the running line', async () => {
   const { session, cwd } = await openSession([sampleItem('a.js')], {
     startPane: 'files',
