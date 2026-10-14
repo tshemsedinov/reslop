@@ -14,7 +14,7 @@ reslop reaches every agent over the [Agent Client Protocol](https://agentclientp
 | Cursor      | `cursor-agent acp`      | none, installed from cursor.com/cli     | Cursor, the agent itself               |
 | Antigravity | no ACP in the `agy` CLI | none advised                            |                                        |
 
-The `i` key on the agents screen runs `npm install --global` for the package of the selected row. The install hint is drawn in the warning color. When npm exits, reslop scans PATH again in the same process: a command written into a directory already on PATH shows up immediately, and a restart would see the same PATH.
+The `i` key on the agents screen proposes `npm install --global` for the package of the selected row and runs it after confirmation. The install hint is drawn in the warning color. When npm exits, reslop scans PATH again in the same process: a command written into a directory already on PATH shows up immediately, and a restart would see the same PATH.
 
 - The two adapters are not published by Anthropic or OpenAI. They come from the ACP project, are Apache-2.0, and are what ACP editors install: about 943,000 and 798,000 downloads in the week of 2026-10-06. What they wrap is the vendor's own code: `@anthropic-ai/claude-agent-sdk` 0.3.296 and `@openai/codex` 0.160.
 - Both reuse the login of the installed agent and bundle their own copy of it, so the `claude` and `codex` CLIs are not required.

@@ -88,7 +88,7 @@ reslop runs a plan in an agent over the [Agent Client Protocol](https://agentcli
 | OpenCode    | `opencode acp`                    | `npm i -g opencode-ai`                           |
 | Antigravity | `agy-acp` or `agy_acp_server.par` | an ACP adapter for `agy`                         |
 
-A missing agent shows the npm package it needs, in the warning color; `i` on that row installs it. The new command is a file on the PATH this process already has, so reslop lists it as soon as the install finishes and does not restart. Claude Code and Codex are reached through adapters from the ACP project, and [docs/acp-adapters.md](docs/acp-adapters.md) explains why.
+A missing agent shows the npm package it needs, in the warning color; `i` on that row proposes installing it. After confirmation, reslop lists the agent as soon as the install finishes and does not restart. Claude Code and Codex are reached through adapters from the ACP project, and [docs/acp-adapters.md](docs/acp-adapters.md) explains why.
 
 Models are the ones the agent lists; efforts, context sizes, and fast mode are the ones it offers for the picked model. When a run ends, the session is set back to what it was, so the defaults of the agent's own CLI stay as they were. A run has nobody to ask, so reslop answers permission requests itself: edits inside the repository and `npm`, `npx`, `node`, `reslop`, and `git` commands, piped through read-only filters such as `grep` or `tail`, are allowed; everything else is refused.
 

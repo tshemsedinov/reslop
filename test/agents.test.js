@@ -1763,7 +1763,7 @@ const settled = () =>
     setImmediate(resolve);
   });
 
-test('i installs the npm package a missing agent needs', async () => {
+test('i proposes the npm package a missing agent needs', async () => {
   const { dir, bins, env } = fakePath('cursor-agent');
   const { ui, repo } = await openUi();
   try {
@@ -1797,6 +1797,22 @@ test('i installs the npm package a missing agent needs', async () => {
     ui.nav.agentCursor = 0;
     assert.ok(install());
     pressKey(ui, 'i');
+    assert.equal(calls.length, 0);
+    assert.equal(ui.mode, 'confirmAgentInstall');
+    assert.equal(
+      ui.view().agentInstallPackage,
+      '@agentclientprotocol/claude-agent-acp',
+    );
+    ui.draw();
+    assert.match(
+      stripAnsi(ui.lastFrame.rows.join('\n')),
+      /install @agentclientprotocol\/claude-agent-acp\? y\/n/,
+    );
+    pressKey(ui, 'n');
+    assert.equal(ui.mode, 'review');
+    assert.equal(calls.length, 0);
+    pressKey(ui, 'i');
+    pressKey(ui, 'y');
     assert.equal(calls.length, 1);
     const name = '@agentclientprotocol/claude-agent-acp';
     assert.equal(calls[0].kind, 'install');
@@ -1871,6 +1887,7 @@ test('a failed or stopped install leaves the agent missing', async () => {
       return { kill: () => killed.push(launch.id) };
     };
     pressKey(ui, 'i');
+    pressKey(ui, 'y');
     close({ status: 243, text: 'npm error code EACCES\n' });
     assert.equal(ui.status, 'install failed');
     assert.equal(ui.agents.selected().bin, '');
@@ -1885,6 +1902,7 @@ test('a failed or stopped install leaves the agent missing', async () => {
     assert.equal(ui.agents.runningCount(), 0);
     pressKey(ui, 'escape');
     pressKey(ui, 'i');
+    pressKey(ui, 'y');
     assert.equal(calls.length, 3);
     close({ status: 0, text: 'added 1 package\n' });
     assert.equal(ui.status, 'installed, but not on PATH');
