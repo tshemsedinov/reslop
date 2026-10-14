@@ -17,7 +17,7 @@ const { pushChanges, editItem } = git;
 const { runProc } = require('../lib/common/process.js');
 const { Session } = require('../lib/session/session.js');
 const { blockAddText } = require('../lib/diff/diff.js');
-const { makeRepo, sink } = require('./helpers.js');
+const { makeRepo, sink, configureRepo, seedRepo } = require('./helpers.js');
 
 const sessionFor = async (dir) => {
   const stdout = sink();
@@ -109,12 +109,7 @@ test('a nested git repository stays out of the worktree load', async () => {
     repo.git(['add', 'keep.txt']);
     repo.git(['commit', '-m', 'init']);
     const nested = path.join(repo.dir, 'nested');
-    fs.mkdirSync(nested);
-    const init = spawnSync('git', ['init', '-b', 'main'], {
-      cwd: nested,
-      encoding: 'utf8',
-    });
-    assert.equal(init.status, 0);
+    seedRepo(nested);
     repo.write('note.txt', 'hello\n');
     const loaded = await load(repo.dir, [], { deferExtras: false });
     const paths = loaded.items.map((item) => item.file.newPath);
@@ -671,6 +666,7 @@ const makeBare = () => {
   const result = spawnSync('git', ['init', '--bare', '-b', 'main'], {
     cwd: dir,
     encoding: 'utf8',
+    windowsHide: true,
   });
   if (result.status !== 0) {
     const msg = result.stderr || result.stdout || 'git init failed';
@@ -1129,7 +1125,7 @@ test('pushChanges sets origin upstream for the current branch', async () => {
     const remoteLog = spawnSync(
       'git',
       ['log', 'autoreload', '-1', '--format=%s'],
-      { cwd: bare.dir, encoding: 'utf8' },
+      { cwd: bare.dir, encoding: 'utf8', windowsHide: true },
     );
     assert.equal(remoteLog.stdout.trim(), 'init');
   } finally {
@@ -1151,11 +1147,13 @@ test('pushChanges sets upstream then push and pull update', async () => {
     const remoteLog = spawnSync('git', ['log', '-1', '--format=%s'], {
       cwd: bare.dir,
       encoding: 'utf8',
+      windowsHide: true,
     });
     assert.equal(remoteLog.stdout.trim(), 'init');
     cloneDir = fs.mkdtempSync(path.join(os.tmpdir(), 'reslop-cl-'));
     const cloned = spawnSync('git', ['clone', bare.dir, cloneDir], {
       encoding: 'utf8',
+      windowsHide: true,
     });
     assert.equal(cloned.status, 0, cloned.stderr);
     const cloneGit = (args) => {
@@ -1169,6 +1167,7 @@ test('pushChanges sets upstream then push and pull update', async () => {
           GIT_COMMITTER_NAME: 'Test',
           GIT_COMMITTER_EMAIL: 'test@example.com',
         },
+        windowsHide: true,
       });
       if (result.status !== 0) {
         const msg = result.stderr || result.stdout || 'git failed';
@@ -1176,9 +1175,7 @@ test('pushChanges sets upstream then push and pull update', async () => {
       }
       return result.stdout;
     };
-    cloneGit(['config', 'user.email', 'test@example.com']);
-    cloneGit(['config', 'user.name', 'Test']);
-    cloneGit(['config', 'commit.gpgsign', 'false']);
+    configureRepo(cloneDir);
     fs.writeFileSync(path.join(cloneDir, 'f.txt'), 'b\n');
     cloneGit(['add', 'f.txt']);
     cloneGit(['commit', '-m', 'from clone']);
@@ -1216,6 +1213,7 @@ test('pushChanges force-with-lease after a rewritten commit', async () => {
     const remoteLog = spawnSync('git', ['log', '-1', '--format=%s'], {
       cwd: bare.dir,
       encoding: 'utf8',
+      windowsHide: true,
     });
     assert.equal(remoteLog.stdout.trim(), 'amended');
   } finally {
@@ -1445,6 +1443,7 @@ for (const first of ['git', 'branches', 'deps']) {
     const result = spawnSync(process.execPath, ['-e', script, first], {
       cwd: path.resolve(__dirname, '..'),
       encoding: 'utf8',
+      windowsHide: true,
     });
     assert.equal(result.status, 0, result.stderr);
   });

@@ -19,7 +19,7 @@ const { run, loadSession, parseArgv } = require('../lib/cli.js');
 const { renderFrame } = require('../lib/render/render.js');
 const { actionFromKey } = require('../lib/input/actions.js');
 const { stripAnsi } = require('../lib/term/ansi.js');
-const { sink, tempDir, removeTree } = require('./helpers.js');
+const { sink, tempDir, removeTree, seedRepo } = require('./helpers.js');
 
 const gitEnv = {
   ...process.env,
@@ -48,6 +48,7 @@ const git = (cwd, args) => {
     cwd,
     encoding: 'utf8',
     env: gitEnv,
+    windowsHide: true,
   });
   if (result.status !== 0) {
     throw new Error((result.stderr || result.stdout || 'git failed').trim());
@@ -56,11 +57,7 @@ const git = (cwd, args) => {
 };
 
 const initRepo = (where) => {
-  fs.mkdirSync(where, { recursive: true });
-  git(where, ['init', '-b', 'main']);
-  git(where, ['config', 'user.email', 'test@example.com']);
-  git(where, ['config', 'user.name', 'Test']);
-  git(where, ['config', 'commit.gpgsign', 'false']);
+  seedRepo(where);
   fs.writeFileSync(path.join(where, 'app.js'), 'const n = 1;\n');
   git(where, ['add', '.']);
   git(where, ['commit', '-m', 'init']);
@@ -260,6 +257,38 @@ test('a folder lists worktrees in groups, in and out of it', async () => {
   } finally {
     await removeTree(root);
     await removeTree(away);
+  }
+});
+
+test('a folder behind a link keeps the paths of its repos', async (t) => {
+  const real = tempDir('reslop-wt-');
+  const link = `${real}-link`;
+  try {
+    try {
+      fs.symlinkSync(real, link, 'dir');
+    } catch {
+      return void t.skip('links are not allowed');
+    }
+    initRepo(path.join(real, 'app'));
+    const app = path.join(real, 'app');
+    await addWorktree(app, path.join(real, 'app-one'), 'one');
+    const info = await readWorkspace(workspaceAt(link));
+    assert.deepEqual(
+      info.repos.map((row) => row.name),
+      ['app', 'app-one'],
+    );
+    for (const row of info.repos) {
+      assert.equal(row.dir.startsWith(link), true);
+      same(row.dir, path.join(real, row.name));
+    }
+    assert.equal(info.repos[1].linked, true);
+  } finally {
+    try {
+      fs.unlinkSync(link);
+    } catch {
+      // the link was not created
+    }
+    await removeTree(real);
   }
 });
 

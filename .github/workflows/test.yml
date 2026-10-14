@@ -23,4 +23,18 @@ jobs:
       - run: npm run enable
       - name: Put reslop on PATH
         run: node scripts/github-path.js
-      - run: npm test
+      # Starting a process is slow on Windows, and a scan of each git and
+      # node process is most of that cost. The runner temp disk is faster
+      # than the default one.
+      - name: Windows, scan exclusions
+        if: runner.os == 'Windows'
+        continue-on-error: true
+        shell: pwsh
+        run: |
+          Add-MpPreference -ExclusionPath $env:RUNNER_TEMP, $env:GITHUB_WORKSPACE
+          Add-MpPreference -ExclusionProcess node.exe, git.exe, npm.cmd
+      - name: Test
+        run: npm test
+        env:
+          TMP: ${{ runner.temp }}
+          TEMP: ${{ runner.temp }}

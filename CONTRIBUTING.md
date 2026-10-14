@@ -38,3 +38,15 @@ Before open pull request please follow checklist:
 - [ ] tests are added/updated for bug fixes and new features
 - [ ] code is properly formatted (`npm run fmt`)
 - [ ] description of changes is added in CHANGELOG.md
+
+## Slow tests
+
+Starting a process is slow on Windows, and the tests start thousands of `git`
+processes. Keep the setup of a test short: write the config of a repository
+with `configureRepo` from `test/helpers.js` instead of `git config`. To see
+where the time goes:
+
+- `node --test --test-reporter=./scripts/slow-tests.js` lists the slowest
+  files and tests
+- `node --require ./scripts/count-spawns.js --test` followed by
+  `node scripts/count-spawns.js` counts the processes the tests start

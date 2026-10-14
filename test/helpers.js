@@ -5,6 +5,10 @@ const os = require('node:os');
 const path = require('node:path');
 const { spawnSync } = require('node:child_process');
 
+process.env.GIT_TERMINAL_PROMPT = '0';
+process.env.GCM_INTERACTIVE = 'Never';
+process.env.GIT_CONFIG_NOSYSTEM = '1';
+
 const gitEnv = {
   ...process.env,
   GIT_AUTHOR_NAME: 'Test',
@@ -20,27 +24,65 @@ const RM_OPTIONS = {
   retryDelay: 100,
 };
 
+const REPO_CONFIG = [
+  '[user]',
+  '\temail = test@example.com',
+  '\tname = Test',
+  '[commit]',
+  '\tgpgsign = false',
+  '[core]',
+  '\tautocrlf = false',
+  '\teol = lf',
+  '',
+].join('\n');
+
+// The identity and the line ends of a repository: writing them is one
+// process fewer for each, and starting a process is slow on Windows
+const configureRepo = (dir) => {
+  fs.appendFileSync(path.join(dir, '.git', 'config'), REPO_CONFIG);
+};
+
+const gitSync = (args, cwd, input) =>
+  spawnSync('git', args, {
+    cwd,
+    encoding: 'utf8',
+    input,
+    env: gitEnv,
+    windowsHide: true,
+  });
+
+// One real init for the process. Copying it avoids a git process per test,
+// which is most of the time on Windows.
+let template = '';
+const templateRepo = () => {
+  if (template) return template;
+  template = fs.mkdtempSync(path.join(os.tmpdir(), 'reslop-git-'));
+  const init = gitSync(['init', '-b', 'main'], template);
+  if (init.status !== 0) {
+    const msg = init.stderr || init.stdout || 'git init failed';
+    throw new Error(msg.trim());
+  }
+  configureRepo(template);
+  return template;
+};
+
+const seedRepo = (dir) => {
+  fs.mkdirSync(dir, { recursive: true });
+  const from = path.join(templateRepo(), '.git');
+  fs.cpSync(from, path.join(dir, '.git'), { recursive: true });
+};
+
 const makeRepo = () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'reslop-'));
+  seedRepo(dir);
   const git = (args, input) => {
-    const result = spawnSync('git', args, {
-      cwd: dir,
-      encoding: 'utf8',
-      input,
-      env: gitEnv,
-    });
+    const result = gitSync(args, dir, input);
     if (result.status !== 0) {
       const msg = result.stderr || result.stdout || 'git failed';
       throw new Error(msg.trim());
     }
     return result.stdout;
   };
-  git(['init', '-b', 'main']);
-  git(['config', 'user.email', 'test@example.com']);
-  git(['config', 'user.name', 'Test']);
-  git(['config', 'commit.gpgsign', 'false']);
-  git(['config', 'core.autocrlf', 'false']);
-  git(['config', 'core.eol', 'lf']);
   const write = (rel, content) => {
     const full = path.join(dir, rel);
     fs.mkdirSync(path.dirname(full), { recursive: true });
@@ -99,6 +141,8 @@ const reviewView = (item, extra = {}) => ({
 
 module.exports = {
   makeRepo,
+  seedRepo,
+  configureRepo,
   sink,
   uiSink,
   tempDir,

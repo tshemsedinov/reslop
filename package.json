@@ -49,7 +49,7 @@
     "node": ">=18.15.0"
   },
   "scripts": {
-    "test": "reslop t -- npm run -s lint && reslop t -- node --test",
+    "test": "reslop t -- npm run -s lint && reslop t -- node scripts/run-tests.js",
     "lint": "reslop t -- eslint . && reslop t -- prettier -c \"**/*.js\" \"**/*.json\" \"**/*.md\"",
     "fix": "reslop t -- eslint . --fix && reslop t -- prettier --write \"**/*.js\" \"**/*.json\" \"**/*.md\"",
     "enable": "node scripts/enable.js",

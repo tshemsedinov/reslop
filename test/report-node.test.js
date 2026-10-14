@@ -44,6 +44,7 @@ const rawRun = (root, reporter) => {
       cwd: root,
       encoding: 'utf8',
       env,
+      windowsHide: true,
     },
   );
   assert.equal(result.status, 1, result.stderr);

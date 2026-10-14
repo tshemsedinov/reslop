@@ -147,13 +147,14 @@ test('the reports of npm are kept for each worktree', async () => {
   const ui = await sessionAt(repo.dir);
   try {
     const { lifecycle } = ui;
+    const home = ui.top;
     assert.equal(lifecycle.cachedExtras, null);
     lifecycle.cachedExtras = { stamp: 'a', auditMap: new Map() };
     ui.top = other;
     assert.equal(lifecycle.cachedExtras, null);
     lifecycle.cachedExtras = { stamp: 'b', auditMap: null };
     assert.equal(lifecycle.cachedExtras.stamp, 'b');
-    ui.top = repo.dir;
+    ui.top = home;
     assert.equal(lifecycle.cachedExtras.stamp, 'a');
     lifecycle.clearNpmExtras();
     assert.equal(lifecycle.cachedExtras, null);

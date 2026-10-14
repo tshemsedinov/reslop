@@ -4094,8 +4094,10 @@ test('commit shows progress until git finishes', async () => {
   await settle();
   assert.equal(repo.commits.length, 0);
   assert.equal(session.busy, 'committing');
+  // The timer of the progress may have ticked on a slow machine meanwhile
+  const frame = session.progressFrame;
   session.tickProgress();
-  assert.equal(session.progressFrame, 1);
+  assert.equal(session.progressFrame, frame + 1);
   finish();
   await session.ops.idle();
   assert.equal(repo.commits.length, 1);

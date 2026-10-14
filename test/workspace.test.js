@@ -23,7 +23,7 @@ const { onEscape } = require('../lib/session/files-pane.js');
 const { run, loadSession, parseArgv } = require('../lib/cli.js');
 const { ReviewStore, flushReview } = require('../lib/review/review.js');
 const { RunRecorder } = require('../lib/runs/runs.js');
-const { sink, tempDir, removeTree } = require('./helpers.js');
+const { sink, tempDir, removeTree, seedRepo } = require('./helpers.js');
 
 const gitEnv = {
   ...process.env,
@@ -52,6 +52,7 @@ const git = (dir, args) => {
     cwd: dir,
     encoding: 'utf8',
     env: gitEnv,
+    windowsHide: true,
   });
   if (result.status !== 0) {
     const msg = result.stderr || result.stdout || 'git failed';
@@ -61,11 +62,7 @@ const git = (dir, args) => {
 };
 
 const initRepo = (dir) => {
-  fs.mkdirSync(dir, { recursive: true });
-  git(dir, ['init', '-b', 'main']);
-  git(dir, ['config', 'user.email', 'test@example.com']);
-  git(dir, ['config', 'user.name', 'Test']);
-  git(dir, ['config', 'commit.gpgsign', 'false']);
+  seedRepo(dir);
   fs.writeFileSync(path.join(dir, 'app.js'), `${'const n = 1;\n'.repeat(40)}`);
   fs.writeFileSync(path.join(dir, 'app.ts'), 'export const n = 1;\n');
   fs.writeFileSync(path.join(dir, 'data.json'), '{}\n');
