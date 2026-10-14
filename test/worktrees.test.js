@@ -324,6 +324,21 @@ test('the keys of worktrees belong to the repos and dashboard screens', () => {
   assert.equal(actionFromKey('w', 'packages'), 'packageWanted');
 });
 
+test('the dashboard footer shows w for the worktrees', () => {
+  const footer = (pane) => {
+    const view = { repoName: 'demo', status: '', counts: {}, files: [], pane };
+    const frame = renderFrame(view, { width: 80, height: 8, color: false });
+    return stripAnsi(frame.rows.at(-1));
+  };
+  assert.match(footer('dashboard'), /files {2}diffs.*npm {2}w\s*$/);
+  assert.doesNotMatch(footer('branches'), /\bw\s*$/);
+  const frame = renderFrame(
+    { repoName: 'demo', status: '', counts: {}, files: [], pane: 'dashboard' },
+    { width: 80, height: 8, color: false },
+  );
+  assert.ok(frame.buttons.some((hit) => hit.id === 'worktrees'));
+});
+
 const readyRows = (session) =>
   session.workspace.rows.every(
     (row) => row.filesReady && row.commitsReady && row.diffReady,
