@@ -471,6 +471,62 @@ test('a linked worktree opens like a repository of its own', async () => {
   }
 });
 
+const tileOf = (name, extra = {}) => ({
+  id: name,
+  name,
+  bytes: 10,
+  exts: [],
+  tasks: 0,
+  tasksDone: 0,
+  commits: 1,
+  diff: {
+    stagedAdded: 0,
+    unstagedAdded: 0,
+    stagedRemoved: 0,
+    unstagedRemoved: 0,
+  },
+  run: null,
+  activityAt: 0,
+  filesReady: true,
+  commitsReady: true,
+  diffReady: true,
+  tasksReady: true,
+  runsReady: true,
+  npmReady: true,
+  npm: null,
+  agents: 0,
+  branch: 'main',
+  ...extra,
+});
+
+const shownWith = (fields, height = 30) => {
+  const base = { repoName: 'demo', status: '', counts: {}, files: [] };
+  const view = { ...base, ...fields };
+  const frame = renderFrame(view, { width: 100, height, color: false });
+  return stripAnsi(frame.text);
+};
+
+test('both panels of worktrees count the active agents on the run line', () => {
+  const tiles = [
+    tileOf('app', { agents: 2 }),
+    tileOf('app-one', { linked: true }),
+  ];
+  const model = { now: 0, frame: 0, cursor: 0, tiles };
+  const repos = shownWith({ pane: 'repos', repos: model });
+  assert.match(repos, /run: idle {2}agents active: 2/);
+  assert.match(repos, /run: idle {2}agents active: 0/);
+  const trees = shownWith({ pane: 'branches', branches: [], trees: model });
+  assert.match(trees, /run: idle {2}agents active: 2/);
+  assert.match(trees, /run: idle {2}agents active: 0/);
+  const run = { name: 'test', status: 'passed', done: 1, failed: 0 };
+  const busy = tileOf('app', { agents: 1, run });
+  const passed = shownWith({
+    pane: 'repos',
+    repos: { ...model, tiles: [busy] },
+  });
+  assert.match(passed, /test passed.*agents active: 1/);
+});
+
 const press = (session, key) => session.handleEvent({ type: 'key', key });
 
 const framed = (session) => {
