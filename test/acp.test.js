@@ -417,3 +417,14 @@ test('a transcript turns session updates into the log text', () => {
   assert.equal(transcript.tokens, 77);
   assert.equal(new Transcript().text(), '');
 });
+
+test('a tool title shows a windows path with slashes', () => {
+  const transcript = new Transcript('C:\\work\\repo');
+  transcript.update({
+    sessionUpdate: 'tool_call',
+    toolCallId: 't1',
+    title: 'Edit C:\\work\\repo\\lib\\a.js',
+    kind: 'edit',
+  });
+  assert.equal(transcript.text(), '▸ Edit lib/a.js\n');
+});

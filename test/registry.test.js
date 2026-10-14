@@ -151,9 +151,13 @@ test(installTest, async () => {
     });
     assert.deepEqual(installed.args, ['--uid=']);
     assert.equal(fs.readFileSync(installed.bin, 'utf8'), 'hello');
-    assert.equal(fs.statSync(installed.bin).mode & 0o111, 0o111);
     const helper = path.join(path.dirname(installed.bin), helperName);
-    assert.equal(fs.statSync(helper).mode & 0o111, 0o111);
+    assert.equal(fs.statSync(helper).isFile(), true);
+    if (process.platform !== 'win32') {
+      const bits = (file) => fs.statSync(file).mode & 0o111;
+      assert.equal(bits(installed.bin), 0o111);
+      assert.equal(bits(helper), 0o111);
+    }
     assert.deepEqual(
       installedRegistryAgent('antigravity-acp', { env, platform: 'linux' }),
       installed,
