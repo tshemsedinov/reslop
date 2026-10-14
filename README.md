@@ -47,6 +47,7 @@ Requires Node.js `>=18.15.0`.
 ## Usage
 
 - `reslop` live dashboard of this repository; press a block key to open its screen
+- `reslop folder` tiles of the repositories in a folder, each with its git worktrees
 - `reslop path/file` show only that path or file (starts on the file list)
 - `reslop 7ac260c` show that commit (read-only)
 - `reslop https://github.com/metarhia/metacom/pull/555` GitHub/GitLab PR/MR
