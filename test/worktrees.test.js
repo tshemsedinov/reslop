@@ -317,26 +317,30 @@ test('git files of linked worktrees are told from their noise', () => {
   assert.equal(ignoredRel('app/.git/objects/pack/x'), true);
 });
 
-test('the keys of worktrees belong to the repos and dashboard screens', () => {
+test('the keys of worktrees belong to the repos and branches screens', () => {
   assert.equal(actionFromKey('insert', 'repos'), 'worktreeNew');
   assert.equal(actionFromKey('delete', 'repos'), 'worktreeDrop');
-  assert.equal(actionFromKey('w', 'dashboard'), 'worktrees');
+  assert.equal(actionFromKey('left', 'branches'), 'treeLeft');
+  assert.equal(actionFromKey('right', 'branches'), 'treeRight');
+  assert.equal(actionFromKey('w', 'dashboard'), null);
+  assert.equal(actionFromKey('w', 'branches'), null);
   assert.equal(actionFromKey('w', 'packages'), 'packageWanted');
 });
 
-test('the dashboard footer shows w for the worktrees', () => {
+test('no screen has a w button for the worktrees', () => {
   const footer = (pane) => {
     const view = { repoName: 'demo', status: '', counts: {}, files: [], pane };
     const frame = renderFrame(view, { width: 80, height: 8, color: false });
-    return stripAnsi(frame.rows.at(-1));
+    return { text: stripAnsi(frame.rows.at(-1)), buttons: frame.buttons };
   };
-  assert.match(footer('dashboard'), /files {2}diffs.*npm {2}w\s*$/);
-  assert.doesNotMatch(footer('branches'), /\bw\s*$/);
-  const frame = renderFrame(
-    { repoName: 'demo', status: '', counts: {}, files: [], pane: 'dashboard' },
-    { width: 80, height: 8, color: false },
-  );
-  assert.ok(frame.buttons.some((hit) => hit.id === 'worktrees'));
+  for (const pane of ['dashboard', 'branches']) {
+    const { text, buttons } = footer(pane);
+    assert.doesNotMatch(text, /\bw\b/);
+    assert.equal(
+      buttons.some((hit) => hit.id === 'worktrees'),
+      false,
+    );
+  }
 });
 
 const readyRows = (session) =>
@@ -529,6 +533,18 @@ test('both panels of worktrees count the active agents on the run line', () => {
 
 const press = (session, key) => session.handleEvent({ type: 'key', key });
 
+// The branches with the tiles of the worktrees, one of them selected
+const openTiles = async (session, count = 2) => {
+  press(session, 'b');
+  await session.ops.idle();
+  assert.equal(session.pane, 'branches');
+  const loaded = () => session.trees.rows.length === count;
+  assert.equal(await waitUntil(loaded), true);
+  session.nav.branchCursor = 0;
+  press(session, 'up');
+  assert.equal(session.nav.treeFocus, true);
+};
+
 const framed = (session) => {
   const view = session.view();
   const frame = renderFrame(view, { width: 120, height: 36, color: false });
@@ -546,10 +562,7 @@ test('worktrees are tiles above the branches', async () => {
     session = await loadSession(proc, {}, parseArgv([]));
     assert.equal(session.pane, 'dashboard');
     assert.equal(session.workspaceRoot, '');
-    press(session, 'w');
-    await session.ops.idle();
-    assert.equal(session.pane, 'branches');
-    assert.equal(await waitUntil(() => session.trees.rows.length === 2), true);
+    await openTiles(session);
     assert.equal(await waitUntil(() => readyTrees(session)), true);
     assert.deepEqual(
       session.trees.rows.map((row) => row.name),
@@ -561,7 +574,14 @@ test('worktrees are tiles above the branches', async () => {
     assert.match(text, /app +⎇ main/);
     assert.match(text, /↳ one +⎇ one/);
     assert.match(text, /run: idle/);
-    assert.match(text, /▶ ?main|main/);
+    const lines = text.split('\n');
+    const head = lines.findIndex((line) => /app +⎇ main/.test(line));
+    assert.equal(lines[head - 1].trim(), '');
+    assert.match(lines[head - 2], /branches/);
+    const first = lines.findIndex((line) => /^ {3}main {2}/.test(line));
+    assert.equal(lines[first - 1].trim(), '');
+    assert.match(lines[first - 2], /package\.json/);
+    assert.equal(first - head, 7);
     press(session, 'left');
     assert.equal(session.trees.cursor, 0);
     same(session.cwd, one);
@@ -620,9 +640,7 @@ test('a click on a tile shows that worktree at once', async () => {
     initRepo(app);
     const one = await addWorktree(app, path.join(root, 'one'), 'one');
     session = await loadSession(fakeProc(app, ['node']), {}, parseArgv([]));
-    press(session, 'w');
-    await session.ops.idle();
-    assert.equal(await waitUntil(() => session.trees.rows.length === 2), true);
+    await openTiles(session);
     session.draw();
     const hit = session.lastFrame.fileHits.find(
       (it) => it.tree && it.cursor === 'one',
@@ -644,7 +662,7 @@ test('a click on a tile shows that worktree at once', async () => {
   }
 });
 
-test('with one worktree w on the branches asks for a new one', async () => {
+test('tiles show with more than one worktree and make more', async () => {
   const root = tempDir('reslop-wt-');
   let session = null;
   try {
@@ -656,26 +674,39 @@ test('with one worktree w on the branches asks for a new one', async () => {
     assert.equal(session.pane, 'branches');
     assert.equal(await waitUntil(() => session.trees.rows.length === 1), true);
     assert.equal(session.worktrees.hasPanels(), false);
+    assert.equal(session.view().trees, null);
+    assert.equal(framed(session).includes('agents active'), false);
     press(session, 'w');
+    assert.equal(session.mode, 'review');
+    assert.equal(session.composeKind, null);
+    press(session, 'up');
+    assert.equal(session.nav.treeFocus, false);
+    await addWorktree(app, path.join(root, 'app-one'), 'one');
+    await session.worktrees.refreshTrees();
+    assert.equal(session.worktrees.hasPanels(), true);
+    assert.match(framed(session), /agents active: 0/);
+    session.nav.branchCursor = 0;
+    press(session, 'up');
+    assert.equal(session.nav.treeFocus, true);
+    press(session, 'insert');
     assert.equal(session.composeKind, 'worktree');
     session.pushInput('topic');
     press(session, 'enter');
     await session.ops.idle();
     assert.equal(session.status, 'created topic');
     assert.equal(fs.existsSync(path.join(root, 'app-topic', '.git')), true);
-    assert.equal(session.worktrees.hasPanels(), true);
+    assert.equal(session.trees.rows.length, 3);
     assert.equal(session.pane, 'branches');
     same(session.cwd, app);
-    assert.equal(session.nav.treeFocus, false);
-    press(session, 'w');
     assert.equal(session.nav.treeFocus, true);
-    assert.equal(session.trees.cursor, 1);
+    assert.equal(session.trees.rows[session.trees.cursor].name, 'app-topic');
     session.dispatch('worktreeDrop');
     assert.equal(session.mode, 'confirmWorktree');
     press(session, 'y');
     await session.ops.idle();
     assert.equal(session.status, 'removed app-topic');
-    assert.equal(session.worktrees.hasPanels(), false);
+    assert.equal(session.trees.rows.length, 2);
+    assert.equal(session.worktrees.hasPanels(), true);
     assert.equal(fs.existsSync(path.join(root, 'app-topic')), false);
   } finally {
     if (session) stopSession(session);
@@ -691,9 +722,7 @@ test('the worktree that is shown is not removed from its tiles', async () => {
     initRepo(app);
     const one = await addWorktree(app, path.join(root, 'one'), 'one');
     session = await loadSession(fakeProc(one, ['node']), {}, parseArgv([]));
-    press(session, 'w');
-    await session.ops.idle();
-    assert.equal(await waitUntil(() => session.trees.rows.length === 2), true);
+    await openTiles(session);
     session.dispatch('worktreeDrop');
     assert.equal(session.mode, 'review');
     assert.equal(session.status, 'this worktree is shown');
