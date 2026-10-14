@@ -7,6 +7,7 @@
 - Answer agent permission requests from the plan allow list
 - Propose installing the npm package of a missing agent with `i` on the agents screen
 - Show a missing agent's install hint in the warning color
+- Discover and install Google Antigravity's official ACP runtime
 
 ## [0.3.1][] - 2026-10-13
 

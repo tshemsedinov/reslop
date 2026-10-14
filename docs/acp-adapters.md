@@ -2,25 +2,25 @@
 
 Checked on 2026-10-14 against the versions named below.
 
-reslop reaches every agent over the [Agent Client Protocol](https://agentclientprotocol.com). Cursor and OpenCode serve ACP themselves. Claude Code and Codex do not, so each needs an adapter: a separate program that speaks ACP to reslop and the vendor interface to the agent. This note records which adapters reslop advises and what it would cost to drop them and talk to the vendors directly.
+reslop reaches every agent over the [Agent Client Protocol](https://agentclientprotocol.com). Cursor and OpenCode serve ACP themselves. Google publishes a separate official ACP runtime for Antigravity. Claude Code and Codex need adapters: separate programs that speak ACP to reslop and the vendor interface to the agent. This note records which integrations reslop advises and what it would cost to drop the adapters and talk to those vendors directly.
 
 ## What reslop advises today
 
-| Agent       | Serves ACP              | npm package                             | Published by                           |
-| ----------- | ----------------------- | --------------------------------------- | -------------------------------------- |
-| Claude Code | `claude-agent-acp`      | `@agentclientprotocol/claude-agent-acp` | the ACP project (maintainers from Zed) |
-| Codex       | `codex-acp`             | `@agentclientprotocol/codex-acp`        | the ACP project (maintainers from Zed) |
-| OpenCode    | `opencode acp`          | `opencode-ai`                           | OpenCode, the agent itself             |
-| Cursor      | `cursor-agent acp`      | none, installed from cursor.com/cli     | Cursor, the agent itself               |
-| Antigravity | no ACP in the `agy` CLI | none advised                            |                                        |
+| Agent       | Serves ACP           | Distribution                            | Published by                           |
+| ----------- | -------------------- | --------------------------------------- | -------------------------------------- |
+| Claude Code | `claude-agent-acp`   | `@agentclientprotocol/claude-agent-acp` | the ACP project (maintainers from Zed) |
+| Codex       | `codex-acp`          | `@agentclientprotocol/codex-acp`        | the ACP project (maintainers from Zed) |
+| OpenCode    | `opencode acp`       | `opencode-ai`                           | OpenCode, the agent itself             |
+| Cursor      | `cursor-agent acp`   | installed from cursor.com/cli           | Cursor, the agent itself               |
+| Antigravity | `agy_acp_server.par` | `antigravity-acp` in the ACP registry   | Google                                 |
 
-The `i` key on the agents screen proposes `npm install --global` for the package of the selected row and runs it after confirmation. The install hint is drawn in the warning color. When npm exits, reslop scans PATH again in the same process: a command written into a directory already on PATH shows up immediately, and a restart would see the same PATH.
+The `i` key on the agents screen proposes an install for the selected row and runs it after confirmation. npm adapters use `npm install --global`. Antigravity is a platform archive from the official ACP registry; reslop validates the registry entry, downloads the archive from Google's host, checks each zip entry while extracting it, and records the command in its user data directory. It also discovers an Antigravity runtime on `PATH` or installed in Zed's ACP registry directory. The install hint is drawn in the warning color.
 
 - The two adapters are not published by Anthropic or OpenAI. They come from the ACP project, are Apache-2.0, and are what ACP editors install: about 943,000 and 798,000 downloads in the week of 2026-10-06. What they wrap is the vendor's own code: `@anthropic-ai/claude-agent-sdk` 0.3.296 and `@openai/codex` 0.160.
 - Both reuse the login of the installed agent and bundle their own copy of it, so the `claude` and `codex` CLIs are not required.
 - `claude-agent-acp` 0.90.0 requires Node.js 22 or newer. reslop itself runs on 18.15.
 - Installed together they are 114 packages and 738 MB on linux-x64. Nearly all of it is the two agent binaries (246 MB and 427 MB). None of it is a dependency of reslop.
-- For Antigravity the only npm adapter found is `agy-acp` 0.5.2: one maintainer, 98 downloads in the same week, native dependencies (`node-pty`, `better-sqlite3`). It is not advised. reslop still starts `agy-acp` or `agy_acp_server.par` when one is on `PATH`.
+- The `agy` terminal client does not serve ACP. Its presence is detected so the screen can explain why another runtime is needed. Google's `antigravity-acp` 1.3.0 registry entry supplies `agy_acp_server.par` for macOS and Linux and `agy_acp_server.exe` for Windows. On Linux the registry command includes `--uid=`. The official runtime has its own sign-in.
 
 ## Talking to the vendors without an adapter
 
@@ -61,18 +61,18 @@ The official SDK is small (80 KB) but brings the 427 MB `@openai/codex` binary a
 
 ### Antigravity
 
-`agy` has no ACP mode, no app server, and no SDK. Without an adapter the only way in is its print mode, the CLI integration that was removed.
+`agy` has no ACP mode, so finding `agy` alone does not make the Antigravity row runnable. Google now publishes a separate proprietary ACP server in the official registry. reslop uses that server directly and keeps its `localharness_external` helper beside it. A previously installed community `agy-acp` command remains a fallback.
 
 ## Conclusion
 
 Stay with the adapters.
 
 - One protocol and one code path serve every agent. Options A to C each add 400 to 700 lines and a second protocol to keep working per vendor.
-- The adapters cost reslop no dependencies. The cost moves to the user as one global install, which the `i` key runs.
+- The integrations cost reslop no bundled agent dependencies. The cost moves to the user as an on-demand install, which the `i` key runs.
 - The vendor interfaces under the adapters are a 0.x SDK, an undocumented stream, and an experimental server. Today the adapter maintainers absorb their changes.
 
 Reasons to look again:
 
-- A vendor ships ACP in its own CLI, as Cursor and OpenCode did. Then the agent needs one more entry in `commands` in `lib/agents/agents.js` and no adapter.
+- A vendor ships ACP in its own CLI, as Cursor and OpenCode did. Then the separate runtime can be replaced by one more entry in `commands` in `lib/agents/agents.js`.
 - An adapter is abandoned or falls behind its agent. Option C is the cheapest replacement for Codex, option A for Claude.
 - The Node.js 22 requirement of `claude-agent-acp` becomes a problem for users of reslop on Node.js 18 or 20.

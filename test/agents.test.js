@@ -8,7 +8,7 @@ const path = require('node:path');
 
 const agents = require('../lib/agents/agents.js');
 const { detectAgents, findBin, planPrompt } = agents;
-const { emptyChoice, buildLaunch, AGENTS } = agents;
+const { emptyChoice, buildLaunch, buildInstall, AGENTS } = agents;
 const { catalogOf, parseModelId, fitEffort } = agents;
 const { modelChange, effortChange, fastChange, modeChange } = agents;
 const { contextChange } = agents;
@@ -159,6 +159,36 @@ test('detectAgents finds the acp command of every agent', () => {
   }
 });
 
+test('the official Antigravity server uses its registry command', () => {
+  const server =
+    process.platform === 'win32' ? 'agy_acp_server.exe' : 'agy_acp_server.par';
+  const helper =
+    process.platform === 'win32'
+      ? 'localharness_external.exe'
+      : 'localharness_external';
+  const { dir, bins, env } = fakePath(server);
+  const helperBin = makeBin(dir, helper);
+  try {
+    const row = detectAgents(env).find((item) => item.id === 'agy');
+    assert.equal(row.bin, bins[server]);
+    assert.deepEqual(row.args, process.platform === 'linux' ? ['--uid='] : []);
+    const launch = buildLaunch(row, emptyChoice(), '/r.md', dir);
+    assert.deepEqual(launch.env, { ANTIGRAVITY_HARNESS_PATH: helperBin });
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('Antigravity installs from the official ACP registry', () => {
+  const row = { ...rowOf(specOf('agy')), bin: '' };
+  const install = buildInstall(row);
+  assert.equal(install.installer, 'registry');
+  assert.equal(install.cmd, process.execPath);
+  assert.equal(path.basename(install.args[0]), 'registry.js');
+  assert.equal(install.args[1], 'antigravity-acp');
+  assert.equal(install.command, 'install Google Antigravity ACP');
+});
+
 test('detectAgents falls back to the next command of an agent', () => {
   const { dir, bins, env } = fakePath('agent', 'claude-code-acp', 'claude');
   try {
@@ -175,7 +205,8 @@ test('detectAgents falls back to the next command of an agent', () => {
     assert.equal(cursor.package, '');
     const agy = list.find((row) => row.id === 'agy');
     assert.equal(agy.package, '');
-    assert.match(agy.hint, /acp adapter for agy/);
+    assert.equal(agy.installable, true);
+    assert.equal(agy.hint, 'install Google Antigravity ACP');
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
   }
@@ -184,8 +215,11 @@ test('detectAgents falls back to the next command of an agent', () => {
 test('the cli of an agent alone does not make it runnable', () => {
   const { dir, env } = fakePath('claude', 'codex', 'agy');
   try {
-    const found = detectAgents(env).filter((row) => row.bin);
+    const agents = detectAgents(env);
+    const found = agents.filter((row) => row.bin);
     assert.deepEqual(found, []);
+    const agy = agents.find((row) => row.id === 'agy');
+    assert.equal(agy.hint, 'agy installed; install Google Antigravity ACP');
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
   }
@@ -735,8 +769,8 @@ test('agents screen offers the efforts the agent lists', async () => {
     assert.deepEqual(ui.agents.rows()[0].efforts, []);
     await ui.agents.open();
     assert.deepEqual(calls, [
-      ['claude', repo.dir],
-      ['codex', repo.dir],
+      ['claude', ui.top],
+      ['codex', ui.top],
     ]);
     await ui.agents.open();
     assert.equal(calls.length, 2);
@@ -1790,10 +1824,12 @@ test('i proposes the npm package a missing agent needs', async () => {
     assert.equal(calls.length, 0);
     assert.equal(ui.status, 'installed');
     ui.nav.agentCursor = AGENTS.findIndex((spec) => spec.id === 'agy');
-    assert.equal(install(), undefined);
+    assert.ok(install());
     pressKey(ui, 'i');
     assert.equal(calls.length, 0);
-    assert.match(ui.status, /acp adapter for agy/);
+    assert.equal(ui.mode, 'confirmAgentInstall');
+    assert.equal(ui.view().agentInstallPackage, 'Google Antigravity ACP');
+    pressKey(ui, 'n');
     ui.nav.agentCursor = 0;
     assert.ok(install());
     pressKey(ui, 'i');
@@ -1850,7 +1886,7 @@ test('i proposes the npm package a missing agent needs', async () => {
 });
 
 test('an install is the npm command and its output', async () => {
-  const { buildInstall, startAgent } = agents;
+  const { startAgent } = agents;
   const row = { ...rowOf(specOf('claude')), bin: '' };
   const launch = buildInstall(row);
   assert.equal(launch.ok, true);
@@ -1905,7 +1941,7 @@ test('a failed or stopped install leaves the agent missing', async () => {
     pressKey(ui, 'y');
     assert.equal(calls.length, 3);
     close({ status: 0, text: 'added 1 package\n' });
-    assert.equal(ui.status, 'installed, but not on PATH');
+    assert.equal(ui.status, 'installed, but not found');
   } finally {
     ui.agents.reset();
     repo.cleanup();
