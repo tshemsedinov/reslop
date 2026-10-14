@@ -5392,13 +5392,14 @@ test('the run screen follows an outside reslop t', async () => {
   const file = path.join(dir, '2026-10-10-node-01.json');
   const write = (extra) => {
     const record = {
-      v: 1,
+      v: 2,
       id: 'outside',
       pid: process.pid,
       command: 'node --test',
       script: 'test',
       startedAt: 5_000,
       endedAt: 0,
+      activeAt: Date.now(),
       status: 'running',
       exit: null,
       progress: { done: 2, failed: 1, lines: 4, expected: 10 },
@@ -5499,13 +5500,14 @@ test('a finished outside run drops the running line', async () => {
   const file = path.join(dir, '2026-10-10-node-01.json');
   const write = (extra) => {
     const record = {
-      v: 1,
+      v: 2,
       id: 'outside',
       pid: process.pid,
       command: 'node --test',
       script: 'test',
       startedAt: 5_000,
       endedAt: 0,
+      activeAt: Date.now(),
       status: 'running',
       exit: null,
       progress: { done: 1, failed: 0, lines: 2, expected: 1 },
@@ -5551,13 +5553,14 @@ test('chained steps of one script share a history row', async () => {
   const dir = path.join(cwd, '.log');
   fs.mkdirSync(dir);
   const record = (id, command, startedAt, endedAt, status) => ({
-    v: 1,
+    v: 2,
     id,
     pid: process.pid,
     command,
     script: 'fix',
     startedAt,
     endedAt,
+    activeAt: Date.now(),
     status,
     exit: status === 'running' ? null : 0,
     progress: { done: 0, failed: 0, lines: 0, expected: 0 },
@@ -6458,6 +6461,8 @@ test('an external run whose record disappears stops spinning', async () => {
   assert.equal(run.status, 'stopped');
   assert.equal(session.npm.running, false);
   assert.ok(run.endedAt > 0);
+  recorder.finish(1);
+  fs.rmSync(recorder.slot.jsonFull, { force: true });
 });
 
 test('repo writes run one at a time and in order', async () => {

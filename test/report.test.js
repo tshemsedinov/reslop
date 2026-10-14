@@ -2,15 +2,17 @@
 
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
+const { EventEmitter } = require('node:events');
 const fs = require('node:fs');
 const path = require('node:path');
+const { PassThrough } = require('node:stream');
 
 const { buildDocument } = require('../lib/report/parse.js');
 const render = require('../lib/report/render.js');
 
 const { renderDocument, notice, NOTICE_HEAD, displayMessage } = render;
 const { run } = require('../lib/cli.js');
-const { winCommand } = require('../lib/report/run.js');
+const { collect, winCommand } = require('../lib/report/run.js');
 const { readRuns } = require('../lib/runs/runs.js');
 const { sink, tempDir } = require('./helpers.js');
 
@@ -469,6 +471,20 @@ test('windows command line keeps a quoted eval script', () => {
   const script = 'console.log("✔ hidden")';
   const line = winCommand('node', ['-e', script]);
   assert.equal(line, `"node -e "console.log(""✔ hidden"")""`);
+});
+
+test('capture stops waiting for inherited output pipes', async () => {
+  const child = new EventEmitter();
+  child.stdout = new PassThrough();
+  child.stderr = new PassThrough();
+  const pending = collect(child);
+  child.stdout.write('done\n');
+  child.emit('exit', 0);
+  const result = await pending;
+  assert.equal(result.status, 0);
+  assert.equal(result.stdout, 'done\n');
+  assert.equal(child.stdout.destroyed, true);
+  assert.equal(child.stderr.destroyed, true);
 });
 
 const fakeProc = (cwd, extra = {}) => {

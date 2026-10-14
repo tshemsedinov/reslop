@@ -77,7 +77,8 @@ test('command labels use the program base name', () => {
 test('a run record is written, updated, finished and read back', () => {
   const dir = tempDir('reslop-runs-');
   try {
-    let now = 1000;
+    let now = Date.now();
+    const startedAt = now;
     const clock = () => now;
     const run = new RunRecorder(dir, 'node --test', { now: clock });
     const [live] = readRuns(dir);
@@ -92,23 +93,29 @@ test('a run record is written, updated, finished and read back', () => {
     assert.equal(done.status, 'passed');
     assert.equal(done.exit, 0);
     assert.equal(done.result.tests, 2);
-    assert.equal(done.endedAt, 2000);
+    assert.equal(done.endedAt, startedAt + 1000);
     now += 1000;
     const second = new RunRecorder(dir, 'node --test', { now: clock });
     assert.ok(second.record.id);
     const expected = readRuns(dir).find((r) => r.status === 'running');
     assert.equal(expected.progress.expected, 2);
+    second.finish(0);
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
   }
 });
 
-test('a running record with a dead process is reported as aborted', () => {
-  const record = { status: 'running', pid: 1 };
-  assert.equal(settleRecord(record, () => false).status, 'aborted');
-  assert.equal(settleRecord(record, () => true).status, 'running');
+test('a running record needs a live process and a fresh heartbeat', () => {
+  const now = () => 10000;
+  const record = { v: 2, status: 'running', pid: 1, activeAt: 9000 };
+  assert.equal(settleRecord(record, () => false, now).status, 'aborted');
+  assert.equal(settleRecord(record, () => true, now).status, 'running');
+  const stale = { ...record, activeAt: 4000 };
+  assert.equal(settleRecord(stale, () => true, now).status, 'aborted');
+  const legacy = { v: 1, status: 'running', pid: 1 };
+  assert.equal(settleRecord(legacy, () => true, now).status, 'aborted');
   const passed = { status: 'passed', pid: 1 };
-  assert.equal(settleRecord(passed, () => false).status, 'passed');
+  assert.equal(settleRecord(passed, () => false, now).status, 'passed');
 });
 
 const scriptEnv = (name) => {
@@ -476,7 +483,9 @@ test('the current minute blinks for three seconds after activity', () => {
   dash.heat(now, 2, 9);
   const minute = dash.activityView(now).minutes[0];
   assert.equal(minute.removed > minute.added, true);
-  dash.runs = [{ status: 'running', pid: process.pid }];
+  dash.runs = [
+    { v: 2, status: 'running', pid: process.pid, activeAt: Date.now() },
+  ];
   assert.equal(dash.liveActivity(now + 20_000), true);
 });
 
@@ -2406,7 +2415,8 @@ test('diff groups show the age of the newest file', () => {
 test('pruning keeps the newest run records whatever their names', () => {
   const dir = tempDir('reslop-runs-');
   try {
-    let now = 1000;
+    const startedAt = Date.now();
+    let now = startedAt;
     const clock = () => now;
     for (let i = 0; i < 30; i++) {
       now += 1000;
@@ -2421,7 +2431,8 @@ test('pruning keeps the newest run records whatever their names', () => {
     assert.ok(found, 'the newest alpha record was pruned');
     assert.equal(found.status, 'running');
     const oldest = Math.min(...kept.map((record) => record.startedAt));
-    assert.ok(oldest > 2000);
+    assert.ok(oldest > startedAt + 1000);
+    newest.finish(0);
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
   }
