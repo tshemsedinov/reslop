@@ -158,8 +158,9 @@ test('actionFromKey maps aliases and ignores unbound keys', () => {
   assert.equal(actionFromKey('delete', 'branches'), 'drop');
   assert.equal(actionFromKey('p', 'branches'), 'pull');
   assert.equal(actionFromKey('s', 'branches'), 'push');
-  assert.equal(actionFromKey('left', 'branches'), null);
-  assert.equal(actionFromKey('right', 'branches'), null);
+  assert.equal(actionFromKey('left', 'branches'), 'treeLeft');
+  assert.equal(actionFromKey('right', 'branches'), 'treeRight');
+  assert.equal(actionFromKey('left', 'commits'), null);
   assert.equal(actionFromKey('j', 'branches'), 'next');
   assert.equal(actionFromKey('k', 'branches'), 'prev');
   assert.equal(actionFromKey('up', 'branches'), 'scrollUp');
