@@ -142,6 +142,7 @@ test('detectAgents finds the acp command of every agent', () => {
     'codex-acp',
     'agy-acp',
     'junie',
+    'copilot',
   );
   try {
     const list = detectAgents(env);
@@ -154,6 +155,7 @@ test('detectAgents finds the acp command of every agent', () => {
       ['codex', bins['codex-acp'], []],
       ['agy', bins['agy-acp'], []],
       ['junie', bins.junie, ['--acp=true']],
+      ['copilot', bins.copilot, ['--acp']],
     ]);
     assert.equal(list[0].catalog, null);
   } finally {
@@ -212,6 +214,9 @@ test('detectAgents falls back to the next command of an agent', () => {
     const junie = list.find((row) => row.id === 'junie');
     assert.equal(junie.bin, '');
     assert.equal(junie.hint, 'npm i -g @jetbrains/junie');
+    const copilot = list.find((row) => row.id === 'copilot');
+    assert.equal(copilot.bin, '');
+    assert.equal(copilot.hint, 'npm i -g @github/copilot');
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
   }

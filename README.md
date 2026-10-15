@@ -90,6 +90,7 @@ reslop runs a plan in an agent over the [Agent Client Protocol](https://agentcli
 | OpenCode    | `opencode acp`       | `npm i -g opencode-ai`                           |
 | Antigravity | `agy_acp_server.par` | downloaded from the official ACP registry        |
 | Junie       | `junie --acp=true`   | `npm i -g @jetbrains/junie`                      |
+| Copilot     | `copilot --acp`      | `npm i -g @github/copilot`                       |
 
 A missing agent shows what it needs, in the warning color; `i` on that row proposes installing it. npm adapters are installed globally, while Google Antigravity's official ACP runtime is downloaded from the ACP registry into reslop's user data directory. reslop also discovers that runtime on `PATH` and in Zed's registry directory. After confirmation, reslop lists the agent as soon as the install finishes and does not restart. [docs/acp-adapters.md](docs/acp-adapters.md) describes the integrations.
 

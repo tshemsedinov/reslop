@@ -3,6 +3,7 @@
 ## [Unreleased][unreleased]
 
 - Add Junie by JetBrains support
+- Add GitHub Copilot support
 
 ## [0.3.2][] - 2026-10-15
 
