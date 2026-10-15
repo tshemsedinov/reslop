@@ -141,6 +141,7 @@ test('detectAgents finds the acp command of every agent', () => {
     'cursor-agent',
     'codex-acp',
     'agy-acp',
+    'junie',
   );
   try {
     const list = detectAgents(env);
@@ -152,6 +153,7 @@ test('detectAgents finds the acp command of every agent', () => {
       ['cursor', bins['cursor-agent'], ['acp']],
       ['codex', bins['codex-acp'], []],
       ['agy', bins['agy-acp'], []],
+      ['junie', bins.junie, ['--acp=true']],
     ]);
     assert.equal(list[0].catalog, null);
   } finally {
@@ -207,6 +209,9 @@ test('detectAgents falls back to the next command of an agent', () => {
     assert.equal(agy.package, '');
     assert.equal(agy.installable, true);
     assert.equal(agy.hint, 'install Google Antigravity ACP');
+    const junie = list.find((row) => row.id === 'junie');
+    assert.equal(junie.bin, '');
+    assert.equal(junie.hint, 'npm i -g @jetbrains/junie');
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
   }

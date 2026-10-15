@@ -2,6 +2,8 @@
 
 ## [Unreleased][unreleased]
 
+- Add Junie by JetBrains support
+
 ## [0.3.2][] - 2026-10-15
 
 - Communicate with agents over the Agent Client Protocol instead of CLI
