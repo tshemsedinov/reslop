@@ -66,7 +66,7 @@ Prefix each program in an npm script with `reslop t --`. Keep `&&` between those
 
 The report is Markdown: failures, diagnostics, and a short summary. Passing results are omitted and similar problems are grouped. The reduced report is saved as `.log/<name>.log` and the raw output as `.log/<name>.raw`. The report names the raw file for an agent to read when a detail is missing. Set `RESLOP_OUTPUT=raw` to pass the command through unchanged. The review screen runs scripts in raw mode and applies its own filter once.
 
-Run the full check with `npm t`. Run one or more test files with `reslop t -- node --test <files>`. New reviews include those two commands in the agent instructions.
+`npm t` runs lint and the tests that do not start a process. Run a test file that starts git, node, or npm with `node --test <file>`. New reviews include both commands in the agent instructions.
 
 `reslop t` records each run as `.log/<name>.json` beside those files so that the dashboard can show commands started by an agent in another terminal.
 

@@ -41,10 +41,21 @@ Before open pull request please follow checklist:
 
 ## Slow tests
 
-Starting a process is slow on Windows, and the tests start thousands of `git`
-processes. Keep the setup of a test short: write the config of a repository
-with `configureRepo` from `test/helpers.js` instead of `git config`. To see
-where the time goes:
+`npm test` does not run the files that start git, node, or npm processes.
+On Windows each of those processes is slow, and together they were most of
+the CI time. Run one of them directly:
+
+```sh
+node --test test/session.test.js
+```
+
+Run every process-starting file with `node scripts/run-tests.js --proc`.
+The list is `PROCESS_TESTS` in `scripts/run-tests.js`. Add a new file there
+when its tests start processes.
+
+Starting a process is still slow on Windows. Keep the setup of a test short:
+write the config of a repository with `configureRepo` from `test/helpers.js`
+instead of `git config`. To see where the time goes:
 
 - `node --test --test-reporter=./scripts/slow-tests.js` lists the slowest
   files and tests

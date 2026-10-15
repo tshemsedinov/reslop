@@ -10,6 +10,7 @@
 - Discover and install Google Antigravity's official ACP runtime
 - Git worktrees support: group on screen, create, switch, and remove them
 - Stop run durations from ticking after commands end
+- Leave process-starting tests out of `npm t`; run them with `node --test <files>`
 
 ## [0.3.1][] - 2026-10-13
 

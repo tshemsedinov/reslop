@@ -169,11 +169,8 @@ test('serializeReview writes the status and agent instructions', () => {
   assert.match(md, /Set `status` to `partial` if any items remain/);
   assert.doesNotMatch(md, /\bready\b/);
   assert.doesNotMatch(md, /near exit/);
-  assert.match(md, /Run the full check with `npm t`/);
-  assert.match(
-    md,
-    /Run specific test files with `reslop t -- node --test <files>`/,
-  );
+  assert.match(md, /`npm t` for lint and tests that do not start/);
+  assert.match(md, /tests that start processes with `node --test <files>`/);
   assert.match(md, /prefixed with `F<number>:` gets its own commit/);
   assert.match(md, /without that prefix unstaged/);
   assert.match(md, /`Authored-by` or `Co-authored-by`/);
