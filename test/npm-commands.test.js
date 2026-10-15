@@ -27,6 +27,21 @@ const {
 } = require('../lib/runs/logs.js');
 const { commandEnv } = require('../lib/runs/process.js');
 const { startNpm } = npm;
+const { elapsedText } = require('../lib/session/npm/history.js');
+
+test('only running commands use the current time for their duration', () => {
+  const running = { status: 'running', startedAt: 1000, endedAt: 0 };
+  assert.equal(elapsedText(running, 4000), '3s');
+  assert.equal(elapsedText(running, 65000), '1m04s');
+  for (const status of ['exited', 'stopped']) {
+    const finished = { ...running, status, endedAt: 4000 };
+    const missingEnd = { ...running, status };
+    for (const now of [10000, 70000]) {
+      assert.equal(elapsedText(finished, now), '3s');
+      assert.equal(elapsedText(missingEnd, now), '0s');
+    }
+  }
+});
 
 const writeJson = (file, body) => {
   fs.mkdirSync(path.dirname(file), { recursive: true });

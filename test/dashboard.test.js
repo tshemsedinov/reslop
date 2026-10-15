@@ -118,6 +118,35 @@ test('a running record needs a live process and a fresh heartbeat', () => {
   assert.equal(settleRecord(passed, () => false, now).status, 'passed');
 });
 
+test('an interrupted run ends at its last heartbeat across reads', () => {
+  const record = {
+    v: 2,
+    status: 'running',
+    pid: 1,
+    startedAt: 1000,
+    activeAt: 4000,
+    endedAt: 0,
+  };
+  for (const current of [10000, 70000]) {
+    const settled = settleRecord(
+      record,
+      () => true,
+      () => current,
+    );
+    assert.equal(settled.status, 'aborted');
+    assert.equal(settled.endedAt, 4000);
+  }
+  const dead = settleRecord(
+    record,
+    () => false,
+    () => 5000,
+  );
+  assert.equal(dead.endedAt, 4000);
+  const legacy = { ...record, v: 1, activeAt: undefined };
+  assert.equal(settleRecord(legacy).endedAt, 1000);
+  assert.equal(record.endedAt, 0);
+});
+
 const scriptEnv = (name) => {
   const env = {};
   env['npm_lifecycle_event'] = name;

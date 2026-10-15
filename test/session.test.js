@@ -5638,6 +5638,50 @@ test('the run screen follows an outside reslop t', async () => {
   assert.equal(rows[0].total, '10');
 });
 
+test('an interrupted run keeps its duration after a restart', async (t) => {
+  const { session, cwd, repo } = await openSession([sampleItem('a.js')], {
+    startPane: 'files',
+  });
+  let now = Date.now();
+  t.mock.method(Date, 'now', () => now);
+  const dir = path.join(cwd, '.log');
+  fs.mkdirSync(dir);
+  const record = {
+    v: 2,
+    id: 'interrupted',
+    pid: process.pid,
+    command: 'node --test',
+    script: 'test',
+    startedAt: now - 4000,
+    activeAt: now,
+    endedAt: 0,
+    status: 'running',
+    exit: null,
+    progress: { done: 1, failed: 0, lines: 1 },
+  };
+  fs.writeFileSync(path.join(dir, 'interrupted.json'), JSON.stringify(record));
+  session.pushInput('r');
+  assert.equal(session.npm.sessionRows()[0].live, true);
+  now += 10000;
+  session.npm.refreshRecorded();
+  const [stopped] = session.npm.sessionRows();
+  assert.equal(stopped.live, false);
+  assert.equal(stopped.mark, 'stop');
+  assert.equal(stopped.elapsed, '4s');
+  now += 60000;
+  session.npm.refreshRecorded();
+  assert.equal(session.npm.sessionRows()[0].elapsed, '4s');
+  const again = await openSession([sampleItem('a.js')], {
+    cwd,
+    repo,
+    startPane: 'files',
+  });
+  again.session.pushInput('r');
+  const [restored] = again.session.npm.sessionRows();
+  assert.equal(restored.live, false);
+  assert.equal(restored.elapsed, '4s');
+});
+
 test('an open run follows the next reslop t step in its script', async () => {
   const { session, cwd } = await openSession([sampleItem('a.js')], {
     startPane: 'files',

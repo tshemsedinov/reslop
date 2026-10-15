@@ -9,6 +9,7 @@
 - Show a missing agent's install hint in the warning color
 - Discover and install Google Antigravity's official ACP runtime
 - Git worktrees support: group on screen, create, switch, and remove them
+- Stop run durations from ticking after commands end
 
 ## [0.3.1][] - 2026-10-13
 
