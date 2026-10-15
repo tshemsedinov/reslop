@@ -52,6 +52,20 @@ test('AC12 clean repo prints nothing to review', async () => {
   }
 });
 
+test('an empty .git directory does not identify a repository', async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'reslop-nogit-'));
+  try {
+    fs.mkdirSync(path.join(dir, '.git'));
+    fs.mkdirSync(path.join(dir, 'nested'));
+    const proc = fakeProc(path.join(dir, 'nested'));
+    assert.equal(await run(proc), 1);
+    assert.match(proc.stderrText(), /not a git repository/);
+    assert.doesNotMatch(proc.stderrText(), /unknown option/);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test('parseArgv accepts -r and rejects removed switches', () => {
   assert.equal(parseArgv([]).readOnly, false);
   assert.equal(parseArgv(['-r']).readOnly, true);
