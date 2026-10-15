@@ -11,6 +11,7 @@
 - Git worktrees support: group on screen, create, switch, and remove them
 - Stop run durations from ticking after commands end
 - Leave process-starting tests out of `npm t`; run them with `node --test <files>`
+- Insert a newline with ctrl+enter and shift+enter in editors and input boxes
 
 ## [0.3.1][] - 2026-10-13
 

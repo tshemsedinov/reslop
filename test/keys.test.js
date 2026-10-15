@@ -83,6 +83,25 @@ test('decodeChunk maps letters and arrows', () => {
   assert.equal(shiftEnd.key, 'shift-end');
 });
 
+test('decodeChunk maps ctrl-enter and shift-enter', () => {
+  const shift = decodeChunk('\x1b[13;2u').events[0];
+  assert.equal(shift.key, 'shift-enter');
+  const ctrl = decodeChunk('\x1b[13;5u').events[0];
+  assert.equal(ctrl.key, 'ctrl-enter');
+  const both = decodeChunk('\x1b[13;6u').events[0];
+  assert.equal(both.key, 'ctrl-shift-enter');
+  const plain = decodeChunk('\x1b[13u').events[0];
+  assert.equal(plain.key, 'enter');
+  const xtermShift = decodeChunk('\x1b[27;2;13~').events[0];
+  assert.equal(xtermShift.key, 'shift-enter');
+  const xtermCtrl = decodeChunk('\x1b[27;5;13~').events[0];
+  assert.equal(xtermCtrl.key, 'ctrl-enter');
+  const xtermBoth = decodeChunk('\x1b[27;6;13~').events[0];
+  assert.equal(xtermBoth.key, 'ctrl-shift-enter');
+  const f3 = decodeChunk('\x1b[13~').events[0];
+  assert.equal(f3.key, 'f3');
+});
+
 test('decodeChunk parses SGR mouse press', () => {
   const event = decodeChunk('\x1b[<0;4;12M').events[0];
   assert.equal(event.type, 'mouse');

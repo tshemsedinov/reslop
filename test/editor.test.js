@@ -4,6 +4,34 @@ const { test } = require('node:test');
 const assert = require('node:assert/strict');
 
 const { Editor } = require('../lib/input/editor.js');
+const { lineKey } = require('../lib/input/line-edit.js');
+const { Composer } = require('../lib/session/compose.js');
+
+const EDIT_KINDS = [
+  'feedback',
+  'code',
+  'file',
+  'tasks',
+  'commit',
+  'branch',
+  'npm',
+  'package',
+  'worktree',
+];
+
+const composeOf = (kind) => {
+  const ui = {
+    lastSize: { width: 40, height: 24 },
+    commits: { commitView: 'brief' },
+    nav: { unitLine: 0 },
+  };
+  const composer = new Composer(ui);
+  ui.composer = composer;
+  composer.composeKind = kind;
+  composer.editor = new Editor('ab');
+  composer.editor.place(1);
+  return composer;
+};
 
 test('insert and backspace at cursor', () => {
   const editor = new Editor();
@@ -27,6 +55,30 @@ test('undo and redo restore text and cursor', () => {
   assert.equal(editor.cursor, 2);
   editor.redoEdit();
   assert.equal(editor.text, 'hi!');
+});
+
+test('ctrl-enter and shift-enter insert a newline in input boxes', () => {
+  const editor = new Editor('ab');
+  editor.place(1);
+  const ui = { status: '', stdout: {} };
+  assert.equal(lineKey(editor, 'ctrl-enter', ui, true), 'text');
+  assert.equal(editor.text, 'a\nb');
+  assert.equal(lineKey(editor, 'shift-enter', ui, true), 'text');
+  assert.equal(editor.text, 'a\n\nb');
+  assert.equal(lineKey(editor, 'ctrl-shift-enter', ui, true), 'text');
+  assert.equal(editor.text, 'a\n\n\nb');
+});
+
+test('ctrl-enter and shift-enter insert a newline in every editor', () => {
+  const chords = ['ctrl-enter', 'shift-enter', 'ctrl-shift-enter'];
+  for (const kind of EDIT_KINDS) {
+    for (const key of chords) {
+      const composer = composeOf(kind);
+      composer.handleKey(key);
+      assert.equal(composer.editor.text, 'a\nb', `${kind} ${key}`);
+      assert.equal(composer.composeKind, kind);
+    }
+  }
 });
 
 test('newline and line movement', () => {
