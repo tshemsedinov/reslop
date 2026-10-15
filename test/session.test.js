@@ -5262,6 +5262,102 @@ test('npm output v toggles raw text until the screen closes', async () => {
   assert.match(body, /exit 1/);
 });
 
+for (const kind of ['script', 'command']) {
+  test(`solve saves a failed ${kind} in the current plan`, async () => {
+    const { session, cwd } = await openSession([sampleItem('a.js')], {
+      startPane: 'files',
+    });
+    const tasks = session.composer.tasks;
+    tasks.createPlan();
+    const reviewPath = session.notes.reviewPath;
+    session.notes.addTask('tasks', 'Keep existing task');
+    const raw = [
+      'TAP version 13',
+      'ok 1 passing test',
+      'not ok 2 broken parser',
+      '  ---',
+      '  error: parser exploded',
+      '  code: ERR_ASSERTION',
+      '  ...',
+      '1..2',
+      '# tests 2',
+      '# pass 1',
+      '# fail 1',
+    ].join('\n');
+    session.npm.runs.push({
+      id: 1,
+      name: 'test',
+      kind,
+      command: kind === 'command' ? 'node --test test/parser.test.js' : '',
+      label: 'npm run test',
+      status: 'exited',
+      exit: 1,
+      raw: kind === 'command' ? `\x1b[31m${cwd}/app.js:4: boom\x1b[0m` : raw,
+      top: cwd,
+    });
+    session.npm.open();
+    session.npm.openView(1);
+    session.npm.verbose = true;
+    session.draw();
+    const ids = session.lastFrame.buttons.map((hit) => hit.id);
+    assert.ok(ids.includes('npmSolve'));
+    assert.ok(!ids.includes('npmStop'));
+    if (kind === 'command') clickFooter(session, 'npmSolve');
+    else session.pushInput('s');
+    assert.equal(session.pane, 'tasks');
+    assert.equal(session.mode, 'review');
+    assert.equal(session.notes.reviewPath, reviewPath);
+    const bug = session.notes.tasks.find((task) => task.kind === 'bugs');
+    assert.ok(bug);
+    assert.equal(bug.done, false);
+    assert.equal(tasks.rowAt(session.tasksFocus).task.id, bug.id);
+    if (kind === 'command') {
+      assert.match(bug.text, /node --test test\/parser.test.js failed/);
+      assert.match(bug.text, /app.js:4: boom/);
+      assert.ok(!bug.text.includes(cwd));
+      assert.ok(!bug.text.includes('\x1b'));
+    } else {
+      assert.match(bug.text, /npm run test failed/);
+      assert.match(bug.text, /broken parser/);
+      assert.match(bug.text, /parser exploded/);
+      assert.ok(!bug.text.includes('passing test'));
+    }
+    const disk = parseReview(fs.readFileSync(reviewPath, 'utf8'), reviewPath);
+    assert.equal(disk.tasks.length, 2);
+    assert.ok(disk.tasks.some((task) => task.kind === 'bugs'));
+  });
+}
+
+test('solve bounds output and ignores passed and stopped runs', async () => {
+  const { session } = await openSession([sampleItem('a.js')]);
+  session.npm.runs.push({
+    id: 1,
+    name: 'build',
+    kind: 'script',
+    status: 'exited',
+    exit: 0,
+    output: `build failed\n${'x'.repeat(10000)}`,
+  });
+  session.npm.open();
+  session.npm.openView(1);
+  session.pushInput('s');
+  assert.equal(session.pane, 'npm');
+  assert.equal(session.notes.tasks.length, 0);
+  const run = session.npm.viewedRun();
+  run.status = 'stopped';
+  run.exit = '';
+  session.pushInput('s');
+  assert.equal(session.notes.tasks.length, 0);
+  run.status = 'exited';
+  run.exit = '1';
+  session.pushInput('s');
+  assert.equal(session.pane, 'tasks');
+  const bug = session.notes.tasks[0];
+  assert.match(bug.text, /build failed/);
+  assert.match(bug.text, /truncated/);
+  assert.ok(bug.text.length < 6200);
+});
+
 const frameBody = (session) => {
   session.draw();
   const bodyH = session.lastFrame.bodyH;
