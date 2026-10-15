@@ -2,16 +2,19 @@
 
 ## [Unreleased][unreleased]
 
-- Run agents over the Agent Client Protocol instead of their cli
-- List models from the agent session and efforts, context, fast per model
-- Answer agent permission requests from the plan allow list
-- Propose installing the npm package of a missing agent with `i` on the agents screen
-- Show a missing agent's install hint in the warning color
-- Discover and install Google Antigravity's official ACP runtime
-- Git worktrees support: group on screen, create, switch, and remove them
-- Stop run durations from ticking after commands end
-- Leave process-starting tests out of `npm t`; run them with `node --test <files>`
-- Insert a newline with ctrl+enter and shift+enter in editors and input boxes
+## [0.3.2][] - 2026-10-15
+
+- Communicate with agents over the Agent Client Protocol instead of CLI
+- Listed models from the agent session, with effort, context, fast
+- Answer agent permission requests
+- Installing a missing agent's and ACP for them
+- Add Google Antigravity's support
+- Started a new agent session or continued the selected one
+- Showed a plan heading or task as the session caption
+- Support git worktrees at branches screen
+- Added pop-up menus on tables and UI controls
+- Add new hotkeys for better UX
+- Improve command and agent background runners
 
 ## [0.3.1][] - 2026-10-13
 
@@ -210,7 +213,8 @@
 - Feedback and todos that produce a repair plan for an agent
 - Intra-line highlighting in unified, mixed, and side-by-side layouts
 
-[unreleased]: https://github.com/tshemsedinov/reslop/compare/v0.3.1...HEAD
+[unreleased]: https://github.com/tshemsedinov/reslop/compare/v0.3.2...HEAD
+[0.3.2]: https://github.com/tshemsedinov/reslop/compare/v0.3.1...v0.3.2
 [0.3.1]: https://github.com/tshemsedinov/reslop/compare/v0.3.0...v0.3.1
 [0.3.0]: https://github.com/tshemsedinov/reslop/compare/v0.2.7...v0.3.0
 [0.2.7]: https://github.com/tshemsedinov/reslop/compare/v0.2.6...v0.2.7
