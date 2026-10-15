@@ -82,17 +82,18 @@ Reviews go in `.plan/YYYY-MM-DD-NN.md` with frontmatter `status`:
 
 reslop runs a plan in an agent over the [Agent Client Protocol](https://agentclientprotocol.com). An agent is listed as available when the command that serves ACP is on `PATH`:
 
-| Agent       | Command              | Install                                          |
-| ----------- | -------------------- | ------------------------------------------------ |
-| Claude Code | `claude-agent-acp`   | `npm i -g @agentclientprotocol/claude-agent-acp` |
-| Codex       | `codex-acp`          | `npm i -g @agentclientprotocol/codex-acp`        |
-| Cursor      | `cursor-agent acp`   | comes with the Cursor CLI                        |
-| OpenCode    | `opencode acp`       | `npm i -g opencode-ai`                           |
-| Antigravity | `agy_acp_server.par` | downloaded from the official ACP registry        |
-| Junie       | `junie --acp=true`   | `npm i -g @jetbrains/junie`                      |
-| Copilot     | `copilot --acp`      | `npm i -g @github/copilot`                       |
+| Agent       | Command              | Install                                           |
+| ----------- | -------------------- | ------------------------------------------------- |
+| Claude Code | `claude-agent-acp`   | `npm i -g @agentclientprotocol/claude-agent-acp`  |
+| Codex       | `codex-acp`          | `npm i -g @agentclientprotocol/codex-acp`         |
+| Cursor      | `cursor-agent acp`   | comes with the Cursor CLI                         |
+| OpenCode    | `opencode acp`       | `npm i -g opencode-ai`                            |
+| Antigravity | `agy_acp_server.par` | downloaded from the official ACP registry         |
+| Junie       | `junie --acp=true`   | `npm i -g @jetbrains/junie`                       |
+| Copilot     | `copilot --acp`      | `npm i -g @github/copilot`                        |
+| Pi          | `pi-acp` and `pi`    | `npm i -g pi-acp @earendil-works/pi-coding-agent` |
 
-A missing agent shows what it needs, in the warning color; `i` on that row proposes installing it. npm adapters are installed globally, while Google Antigravity's official ACP runtime is downloaded from the ACP registry into reslop's user data directory. reslop also discovers that runtime on `PATH` and in Zed's registry directory. After confirmation, reslop lists the agent as soon as the install finishes and does not restart. [docs/acp-adapters.md](docs/acp-adapters.md) describes the integrations.
+A missing agent shows what it needs, in the warning color; `i` on that row proposes installing it. npm adapters are installed globally, together with the agent's own CLI when the adapter runs it and it is not on `PATH`, while Google Antigravity's official ACP runtime is downloaded from the ACP registry into reslop's user data directory. reslop also discovers that runtime on `PATH` and in Zed's registry directory. After confirmation, reslop lists the agent as soon as the install finishes and does not restart. [docs/acp-adapters.md](docs/acp-adapters.md) describes the integrations.
 
 Models are the ones the agent lists; efforts, context sizes, and fast mode are the ones it offers for the picked model. When a run ends, the session is set back to what it was, so the defaults of the agent's own CLI stay as they were. A run has nobody to ask, so reslop answers permission requests itself: edits inside the repository and `npm`, `npx`, `node`, `reslop`, and `git` commands, piped through read-only filters such as `grep` or `tail`, are allowed; everything else is refused.
 

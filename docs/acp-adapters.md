@@ -2,7 +2,7 @@
 
 Checked on 2026-10-14 against the versions named below.
 
-reslop reaches every agent over the [Agent Client Protocol](https://agentclientprotocol.com). Cursor, OpenCode, Junie, and Copilot serve ACP themselves. Google publishes a separate official ACP runtime for Antigravity. Claude Code and Codex need adapters: separate programs that speak ACP to reslop and the vendor interface to the agent. This note records which integrations reslop advises and what it would cost to drop the adapters and talk to those vendors directly.
+reslop reaches every agent over the [Agent Client Protocol](https://agentclientprotocol.com). Cursor, OpenCode, Junie, and Copilot serve ACP themselves. Google publishes a separate official ACP runtime for Antigravity. Claude Code, Codex, and Pi need adapters: separate programs that speak ACP to reslop and the vendor interface to the agent. This note records which integrations reslop advises and what it would cost to drop the adapters and talk to those vendors directly.
 
 ## What reslop advises today
 
@@ -15,6 +15,7 @@ reslop reaches every agent over the [Agent Client Protocol](https://agentclientp
 | Antigravity | `agy_acp_server.par` | `antigravity-acp` in the ACP registry   | Google                                 |
 | Junie       | `junie --acp=true`   | `@jetbrains/junie`                      | JetBrains, the agent itself            |
 | Copilot     | `copilot --acp`      | `@github/copilot`                       | GitHub, the agent itself               |
+| Pi          | `pi-acp`             | `pi-acp`                                | a community author (Sergii Kozak)      |
 
 The `i` key on the agents screen proposes an install for the selected row and runs it after confirmation. npm adapters use `npm install --global`. Antigravity is a platform archive from the official ACP registry; reslop validates the registry entry, downloads the archive from Google's host, checks each zip entry while extracting it, and records the command in its user data directory. It also discovers an Antigravity runtime on `PATH` or installed in Zed's ACP registry directory. The install hint is drawn in the warning color.
 
@@ -25,6 +26,7 @@ The `i` key on the agents screen proposes an install for the selected row and ru
 - The `agy` terminal client does not serve ACP. Its presence is detected so the screen can explain why another runtime is needed. Google's `antigravity-acp` 1.3.0 registry entry supplies `agy_acp_server.par` for macOS and Linux and `agy_acp_server.exe` for Windows. On Linux the registry command includes `--uid=`. The official runtime has its own sign-in.
 - `@jetbrains/junie` 3110.7.0 downloads the Junie CLI from JetBrains' GitHub releases when it is installed, places a shim at `~/.local/bin/junie`, and serves ACP with `--acp=true`, the command of the `junie` registry entry. Its installer supports macOS and Linux; on Windows it prints JetBrains' PowerShell installer instead.
 - `@github/copilot` 1.0.98 is the Copilot CLI itself; `copilot --acp` is the command of the `github-copilot-cli` registry entry. It uses the GitHub sign-in of the CLI.
+- `pi-acp` 0.0.34 (MIT, the `pi-acp` registry entry) does not bundle Pi: it starts `pi --mode rpc` from `PATH`. reslop lists Pi only when both `pi-acp` and `pi` are found, and `i` installs whichever of `pi-acp` and `@earendil-works/pi-coding-agent` is missing. The adapter needs Node.js 22 and pi 0.81 or newer; Pi is configured separately for its model providers.
 
 ## Talking to the vendors without an adapter
 

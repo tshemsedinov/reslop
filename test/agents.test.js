@@ -143,6 +143,8 @@ test('detectAgents finds the acp command of every agent', () => {
     'agy-acp',
     'junie',
     'copilot',
+    'pi-acp',
+    'pi',
   );
   try {
     const list = detectAgents(env);
@@ -156,6 +158,7 @@ test('detectAgents finds the acp command of every agent', () => {
       ['agy', bins['agy-acp'], []],
       ['junie', bins.junie, ['--acp=true']],
       ['copilot', bins.copilot, ['--acp']],
+      ['pi', bins['pi-acp'], []],
     ]);
     assert.equal(list[0].catalog, null);
   } finally {
@@ -223,13 +226,38 @@ test('detectAgents falls back to the next command of an agent', () => {
 });
 
 test('the cli of an agent alone does not make it runnable', () => {
-  const { dir, env } = fakePath('claude', 'codex', 'agy');
+  const { dir, env } = fakePath('claude', 'codex', 'agy', 'pi');
   try {
     const agents = detectAgents(env);
     const found = agents.filter((row) => row.bin);
     assert.deepEqual(found, []);
     const agy = agents.find((row) => row.id === 'agy');
     assert.equal(agy.hint, 'agy installed; install Google Antigravity ACP');
+    const pi = agents.find((row) => row.id === 'pi');
+    assert.equal(pi.hint, 'npm i -g pi-acp');
+    assert.deepEqual(buildInstall(pi).args, ['install', '--global', 'pi-acp']);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('an adapter runs only when the cli of its agent is installed', () => {
+  const cli = '@earendil-works/pi-coding-agent';
+  const { dir, bins, env } = fakePath('pi-acp');
+  try {
+    const adapter = detectAgents(env).find((row) => row.id === 'pi');
+    assert.equal(adapter.bin, '');
+    assert.equal(adapter.package, cli);
+    assert.equal(adapter.hint, `npm i -g ${cli}`);
+    assert.deepEqual(buildInstall(adapter).args, ['install', '--global', cli]);
+    const none = detectAgents({ PATH: '' }).find((row) => row.id === 'pi');
+    assert.equal(none.hint, `npm i -g pi-acp ${cli}`);
+    const both = ['install', '--global', 'pi-acp', cli];
+    assert.deepEqual(buildInstall(none).args, both);
+    makeBin(dir, 'pi');
+    const ready = detectAgents(env).find((row) => row.id === 'pi');
+    assert.equal(ready.bin, bins['pi-acp']);
+    assert.deepEqual(ready.packages, []);
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
   }
