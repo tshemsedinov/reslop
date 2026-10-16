@@ -2259,8 +2259,17 @@ test('agent status sits in the table and the header totals sessions', () => {
     },
   };
   const text = (line) => line.map((part) => part.text).join('');
-  const rowOf = (block, name) =>
-    block.lines.find((line) => line.some((part) => part.text === name));
+  // The parts of one agent: from its bubble up to its name
+  const entryOf = (block, name) => {
+    for (const line of block.lines) {
+      const at = line.findIndex((part) => part.text === name);
+      if (at < 0) continue;
+      const before = line.slice(0, at + 1);
+      const start = before.findLastIndex((part) => part.text === '●');
+      return before.slice(start);
+    }
+    return null;
+  };
   const tones = ['key', 'add', 'sha', 'warn'];
   for (let frame = 0; frame < tones.length; frame++) {
     const block = agentsBlock(model, 40, 4, { now: 1, frame }, tile);
@@ -2272,23 +2281,46 @@ test('agent status sits in the table and the header totals sessions', () => {
     const total = block.titleLine.find((part) => part.text === '3');
     assert.equal(total.tone, 'key');
     assert.equal(total.bold, true);
-    const claude = rowOf(block, 'claude');
-    const bubble = claude.find((part) => part.text === '●');
-    assert.equal(bubble.tone, tones[frame]);
+    const claude = entryOf(block, 'claude');
+    assert.equal(claude[0].tone, tones[frame]);
     const sessions = claude.find((part) => part.text === ' 2');
     assert.equal(sessions.tone, 'key');
     assert.equal(sessions.bold, true);
-    const gapBefore = (line, name) => {
-      const at = line.findIndex((part) => part.text === name);
-      return line[at - 1].text;
-    };
-    assert.equal(gapBefore(claude, 'claude'), ' ');
-    const cursor = rowOf(block, 'cursor');
-    const quiet = cursor.find((part) => part.text === '●');
-    assert.equal(quiet.tone, 'muted');
-    assert.equal(gapBefore(cursor, 'cursor'), ' ');
+    const gapBefore = (entry) => entry[entry.length - 2].text;
+    assert.equal(gapBefore(claude), ' ');
+    const cursor = entryOf(block, 'cursor');
+    assert.equal(cursor[0].tone, 'muted');
+    assert.equal(gapBefore(cursor), ' ');
     assert.equal(text(cursor).includes('0'), false);
+    const shown = text(block.lines[0]);
+    assert.equal(shown.includes('sonnet'), false);
+    assert.equal(shown.includes('missing'), false);
   }
+});
+
+test('the agents panel lists agents in two columns', () => {
+  const tile = { key: 'a', title: 'agents' };
+  const names = ['claude', 'codex', 'cursor', 'junie', 'kilo'];
+  const items = names.map((name) => ({ name, bin: `/bin/${name}` }));
+  const model = { agents: { ready: true, running: 0, items } };
+  const text = (line) => line.map((part) => part.text).join('');
+  const ctx = { now: 1, frame: 0 };
+  const block = agentsBlock(model, 40, 4, ctx, tile);
+  const lines = block.lines.map(text);
+  assert.equal(lines.length, 3);
+  assert.match(lines[0], /^● claude +● junie +$/);
+  assert.match(lines[1], /^● codex +● kilo +$/);
+  assert.match(lines[2], /^● cursor +$/);
+  assert.equal(lines[0].indexOf('junie'), lines[1].indexOf('kilo'));
+  for (const line of block.lines) assert.ok(visibleWidth(text(line)) <= 40);
+  const low = agentsBlock(model, 40, 2, ctx, tile).lines.map(text);
+  assert.equal(low.length, 2);
+  assert.match(low[0], /claude.*cursor/);
+  assert.match(low[1], /codex.*junie/);
+  const narrow = agentsBlock(model, 12, 6, ctx, tile).lines.map(text);
+  assert.equal(narrow.length, 5);
+  assert.match(narrow[0], /^● claude +$/);
+  assert.match(narrow[4], /^● kilo +$/);
 });
 
 const lineText = (line) => line.map((part) => part.text).join('');

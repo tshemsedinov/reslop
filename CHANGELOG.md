@@ -9,6 +9,7 @@
 - Add Cline support
 - Add Windsurf support through Devin CLI, its current agent
 - Add Kilo Code support
+- Show agents in two columns on the dashboard, without models
 
 ## [0.3.2][] - 2026-10-15
 
