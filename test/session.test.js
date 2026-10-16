@@ -454,8 +454,8 @@ test('add and unstage keep block order', async () => {
 });
 
 test('AC28 unstage drops index keeps worktree', async () => {
-  const staged = sampleItem('s.js', 'staged');
-  const other = sampleItem('a.js');
+  const staged = sampleItem('a.js', 'staged');
+  const other = sampleItem('b.js');
   const { session, repo } = await openSession([staged, other]);
   session.dispatch('unstage');
   await session.ops.idle();
@@ -613,6 +613,44 @@ test('j and k move next and prev on the diff', async () => {
   assert.equal(session.current().file.newPath, 'a.js');
   session.pushInput('k');
   assert.equal(session.current().file.newPath, 'a.js');
+});
+
+test('next walks the diff in the order of the file list', async () => {
+  const names = ['a.js', 'b.js', 'c.js', 'd.js'];
+  const items = [
+    sampleItem('d.js'),
+    sampleItem('b.js', 'staged'),
+    sampleItem('a.js'),
+    sampleItem('c.js'),
+  ];
+  const { session } = await openSession(items);
+  const walked = [session.current().file.newPath];
+  for (let i = 1; i < names.length; i++) {
+    session.handleEvent({ type: 'key', key: 'right' });
+    walked.push(session.current().file.newPath);
+  }
+  assert.deepEqual(walked, names);
+});
+
+test('next enters a file on its first unstaged block', async () => {
+  const at = (name, origin, newStart) => {
+    const item = sampleItem(name, origin);
+    return { ...item, hunk: { ...item.hunk, newStart } };
+  };
+  const items = [
+    at('a.js', 'unstaged', 1),
+    at('b.js', 'unstaged', 30),
+    at('b.js', 'staged', 10),
+    at('b.js', 'unstaged', 20),
+  ];
+  const { session } = await openSession(items);
+  session.handleEvent({ type: 'key', key: 'right' });
+  const here = session.current();
+  assert.equal(here.file.newPath, 'b.js');
+  assert.equal(here.origin, 'unstaged');
+  assert.equal(here.hunk.newStart, 20);
+  session.handleEvent({ type: 'key', key: 'right' });
+  assert.equal(session.current().hunk.newStart, 30);
 });
 
 test('j and k move the files cursor', async () => {
@@ -4162,7 +4200,7 @@ test('stage moves on while npm install is still running', async () => {
     change: { propose: true, name: 'lodash' },
     files: ['package.json'],
   };
-  const other = sampleItem('b.js');
+  const other = sampleItem('z.js');
   const { session, repo } = await openSession([proposed, other]);
   session.uiOpen = true;
   let installs = 0;
@@ -4184,7 +4222,7 @@ test('stage moves on while npm install is still running', async () => {
   finish();
   await session.ops.idle();
   assert.equal(repo.added.length, 1);
-  assert.equal(repo.added[0].file.newPath, 'b.js');
+  assert.equal(repo.added[0].file.newPath, 'z.js');
   assert.equal(session.busy, '');
 });
 
@@ -7246,7 +7284,7 @@ test('a code save does not wait for a running install', async () => {
     change: { propose: true, name: 'lodash' },
     files: ['package.json'],
   };
-  const { session, repo } = await openSession([proposed, sampleItem('b.js')]);
+  const { session, repo } = await openSession([proposed, sampleItem('z.js')]);
   let finish = null;
   const installing = new Promise((resolve) => {
     finish = resolve;
