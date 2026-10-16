@@ -148,6 +148,7 @@ test('detectAgents finds the acp command of every agent', () => {
     'kiro-cli',
     'cline',
     'devin',
+    'kilo',
   );
   try {
     const list = detectAgents(env);
@@ -165,6 +166,7 @@ test('detectAgents finds the acp command of every agent', () => {
       ['kiro', bins['kiro-cli'], ['acp', '--agent-engine=v3']],
       ['cline', bins.cline, ['--acp']],
       ['devin', bins.devin, ['acp']],
+      ['kilo', bins.kilo, ['acp']],
     ]);
     assert.equal(list[0].catalog, null);
   } finally {
@@ -233,6 +235,9 @@ test('detectAgents falls back to the next command of an agent', () => {
     assert.equal(devin.installable, true);
     const hint = 'install the Devin CLI, the agent of Windsurf';
     assert.equal(devin.hint, hint);
+    const kilo = list.find((row) => row.id === 'kilo');
+    assert.equal(kilo.bin, '');
+    assert.equal(kilo.hint, 'npm i -g @kilocode/cli');
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
   }

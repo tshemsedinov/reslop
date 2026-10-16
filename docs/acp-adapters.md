@@ -2,7 +2,7 @@
 
 Checked on 2026-10-14 against the versions named below.
 
-reslop reaches every agent over the [Agent Client Protocol](https://agentclientprotocol.com). Cursor, OpenCode, Junie, Copilot, Kiro, Cline, and Devin, the agent of Windsurf, serve ACP themselves. Google publishes a separate official ACP runtime for Antigravity. Claude Code, Codex, and Pi need adapters: separate programs that speak ACP to reslop and the vendor interface to the agent. This note records which integrations reslop advises and what it would cost to drop the adapters and talk to those vendors directly.
+reslop reaches every agent over the [Agent Client Protocol](https://agentclientprotocol.com). Cursor, OpenCode, Junie, Copilot, Kiro, Cline, Kilo Code, and Devin, the agent of Windsurf, serve ACP themselves. Google publishes a separate official ACP runtime for Antigravity. Claude Code, Codex, and Pi need adapters: separate programs that speak ACP to reslop and the vendor interface to the agent. This note records which integrations reslop advises and what it would cost to drop the adapters and talk to those vendors directly.
 
 ## What reslop advises today
 
@@ -19,6 +19,7 @@ reslop reaches every agent over the [Agent Client Protocol](https://agentclientp
 | Kiro        | `kiro-cli acp`       | install script from cli.kiro.dev        | AWS, the agent itself                  |
 | Cline       | `cline --acp`        | `cline`                                 | Cline, the agent itself                |
 | Windsurf    | `devin acp`          | install script from cli.devin.ai        | Cognition, the agent itself            |
+| Kilo Code   | `kilo acp`           | `@kilocode/cli`                         | Kilo Code, the agent itself            |
 
 The `i` key on the agents screen proposes an install for the selected row and runs it after confirmation. npm adapters use `npm install --global`. Antigravity is a platform archive from the official ACP registry; reslop validates the registry entry, downloads the archive from Google's host, checks each zip entry while extracting it, and records the command in its user data directory. A CLI that its vendor publishes only through an install script is installed by `lib/agents/script.js`: it downloads the script over https and runs it with `bash`, or with PowerShell on Windows, with `~/.local/bin` added to `PATH`. reslop looks for such a command in `~/.local/bin` as well. It also discovers an Antigravity runtime on `PATH` or installed in Zed's ACP registry directory. The install hint is drawn in the warning color.
 
@@ -33,6 +34,7 @@ The `i` key on the agents screen proposes an install for the selected row and ru
 - Kiro CLI by AWS is not on npm (the `kiro-cli` package there is an unrelated placeholder) and not in the ACP registry. Its own scripts `cli.kiro.dev/install` and `cli.kiro.dev/install.ps1` put `kiro-cli` in `~/.local/bin`. reslop starts `kiro-cli acp --agent-engine=v3`: the V3 server takes model and effort as standard session config options, while the CLI v2 server used the unstable `session/set_model`. It uses the sign-in of the CLI.
 - `cline` 3.0.71 (Apache-2.0) is the Cline CLI itself; `cline --acp` is the command of the `cline` registry entry.
 - Windsurf has no ACP agent of its own: Cognition moved it to the Devin CLI, the Windsurf documentation for the CLI redirects to Devin's, and Devin's docs advise Devin over ACP for former Windsurf JetBrains users as Cascade is deprecated. reslop lists the row as `devin` and starts `devin acp`, the command of the `devin` registry entry. The registry archives are tar.gz on macOS and Linux, which the zip extractor of reslop does not read, so `i` runs Cognition's `cli.devin.ai/install.sh` or `static.devin.ai/cli/setup.ps1`. They put `devin` in `~/.local/bin`, and the unix script ends with an interactive `devin setup` that may fail without a terminal after the CLI is installed; sign in with `devin auth login`. A `windsurf` command on `PATH` is detected so the screen can explain what to install.
+- `@kilocode/cli` 7.8.12 (MIT) is the Kilo Code CLI itself, with the commands `kilo` and `kilocode`; `kilo acp` is the command of the `kilo` registry entry.
 
 ## Talking to the vendors without an adapter
 

@@ -8,6 +8,7 @@
 - Add Kiro by AWS support, installed with its vendor script
 - Add Cline support
 - Add Windsurf support through Devin CLI, its current agent
+- Add Kilo Code support
 
 ## [0.3.2][] - 2026-10-15
 

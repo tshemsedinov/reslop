@@ -95,6 +95,7 @@ reslop runs a plan in an agent over the [Agent Client Protocol](https://agentcli
 | Kiro        | `kiro-cli acp`       | install script from cli.kiro.dev                  |
 | Cline       | `cline --acp`        | `npm i -g cline`                                  |
 | Windsurf    | `devin acp`          | install script from cli.devin.ai                  |
+| Kilo Code   | `kilo acp`           | `npm i -g @kilocode/cli`                          |
 
 A missing agent shows what it needs, in the warning color; `i` on that row proposes installing it. npm adapters are installed globally, together with the agent's own CLI when the adapter runs it and it is not on `PATH`, while Google Antigravity's official ACP runtime is downloaded from the ACP registry into reslop's user data directory. Windsurf is listed as `devin`: Cognition's Devin CLI is now the agent of Windsurf, and the Windsurf editor does not serve ACP. An agent CLI published with an install script, such as Kiro's or Devin's, is installed by running the vendor's script, and its command is also found in `~/.local/bin`. reslop also discovers that runtime on `PATH` and in Zed's registry directory. After confirmation, reslop lists the agent as soon as the install finishes and does not restart. [docs/acp-adapters.md](docs/acp-adapters.md) describes the integrations.
 
