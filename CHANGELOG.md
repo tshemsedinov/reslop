@@ -2,6 +2,8 @@
 
 ## [Unreleased][unreleased]
 
+## [0.3.3][] - 2026-10-16
+
 - Add Junie by JetBrains support
 - Add GitHub Copilot support
 - Add Pi coding agent support with its ACP adapter
@@ -222,7 +224,8 @@
 - Feedback and todos that produce a repair plan for an agent
 - Intra-line highlighting in unified, mixed, and side-by-side layouts
 
-[unreleased]: https://github.com/tshemsedinov/reslop/compare/v0.3.2...HEAD
+[unreleased]: https://github.com/tshemsedinov/reslop/compare/v0.3.3...HEAD
+[0.3.3]: https://github.com/tshemsedinov/reslop/compare/v0.3.2...v0.3.3
 [0.3.2]: https://github.com/tshemsedinov/reslop/compare/v0.3.1...v0.3.2
 [0.3.1]: https://github.com/tshemsedinov/reslop/compare/v0.3.0...v0.3.1
 [0.3.0]: https://github.com/tshemsedinov/reslop/compare/v0.2.7...v0.3.0
