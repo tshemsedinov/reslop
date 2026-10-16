@@ -9,6 +9,7 @@ Work through unchecked items.
 - Do not redo items already marked `[x]`
 - Run `npm t` for lint and tests that do not start processes
 - Run tests that start processes with `node --test <files>`
-- An item prefixed with `F<number>:` gets its own commit in this repo
+- An item prefixed with `F<number>:` (case-insensitive, colon optional) gets its own commit in this repo
+- Items with the same `F<number>` go into one commit
 - Leave items without that prefix unstaged, do not commit or stage them
 - Do not add `Authored-by` or `Co-authored-by` unless the issue asks for it
