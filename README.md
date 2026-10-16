@@ -25,13 +25,14 @@ Review → Plan → Repair → Verify
 - Auto-reload local diffs when files change, keeping the current screen
 - Import GitHub PR and GitLab MR review comments, and GitHub/GitLab issues, into tasks and the local plan
 - Commits list: brief and full, view a commit's diff, commit, update, amend, apply, edit, fixup, and delete
-- Branches: checkout, create, rebase, delete, pull, and push
+- Branches: checkout, create, rebase, delete, pull, and push; git worktrees as tiles above the branches
+- Pop-up menus on tables and controls
 - npm scripts and bins: run, edit, and reorder; double-click to run; clean logs older than 5 days
 - Reduced test and lint output for agents: failures and a short summary, not passing noise
 - Review, renew, audit and update npm dependencies in `package.json` and the lockfile
 - Auto-update reslop patch and minor releases; confirm a new major
 - Work with git, npm, and fetch in the background; run tests in the background while you review
-- Execute the plan in local agents over ACP: pick agent, model, and effort; watch progress; sessions, history, and continue or new runs
+- Execute the plan in local agents over ACP: pick agent, model, and effort; watch progress; sessions, history, and continue or new runs. The dashboard lists agents in two columns, without models
 - Agent defaults in `.reslop` (grouped settings sections)
 - Optional line numbers in diff and file views (`Ctrl+L`)
 

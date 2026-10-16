@@ -34,7 +34,7 @@
     "operatingSystem": "Linux, macOS, Windows",
     "url": "https://reslop.it/",
     "downloadUrl": "https://www.npmjs.com/package/reslop",
-    "softwareVersion": "0.3.0",
+    "softwareVersion": "0.3.3",
     "license": "https://opensource.org/licenses/MIT",
     "description": "Interactive code review and repair planning for AI-assisted changes. Open a change, leave findings and a backlog, and prepare a repair plan for the agent.",
     "author": {
@@ -148,11 +148,11 @@
           </li>
           <li>
             <h3>ACP agents</h3>
-            <p>Detect local agents, run the repair plan over the Agent Client Protocol, and tune defaults in <code>.reslop</code>.</p>
+            <p>Claude Code, Codex, Cursor, OpenCode, Antigravity, Junie, Copilot, Pi, Kiro, Cline, Windsurf through the Devin CLI, and Kilo Code. The dashboard lists them in two columns, without models. <code>i</code> installs a missing one. Pick model and effort, follow the run, and continue a session or start a new one. Defaults live in <code>.reslop</code>.</p>
           </li>
           <li>
             <h3>Git</h3>
-            <p>Commits, branches, pull, and push. A folder of repositories opens as tiles.</p>
+            <p>Commits, branches, pull, and push. Git worktrees sit as tiles above the branches. A folder of repositories opens as tiles. Pop-up menus on tables and controls.</p>
           </li>
           <li>
             <h3>Pull requests</h3>
@@ -177,7 +177,11 @@
           </li>
           <li>
             <code>reslop</code>
-            <p>Live dashboard: files, diffs, tasks, commits, branches, runs, agents, and dependencies.</p>
+            <p>Live dashboard: files, diffs, tasks, commits, branches, runs, agents, and dependencies. Agents are two columns, without models.</p>
+          </li>
+          <li>
+            <code>reslop folder</code>
+            <p>Tiles of the repositories in a folder, each with its git worktrees. On one repository, worktree tiles sit above the branches: <code>insert</code> and <code>delete</code> create and remove one.</p>
           </li>
           <li>
             <code>reslop path/to/file</code>
@@ -194,10 +198,6 @@
           <li>
             <code>reslop https://github.com/org/repo/issues/42</code>
             <p>Import one GitHub or GitLab issue into tasks. Use the issues list URL to import all open issues.</p>
-          </li>
-          <li>
-            <code>reslop -n</code>
-            <p>Start a new review, even if the latest one is still open.</p>
           </li>
           <li>
             <code>reslop -r</code>
