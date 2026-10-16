@@ -93,6 +93,7 @@ reslop runs a plan in an agent over the [Agent Client Protocol](https://agentcli
 | Copilot     | `copilot --acp`      | `npm i -g @github/copilot`                        |
 | Pi          | `pi-acp` and `pi`    | `npm i -g pi-acp @earendil-works/pi-coding-agent` |
 | Kiro        | `kiro-cli acp`       | install script from cli.kiro.dev                  |
+| Cline       | `cline --acp`        | `npm i -g cline`                                  |
 
 A missing agent shows what it needs, in the warning color; `i` on that row proposes installing it. npm adapters are installed globally, together with the agent's own CLI when the adapter runs it and it is not on `PATH`, while Google Antigravity's official ACP runtime is downloaded from the ACP registry into reslop's user data directory. An agent CLI published with an install script, such as Kiro's, is installed by running the vendor's script, and its command is also found in `~/.local/bin`. reslop also discovers that runtime on `PATH` and in Zed's registry directory. After confirmation, reslop lists the agent as soon as the install finishes and does not restart. [docs/acp-adapters.md](docs/acp-adapters.md) describes the integrations.
 

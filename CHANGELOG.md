@@ -6,6 +6,7 @@
 - Add GitHub Copilot support
 - Add Pi coding agent support with its ACP adapter
 - Add Kiro by AWS support, installed with its vendor script
+- Add Cline support
 
 ## [0.3.2][] - 2026-10-15
 

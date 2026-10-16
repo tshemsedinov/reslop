@@ -146,6 +146,7 @@ test('detectAgents finds the acp command of every agent', () => {
     'pi-acp',
     'pi',
     'kiro-cli',
+    'cline',
   );
   try {
     const list = detectAgents(env);
@@ -161,6 +162,7 @@ test('detectAgents finds the acp command of every agent', () => {
       ['copilot', bins.copilot, ['--acp']],
       ['pi', bins['pi-acp'], []],
       ['kiro', bins['kiro-cli'], ['acp', '--agent-engine=v3']],
+      ['cline', bins.cline, ['--acp']],
     ]);
     assert.equal(list[0].catalog, null);
   } finally {
@@ -222,6 +224,9 @@ test('detectAgents falls back to the next command of an agent', () => {
     const copilot = list.find((row) => row.id === 'copilot');
     assert.equal(copilot.bin, '');
     assert.equal(copilot.hint, 'npm i -g @github/copilot');
+    const cline = list.find((row) => row.id === 'cline');
+    assert.equal(cline.bin, '');
+    assert.equal(cline.hint, 'npm i -g cline');
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
   }
