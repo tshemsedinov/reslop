@@ -3,6 +3,8 @@
 ## [Unreleased][unreleased]
 
 - Put plan items with the same `F<number>` into one commit
+- Rework the agents screen: a table of agent, model, effort, fast, context, and plan beside the sessions, with the hotkeys marked in the table and an install button
+- Start an agent on a task typed in the text box of the agents screen
 - Copy and cut the character under the caret after a Shift-arrows selection
 - Ask the terminal to report Shift+Enter and Ctrl+Enter, so they add a line
 - Walk diffs in the order of the file list and of lines in each file

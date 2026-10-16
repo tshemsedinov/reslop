@@ -170,6 +170,27 @@ test('copy takes the character under the caret after shift-right', () => {
   assert.equal(editor.copiedText(), 'hello world');
 });
 
+test('wordSpan takes the run around an offset, lineSpan the line', () => {
+  const editor = new Editor('foo_bar, baz  qux\nnext line');
+  assert.deepEqual(editor.wordSpan(0), { lo: 0, hi: 7 });
+  assert.deepEqual(editor.wordSpan(7), { lo: 7, hi: 8 });
+  assert.deepEqual(editor.wordSpan(9), { lo: 9, hi: 12 });
+  assert.deepEqual(editor.wordSpan(12), { lo: 12, hi: 14 });
+  assert.deepEqual(editor.wordSpan(17), { lo: 17, hi: 18 });
+  assert.deepEqual(editor.wordSpan(19), { lo: 18, hi: 22 });
+  assert.deepEqual(editor.wordSpan(26), { lo: 23, hi: 27 });
+  assert.deepEqual(new Editor('').wordSpan(0), { lo: 0, hi: 0 });
+  assert.deepEqual(editor.lineSpan(3), { lo: 0, hi: 17 });
+  assert.deepEqual(editor.lineSpan(17), { lo: 0, hi: 17 });
+  assert.deepEqual(editor.lineSpan(18), { lo: 18, hi: 27 });
+  assert.deepEqual(new Editor('\nab').lineSpan(0), { lo: 0, hi: 0 });
+  editor.selectSpan(editor.wordSpan(9));
+  assert.equal(editor.selectedText(), 'baz');
+  assert.equal(editor.copiedText(), 'baz');
+  editor.selectSpan({ lo: 2, hi: 2 });
+  assert.equal(editor.hasSelect(), false);
+});
+
 test('a mouse selection copies exactly what it selects', () => {
   const editor = new Editor('hello world');
   editor.place(0);
