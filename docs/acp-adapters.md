@@ -2,7 +2,7 @@
 
 Checked on 2026-10-14 against the versions named below.
 
-reslop reaches every agent over the [Agent Client Protocol](https://agentclientprotocol.com). Cursor, OpenCode, Junie, and Copilot serve ACP themselves. Google publishes a separate official ACP runtime for Antigravity. Claude Code, Codex, and Pi need adapters: separate programs that speak ACP to reslop and the vendor interface to the agent. This note records which integrations reslop advises and what it would cost to drop the adapters and talk to those vendors directly.
+reslop reaches every agent over the [Agent Client Protocol](https://agentclientprotocol.com). Cursor, OpenCode, Junie, Copilot, and Kiro serve ACP themselves. Google publishes a separate official ACP runtime for Antigravity. Claude Code, Codex, and Pi need adapters: separate programs that speak ACP to reslop and the vendor interface to the agent. This note records which integrations reslop advises and what it would cost to drop the adapters and talk to those vendors directly.
 
 ## What reslop advises today
 
@@ -16,8 +16,9 @@ reslop reaches every agent over the [Agent Client Protocol](https://agentclientp
 | Junie       | `junie --acp=true`   | `@jetbrains/junie`                      | JetBrains, the agent itself            |
 | Copilot     | `copilot --acp`      | `@github/copilot`                       | GitHub, the agent itself               |
 | Pi          | `pi-acp`             | `pi-acp`                                | a community author (Sergii Kozak)      |
+| Kiro        | `kiro-cli acp`       | install script from cli.kiro.dev        | AWS, the agent itself                  |
 
-The `i` key on the agents screen proposes an install for the selected row and runs it after confirmation. npm adapters use `npm install --global`. Antigravity is a platform archive from the official ACP registry; reslop validates the registry entry, downloads the archive from Google's host, checks each zip entry while extracting it, and records the command in its user data directory. It also discovers an Antigravity runtime on `PATH` or installed in Zed's ACP registry directory. The install hint is drawn in the warning color.
+The `i` key on the agents screen proposes an install for the selected row and runs it after confirmation. npm adapters use `npm install --global`. Antigravity is a platform archive from the official ACP registry; reslop validates the registry entry, downloads the archive from Google's host, checks each zip entry while extracting it, and records the command in its user data directory. A CLI that its vendor publishes only through an install script is installed by `lib/agents/script.js`: it downloads the script over https and runs it with `bash`, or with PowerShell on Windows, with `~/.local/bin` added to `PATH`. reslop looks for such a command in `~/.local/bin` as well. It also discovers an Antigravity runtime on `PATH` or installed in Zed's ACP registry directory. The install hint is drawn in the warning color.
 
 - The two adapters are not published by Anthropic or OpenAI. They come from the ACP project, are Apache-2.0, and are what ACP editors install: about 943,000 and 798,000 downloads in the week of 2026-10-06. What they wrap is the vendor's own code: `@anthropic-ai/claude-agent-sdk` 0.3.296 and `@openai/codex` 0.160.
 - Both reuse the login of the installed agent and bundle their own copy of it, so the `claude` and `codex` CLIs are not required.
@@ -27,6 +28,7 @@ The `i` key on the agents screen proposes an install for the selected row and ru
 - `@jetbrains/junie` 3110.7.0 downloads the Junie CLI from JetBrains' GitHub releases when it is installed, places a shim at `~/.local/bin/junie`, and serves ACP with `--acp=true`, the command of the `junie` registry entry. Its installer supports macOS and Linux; on Windows it prints JetBrains' PowerShell installer instead.
 - `@github/copilot` 1.0.98 is the Copilot CLI itself; `copilot --acp` is the command of the `github-copilot-cli` registry entry. It uses the GitHub sign-in of the CLI.
 - `pi-acp` 0.0.34 (MIT, the `pi-acp` registry entry) does not bundle Pi: it starts `pi --mode rpc` from `PATH`. reslop lists Pi only when both `pi-acp` and `pi` are found, and `i` installs whichever of `pi-acp` and `@earendil-works/pi-coding-agent` is missing. The adapter needs Node.js 22 and pi 0.81 or newer; Pi is configured separately for its model providers.
+- Kiro CLI by AWS is not on npm (the `kiro-cli` package there is an unrelated placeholder) and not in the ACP registry. Its own scripts `cli.kiro.dev/install` and `cli.kiro.dev/install.ps1` put `kiro-cli` in `~/.local/bin`. reslop starts `kiro-cli acp --agent-engine=v3`: the V3 server takes model and effort as standard session config options, while the CLI v2 server used the unstable `session/set_model`. It uses the sign-in of the CLI.
 
 ## Talking to the vendors without an adapter
 

@@ -5,6 +5,7 @@
 - Add Junie by JetBrains support
 - Add GitHub Copilot support
 - Add Pi coding agent support with its ACP adapter
+- Add Kiro by AWS support, installed with its vendor script
 
 ## [0.3.2][] - 2026-10-15
 

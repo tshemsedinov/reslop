@@ -145,6 +145,7 @@ test('detectAgents finds the acp command of every agent', () => {
     'copilot',
     'pi-acp',
     'pi',
+    'kiro-cli',
   );
   try {
     const list = detectAgents(env);
@@ -159,6 +160,7 @@ test('detectAgents finds the acp command of every agent', () => {
       ['junie', bins.junie, ['--acp=true']],
       ['copilot', bins.copilot, ['--acp']],
       ['pi', bins['pi-acp'], []],
+      ['kiro', bins['kiro-cli'], ['acp', '--agent-engine=v3']],
     ]);
     assert.equal(list[0].catalog, null);
   } finally {
@@ -260,6 +262,34 @@ test('an adapter runs only when the cli of its agent is installed', () => {
     assert.deepEqual(ready.packages, []);
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('Kiro installs with its script and is found in ~/.local/bin', () => {
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'reslop-home-'));
+  try {
+    const env = { PATH: '', HOME: home, USERPROFILE: home };
+    const missing = detectAgents(env).find((row) => row.id === 'kiro');
+    assert.equal(missing.bin, '');
+    assert.equal(missing.installable, true);
+    assert.equal(missing.hint, 'install the Kiro CLI from cli.kiro.dev');
+    const install = buildInstall(missing);
+    assert.equal(install.installer, 'script');
+    assert.equal(install.cmd, process.execPath);
+    assert.equal(path.basename(install.args[0]), 'script.js');
+    const windows = process.platform === 'win32';
+    const script = windows ? 'install.ps1' : 'install';
+    assert.equal(install.args[1], `https://cli.kiro.dev/${script}`);
+    assert.equal(install.command, 'install Kiro CLI from cli.kiro.dev');
+    const local = path.join(home, '.local', 'bin');
+    fs.mkdirSync(local, { recursive: true });
+    const bin = makeBin(local, windows ? 'kiro-cli.exe' : 'kiro-cli');
+    makeBin(local, windows ? 'claude-agent-acp.exe' : 'claude-agent-acp');
+    const list = detectAgents(env);
+    assert.equal(list.find((row) => row.id === 'kiro').bin, bin);
+    assert.equal(list.find((row) => row.id === 'claude').bin, '');
+  } finally {
+    fs.rmSync(home, { recursive: true, force: true });
   }
 });
 
