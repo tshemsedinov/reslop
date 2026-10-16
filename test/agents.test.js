@@ -19,10 +19,11 @@ const { makeRepo, uiSink } = require('./helpers.js');
 const render = require('../lib/render/render.js');
 const { renderFrame } = render;
 const ansi = require('../lib/term/ansi.js');
-const { stripAnsi, THEME, bg, RESET, BOLD, seq } = ansi;
+const { stripAnsi, THEME, bg, RESET, seq } = ansi;
 const { actionFromKey } = require('../lib/input/actions.js');
 const jobs = require('../lib/session/agents/jobs.js');
 const { launchJob } = jobs;
+const clipboard = require('../lib/term/clipboard.js');
 
 const FIXTURE = path.join(__dirname, 'acp-agent.js');
 
@@ -39,6 +40,10 @@ const fakePath = (...names) => {
   for (const name of names) bins[name] = makeBin(dir, name);
   return { dir, bins, env: { PATH: dir } };
 };
+
+// The row of the agents table that a caption starts
+const labelRow = (rows, label) =>
+  rows.find((row) => new RegExp(`^ +${label} `).test(stripAnsi(row)));
 
 const select = (id, category, currentValue, values) => ({
   id,
@@ -654,17 +659,15 @@ test('agents screen lists agents and starts with the review plan', async () => {
     assert.equal(rows[1].bin, '');
     ui.draw();
     const text = stripAnsi(ui.lastFrame.rows.join('\n'));
-    assert.match(text, /agent\s+model\s+effort\s+fast\s+(?:context\s+)?plan/);
+    assert.match(text, /agent +claude/);
+    for (const label of ['model', 'effort', 'fast', 'plan']) {
+      assert.ok(text.includes(label), label);
+    }
+    assert.match(text, /Status +editing/);
+    assert.match(text, /Progress +\d+\/\d+/);
+    assert.match(text, /Text typed here/);
     assert.equal(text.includes('▶'), false);
-    assert.equal(text.includes('status'), false);
-    assert.match(text, /claude/);
-    assert.match(text, /opencode/);
-    assert.match(text, /cursor/);
-    assert.match(text, /codex/);
-    assert.match(text, /opencode +npm i -g opencode-ai/);
-    assert.match(text, /codex +npm i -g @agentclientprotocol\/codex-acp/);
-    assert.match(text, /cursor +needs the Cursor CLI from cursor\.com\/cli/);
-    assert.equal(text.includes('not installed'), false);
+    assert.equal(text.includes('install'), false);
     assert.equal(text.includes(bins['claude-agent-acp']), false);
     assert.match(render.headerText(ui.view()), /agents/);
     ui.handleEvent({ type: 'key', key: 'm' });
@@ -672,8 +675,6 @@ test('agents screen lists agents and starts with the review plan', async () => {
     assert.match(render.headerText(ui.view()), /agents$/);
     ui.draw();
     const menu = stripAnsi(ui.lastFrame.rows.join('\n'));
-    assert.match(menu, /claude/);
-    assert.match(menu, /opencode/);
     assert.match(menu, /sonnet/);
     assert.deepEqual(ui.agents.menuItems(), ['sonnet', 'opus', 'haiku']);
     ui.handleEvent({ type: 'key', key: 'enter' });
@@ -681,7 +682,8 @@ test('agents screen lists agents and starts with the review plan', async () => {
     assert.equal(ui.agents.choice('claude').model, 'sonnet');
     ui.draw();
     const after = stripAnsi(ui.lastFrame.rows.join('\n'));
-    assert.match(after, /\d{4}-\d{2}-\d{2}-\d+\.md {2}editing {2}\d+\/\d+/);
+    assert.match(after, /plan +\d{4}-\d{2}-\d{2}-\d+\.md/);
+    assert.match(after, /Status +editing/);
     assert.equal(after.includes('default'), false);
     assert.equal(after.includes('claude-agent-acp'), false);
     ui.handleEvent({ type: 'key', key: 'e' });
@@ -691,14 +693,17 @@ test('agents screen lists agents and starts with the review plan', async () => {
     assert.equal(ui.agents.choice('claude').effort, 'medium');
     ui.draw();
     const picked = stripAnsi(ui.lastFrame.rows.join('\n'));
-    assert.match(picked, /claude\s+sonnet\s+medium\s+off/);
+    assert.match(picked, /agent +claude/);
+    assert.match(picked, /model +sonnet/);
+    assert.match(picked, /effort +medium/);
+    assert.match(picked, /fast mode +on +off/);
     const calls = [];
     ui.agents.spawn = (cwd, launch, onData) => {
       calls.push({ cwd, launch });
       onData('hello\n');
       return { kill() {} };
     };
-    ui.handleEvent({ type: 'key', key: 'enter' });
+    ui.handleEvent({ type: 'key', key: 's' });
     assert.equal(calls.length, 1);
     const { launch } = calls[0];
     assert.equal(launch.cmd, bins['claude-agent-acp']);
@@ -739,12 +744,14 @@ test('agents screen lists agents and starts with the review plan', async () => {
     ui.nav.agentCursor = 0;
     const view = ui.view();
     const frame = renderFrame(view, { width: 80, height: 24, color: false });
-    assert.ok(frame.buttons.some((hit) => hit.id === 'agentModel'));
-    assert.ok(frame.buttons.some((hit) => hit.id === 'agentEffort'));
-    assert.ok(frame.buttons.some((hit) => hit.id === 'agentFast'));
+    const ids = frame.buttons.map((hit) => hit.id);
+    assert.ok(ids.includes('agentStart'));
+    for (const id of ['agentModel', 'agentEffort', 'agentFast']) {
+      assert.equal(ids.includes(id), false, id);
+    }
     const footer = stripAnsi(frame.rows.at(-1));
     assert.equal(footer.includes('stop'), false);
-    assert.match(footer, /plan/);
+    assert.equal(footer.includes('model'), false);
   } finally {
     ui.agents.reset();
     repo.cleanup();
@@ -971,13 +978,16 @@ test('agents screen picks a model from the list', async () => {
     assert.equal(picked.fast, 'on');
     ui.draw();
     const text = stripAnsi(ui.lastFrame.rows.join('\n'));
-    assert.match(text, /cursor\s+grok-4\.6\s+high\s+on/);
+    assert.match(text, /agent +cursor/);
+    assert.match(text, /model +grok-4\.6/);
+    assert.match(text, /effort +high/);
+    assert.match(text, /fast mode +on/);
     assert.match(text, /\d{4}-\d{2}-\d{2}-\d+\.md/);
     assert.equal(text.includes('cursor-agent'), false);
     assert.equal(text.includes('effort='), false);
     ui.handleEvent({ type: 'key', key: 'e' });
     assert.equal(ui.agents.pick, null);
-    ui.handleEvent({ type: 'key', key: 'a' });
+    ui.handleEvent({ type: 'key', key: 'o' });
     assert.equal(ui.agents.choice('cursor').fast, false);
     assert.equal(ui.status, 'fast on');
   } finally {
@@ -1045,6 +1055,7 @@ test('agents screen runs the review file chosen in the combo', async () => {
     ui.handleEvent({ type: 'key', key: 'p' });
     assert.equal(ui.agents.pick.field, 'plan');
     assert.deepEqual(ui.agents.menuItems(), [
+      'none',
       `${newer}  partial  0/0`,
       `${older}  editing  1/2`,
     ]);
@@ -1057,7 +1068,9 @@ test('agents screen runs the review file chosen in the combo', async () => {
     assert.equal(ui.agents.pick, null);
     ui.draw();
     const text = stripAnsi(ui.lastFrame.rows.join('\n'));
-    assert.match(text, new RegExp(`${older}  editing  1/2`));
+    assert.match(text, new RegExp(`plan +${older}`));
+    assert.match(text, /Status +editing/);
+    assert.match(text, /Progress +1\/2/);
     const calls = [];
     ui.agents.spawn = (cwd, launch) => {
       calls.push(launch);
@@ -1113,6 +1126,7 @@ test('plan combo lists plain markdown and aligns columns', async () => {
     await ui.agents.open();
     ui.handleEvent({ type: 'key', key: 'p' });
     assert.deepEqual(ui.agents.menuItems(), [
+      'none',
       `${dated}  partial  0/1`,
       ideas,
       `${'note.md'.padEnd(dated.length)}  editing  1/1`,
@@ -1166,8 +1180,7 @@ test('clicking the model column opens the model list', async () => {
     assert.equal(ui.agents.pick.field, 'model');
     ui.draw();
     const text = stripAnsi(ui.lastFrame.rows.join('\n'));
-    assert.match(text, /claude/);
-    assert.match(text, /cursor/);
+    assert.match(text, /agent +cursor/);
     assert.match(text, /gpt-5\.6-sol/);
     assert.equal(text.includes('effort='), false);
     ui.handleEvent({ type: 'key', key: 's' });
@@ -1184,7 +1197,7 @@ test('clicking the model column opens the model list', async () => {
     assert.equal(typedLines.includes('so'), false);
     assert.ok(
       typedLines.some(
-        (line) => line.includes('cursor') && /\sso(?:\s|$)/.test(line),
+        (line) => line.includes('model') && /\sso(?:\s|$)/.test(line),
       ),
     );
     ui.handleEvent({ type: 'key', key: 'backspace' });
@@ -1326,40 +1339,24 @@ test('model menu uses background and a right scroller', async () => {
     assert.ok(fresh.includes(bg(THEME.checkBg)));
     assert.ok(fresh.includes(seq(THEME.chromeFg, THEME.checkBg)));
     assert.equal(fresh.includes(seq(THEME.buttonHotFg, THEME.checkBg)), false);
-    const pickedCli = ui.lastFrame.rows.find((row) =>
-      stripAnsi(row).includes('cursor'),
-    );
-    assert.ok(pickedCli);
-    assert.ok(pickedCli.includes(bg(THEME.buttonBg)));
-    const head = ui.lastFrame.rows.find((row) => {
-      const plain = stripAnsi(row);
-      return plain.includes('model') && plain.includes('plan');
-    });
-    assert.ok(head);
-    assert.equal(head.includes(BOLD), false);
-    assert.ok(head.includes('38;2;122;122;138'));
-    const claude = ui.lastFrame.rows.find((row) =>
-      stripAnsi(row).includes('claude'),
-    );
-    const cursor = ui.lastFrame.rows.find((row) =>
-      stripAnsi(row).includes('cursor'),
-    );
-    assert.ok(claude);
-    assert.ok(cursor);
-    assert.equal(claude.includes(BOLD), false);
-    assert.ok(claude.includes('38;2;122;122;138'));
-    assert.ok(claude.includes(seq(THEME.warnFg, THEME.ctxBg)));
-    assert.match(stripAnsi(claude), /npm i -g @agentclientprotocol/);
+    const rowWith = (text) =>
+      ui.lastFrame.rows.find((row) => stripAnsi(row).includes(text));
+    const agentRow = labelRow(ui.lastFrame.rows, 'agent');
+    assert.ok(agentRow.includes(seq(THEME.popupFg, THEME.popupBg)));
+    const modelRow = labelRow(ui.lastFrame.rows, 'model');
+    assert.ok(modelRow.includes(seq(THEME.chromeFg, THEME.noteBg)));
+    assert.ok(modelRow.includes(seq(THEME.buttonHotFg, THEME.ctxBg)));
     ui.nav.agentCursor = 0;
     ui.draw();
-    const pickedHint = ui.lastFrame.rows.find((row) =>
-      stripAnsi(row).includes('npm i -g @agentclientprotocol'),
+    const hintRow = rowWith('npm install --global @agentclientprotocol');
+    assert.ok(hintRow);
+    assert.match(stripAnsi(hintRow), / install /);
+    assert.ok(hintRow.includes(seq(THEME.buttonHotFg, THEME.buttonBg)));
+    assert.equal(
+      stripAnsi(ui.lastFrame.rows.join('\n')).includes('model'),
+      true,
     );
-    assert.ok(pickedHint.includes(seq(THEME.warnFg, THEME.buttonBg)));
     ui.nav.agentCursor = 2;
-    ui.draw();
-    assert.ok(cursor.includes(BOLD));
-    assert.ok(cursor.includes('38;2;86;156;214'));
     ui.handleEvent({ type: 'key', key: 'm' });
     ui.draw();
     const plain = stripAnsi(ui.lastFrame.rows.join('\n'));
@@ -1369,11 +1366,12 @@ test('model menu uses background and a right scroller', async () => {
     assert.equal(plain.includes('▸'), false);
     const thumb = bg(THEME.taskHeadBg);
     const track = bg(THEME.buttonBg);
-    const menuRows = () =>
-      ui.lastFrame.rows.filter(
-        (row) =>
-          row.includes(bg(THEME.noteBg)) || row.includes(bg(THEME.checkBg)),
-      );
+    const menuRows = () => {
+      const { fileHits, rows } = ui.lastFrame;
+      const hits = fileHits.filter((hit) => hit.field === 'menu');
+      hits.sort((left, right) => left.y - right.y);
+      return hits.map((hit) => rows[hit.y - 1]);
+    };
     const open = menuRows();
     assert.match(plain, /model-0/);
     assert.ok(open.length > 1);
@@ -1410,10 +1408,8 @@ test('model menu uses background and a right scroller', async () => {
     const marked = filtered.includes(onFocus) || filtered.includes(onNote);
     assert.ok(marked);
     assert.equal(filtered.includes(bg(THEME.searchBg)), false);
-    const queryRow = ui.lastFrame.rows.find((line) =>
-      stripAnsi(line).includes('cursor'),
-    );
-    assert.ok(queryRow.includes(seq(THEME.warnFg, THEME.buttonBg)));
+    const queryRow = labelRow(ui.lastFrame.rows, 'model');
+    assert.ok(queryRow.includes(seq(THEME.warnFg, THEME.popupBg)));
     assert.equal(queryRow.includes(bg(THEME.searchBg)), false);
     ui.handleEvent({ type: 'key', key: 'escape' });
     ui.handleEvent({ type: 'key', key: 'e' });
@@ -1558,6 +1554,7 @@ test('recorded runs stay listed for the selected cli', async () => {
     const shown = ui.agents.sessionRows().map((row) => row.name);
     const expected = ['<start new session>', 'cursor-new', 'cursor-old'];
     assert.deepEqual(shown, expected);
+    ui.stdout.rows = 30;
     ui.draw();
     const text = stripAnsi(ui.lastFrame.rows.join('\n'));
     assert.match(text, /cursor-new/);
@@ -1583,17 +1580,19 @@ test('agents screen lists sessions for the selected cli', async () => {
     ui.agents.spawn = () => ({ kill() {} });
     ui.handleEvent({ type: 'key', key: 'm' });
     ui.handleEvent({ type: 'key', key: 'enter' });
-    ui.handleEvent({ type: 'key', key: 'enter' });
+    ui.handleEvent({ type: 'key', key: 's' });
     ui.handleEvent({ type: 'key', key: 'escape' });
     stdout.columns = 160;
+    stdout.rows = 30;
     ui.draw();
     const lines = stripAnsi(ui.lastFrame.rows.join('\n')).split('\n');
     assert.ok(lines.some((row) => /claude/.test(row)));
     assert.ok(lines.some((row) => /<start new session>/.test(row)));
-    const title = lines.findIndex((line) => /agent\s+model/.test(line));
     const runHit = ui.lastFrame.fileHits.find((hit) => hit.side === 'runs');
     assert.ok(runHit);
-    assert.equal(runHit.y, title + 1);
+    // The sessions are under the table of the settings
+    const progressAt = lines.findIndex((line) => /Progress/.test(line));
+    assert.ok(runHit.y - 1 > progressAt);
     assert.match(ui.agents.jobs[0].command, /^claude sonnet medium /);
     ui.handleEvent({ type: 'key', key: 'right' });
     assert.equal(ui.agents.focus, 'runs');
@@ -1768,16 +1767,17 @@ test('agents screen blocks a review file that is already running', async () => {
     assert.equal(ui.status, `busy ${newer}`);
     ui.handleEvent({ type: 'key', key: 'p' });
     assert.deepEqual(ui.agents.menuItems(), [
+      'none',
       `${newer}  editing  0/0`,
       `${older}  editing  0/0`,
     ]);
-    assert.equal(ui.agents.pick.cursor, 1);
-    ui.agents.pick.cursor = 0;
+    assert.equal(ui.agents.pick.cursor, 2);
+    ui.agents.pick.cursor = 1;
     ui.handleEvent({ type: 'key', key: 'enter' });
     assert.equal(ui.agents.pick.field, 'plan');
     assert.equal(path.basename(ui.agents.planFile()), newer);
     ui.handleEvent({ type: 'key', key: 'down' });
-    assert.equal(ui.agents.pick.cursor, 1);
+    assert.equal(ui.agents.pick.cursor, 2);
     ui.handleEvent({ type: 'key', key: 'enter' });
     assert.equal(ui.agents.pick, null);
     assert.equal(path.basename(ui.agents.planFile()), older);
@@ -1798,16 +1798,16 @@ test('agents screen toggles fast mode with a', async () => {
     ui.agents.listModels = listed;
     ui.agents.refresh(env);
     await ui.agents.open();
-    ui.handleEvent({ type: 'key', key: 'a' });
+    ui.handleEvent({ type: 'key', key: 'o' });
     assert.equal(ui.agents.choice('claude').fast, true);
     assert.equal(ui.agents.rows()[0].fast, 'on');
     assert.equal(ui.status, 'fast on');
     ui.draw();
     const on = stripAnsi(ui.lastFrame.rows.join('\n'));
-    assert.match(on, /claude\s+sonnet\s+medium\s+on/);
+    assert.match(on, /fast mode +on/);
     const saved = JSON.parse(fs.readFileSync(path.join(repo.dir, '.reslop')));
     assert.equal(saved.agents.claude.fast, true);
-    ui.handleEvent({ type: 'key', key: 'a' });
+    ui.handleEvent({ type: 'key', key: 'o' });
     assert.equal(ui.agents.choice('claude').fast, false);
     assert.equal(ui.agents.rows()[0].fast, 'off');
     const cleared = JSON.parse(
@@ -1815,7 +1815,7 @@ test('agents screen toggles fast mode with a', async () => {
     );
     assert.equal(cleared.agents.claude.fast, undefined);
     ui.nav.agentCursor = 1;
-    ui.handleEvent({ type: 'key', key: 'a' });
+    ui.handleEvent({ type: 'key', key: 'o' });
     assert.equal(ui.agents.choice('opencode').fast, false);
     assert.equal(ui.status, 'fast off');
   } finally {
@@ -1865,7 +1865,7 @@ test('a model listed in several context sizes offers them', async () => {
     await ui.agents.open();
     const at = ui.agents.rows().findIndex((row) => row.id === 'cursor');
     ui.nav.agentCursor = at;
-    ui.handleEvent({ type: 'key', key: 't' });
+    ui.handleEvent({ type: 'key', key: 'x' });
     assert.equal(ui.agents.pick, null);
     ui.handleEvent({ type: 'key', key: 'm' });
     ui.handleEvent({ type: 'key', key: 'end' });
@@ -1873,7 +1873,7 @@ test('a model listed in several context sizes offers them', async () => {
     assert.equal(ui.agents.choice('cursor').model, 'gpt-5');
     assert.equal(ui.agents.rows()[at].effort, 'low');
     assert.equal(ui.agents.rows()[at].context, '272k');
-    ui.handleEvent({ type: 'key', key: 't' });
+    ui.handleEvent({ type: 'key', key: 'x' });
     assert.equal(ui.agents.pick.field, 'context');
     assert.deepEqual(ui.agents.menuItems(), ['272k', '1m']);
     ui.handleEvent({ type: 'key', key: 'down' });
@@ -1886,8 +1886,10 @@ test('a model listed in several context sizes offers them', async () => {
     assert.equal(ui.agents.choice('cursor').effort, 'high');
     ui.draw();
     const text = stripAnsi(ui.lastFrame.rows.join('\n'));
-    assert.match(text, /context/);
-    assert.match(text, /cursor\s+gpt-5\s+high\s+off\s+1m/);
+    assert.match(text, /model +gpt-5/);
+    assert.match(text, /effort +high/);
+    assert.match(text, /fast mode +on +off/);
+    assert.match(text, /context +1m/);
     const file = path.join(repo.dir, '.reslop');
     const saved = JSON.parse(fs.readFileSync(file, 'utf8'));
     assert.equal(saved.agents.cursor.context, '1m');
@@ -1940,11 +1942,14 @@ test('i proposes the npm package a missing agent needs', async () => {
       close = onClose;
       return { kill() {} };
     };
-    const buttons = () => {
-      const size = { width: 120, height: 24, color: false };
-      return renderFrame(ui.view(), size).buttons;
+    // The button is in the table of the screen, not among the footer buttons
+    const install = () => {
+      ui.draw();
+      const hit = ui.lastFrame.fileHits.find((h) => h.field === 'install');
+      const footer = ui.lastFrame.buttons.map((button) => button.id);
+      assert.equal(footer.includes('agentInstall'), false);
+      return hit;
     };
-    const install = () => buttons().find((hit) => hit.id === 'agentInstall');
     assert.equal(ui.agents.selected().id, 'cursor');
     assert.equal(install(), undefined);
     pressKey(ui, 'i');
@@ -2133,15 +2138,18 @@ test('picking a model asks the agent for its settings', async () => {
     assert.deepEqual(ui.agents.menuItems(), ['low', 'high']);
     ui.handleEvent({ type: 'key', key: 'up' });
     ui.handleEvent({ type: 'key', key: 'enter' });
-    ui.handleEvent({ type: 'key', key: 't' });
+    ui.handleEvent({ type: 'key', key: 'x' });
     assert.deepEqual(ui.agents.menuItems(), ['256k', '500k']);
     ui.handleEvent({ type: 'key', key: 'down' });
     ui.handleEvent({ type: 'key', key: 'enter' });
-    ui.handleEvent({ type: 'key', key: 'a' });
+    ui.handleEvent({ type: 'key', key: 'o' });
     assert.equal(ui.status, 'fast on');
     ui.draw();
     const text = stripAnsi(ui.lastFrame.rows.join('\n'));
-    assert.match(text, /cursor\s+grok\s+low\s+on\s+500k/);
+    assert.match(text, /model +grok/);
+    assert.match(text, /effort +low/);
+    assert.match(text, /fast mode +on/);
+    assert.match(text, /context +500k/);
     const calls = [];
     ui.agents.spawn = (cwd, launch) => {
       calls.push(launch);
@@ -2247,7 +2255,7 @@ test('clicking the context column drops the size list', async () => {
   }
 });
 
-test('agent columns fill the row in proportion to their content', async () => {
+test('the properties of an agent are a table beside the sessions', async () => {
   const { dir, env } = fakePath('claude-agent-acp');
   const { ui, repo, stdout } = await openUi();
   try {
@@ -2255,24 +2263,817 @@ test('agent columns fill the row in proportion to their content', async () => {
     ui.agents.refresh(env);
     await ui.agents.open();
     stdout.columns = 160;
+    stdout.rows = 30;
     ui.draw();
     const plain = stripAnsi(ui.lastFrame.rows.join('\n')).split('\n');
-    const titleAt = plain.findIndex((line) => /agent\s+model/.test(line));
-    assert.equal(titleAt, 2);
     assert.equal(plain[1].trim(), '');
-    assert.match(plain[titleAt], /plan/);
-    assert.match(plain[titleAt], /^ {2}agent/);
-    assert.equal(/^ {3}agent/.test(plain[titleAt]), false);
-    assert.equal(plain[titleAt].includes('status'), false);
-    const plan = ui.lastFrame.fileHits.find((hit) => hit.field === 'plan');
-    const model = ui.lastFrame.fileHits.find((hit) => hit.field === 'model');
-    assert.ok(plan);
-    assert.ok(model);
-    const planW = plan.x1 - plan.x0;
-    const modelW = model.x1 - model.x0;
-    assert.ok(planW > modelW);
-    assert.ok(modelW > 'sonnet'.length);
-    assert.equal(plan.x1, 122);
+    const labels = ['agent', 'model', 'effort', 'fast mode', 'context'];
+    labels.push('plan', 'Status', 'Progress');
+    const ends = new Set();
+    for (const label of labels) {
+      const line = plain.find((text) => new RegExp(`^ +${label} `).test(text));
+      if (label === 'context' && !line) continue;
+      assert.ok(line, label);
+      ends.add(line.indexOf(label) + label.length);
+    }
+    assert.equal(ends.size, 1);
+    assert.equal(
+      plain.some((line) => /agent\s+model\s+effort/.test(line)),
+      false,
+    );
+    // The sessions are on the left under the table, the prompt on the right
+    const leftW = 160 - Math.floor(160 * 0.3);
+    const run = ui.lastFrame.fileHits.find((hit) => hit.side === 'runs');
+    assert.equal(run.x0, 0);
+    assert.equal(run.x1, leftW);
+    const hits = ui.lastFrame.editHits;
+    const task = hits.filter((hit) => hit.editor === ui.agents.task);
+    assert.ok(task.length > 3);
+    for (const hit of task) assert.ok(hit.x0 > leftW);
+    const last = Math.max(...task.map((hit) => hit.y));
+    assert.equal(last, ui.lastFrame.height - 3);
+  } finally {
+    ui.agents.reset();
+    repo.cleanup();
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+const keysOf = (ui, ...keys) => {
+  for (const key of keys) ui.handleEvent({ type: 'key', key });
+};
+
+const typeInto = (ui, text) => keysOf(ui, ...text);
+
+const clickAt = (ui, x, y) => {
+  const click = { type: 'mouse', button: 0, btn: 0, x, y };
+  ui.handleEvent({ ...click, kind: 'press', press: true });
+  ui.handleEvent({ ...click, kind: 'release', press: false });
+};
+
+test('the cursor walks the fields and a combo drops on Enter', async () => {
+  const { dir, env } = fakePath('claude-agent-acp');
+  const { ui, repo } = await openUi();
+  try {
+    ui.agents.listModels = listed;
+    ui.agents.refresh(env);
+    await ui.agents.open();
+    assert.equal(ui.agents.currentField(), 'agent');
+    keysOf(ui, 'down');
+    assert.equal(ui.agents.currentField(), 'model');
+    assert.equal(ui.agents.pick, null);
+    keysOf(ui, 'down', 'down');
+    assert.equal(ui.agents.currentField(), 'fast');
+    assert.equal(ui.agents.pick, null);
+    keysOf(ui, 'enter');
+    assert.equal(ui.agents.choice('claude').fast, true);
+    assert.equal(ui.agents.pick, null);
+    keysOf(ui, 'up', 'up');
+    assert.equal(ui.agents.currentField(), 'model');
+    keysOf(ui, 'enter');
+    assert.equal(ui.agents.pick.field, 'model');
+    keysOf(ui, 'escape');
+    assert.equal(ui.agents.pick, null);
+    assert.equal(ui.pane, 'agents');
+    keysOf(ui, 'up', 'enter');
+    assert.equal(ui.agents.pick.field, 'agent');
+    const items = ui.agents.menuItems();
+    assert.equal(items[0], 'claude');
+    assert.ok(items.includes('opencode  not installed'));
+    keysOf(ui, 'down', 'enter');
+    assert.equal(ui.agents.selected().id, 'opencode');
+    ui.draw();
+    const text = stripAnsi(ui.lastFrame.rows.join('\n'));
+    assert.match(text, /agent +opencode/);
+    assert.match(text, / install /);
+    assert.match(text, /npm install --global opencode-ai/);
+    assert.equal(ui.agents.currentField(), 'agent');
+    keysOf(ui, 'down');
+    assert.equal(ui.agents.currentField(), 'install');
+    keysOf(ui, 'down', 'down');
+    assert.equal(ui.agents.currentField(), 'task');
+  } finally {
+    ui.agents.reset();
+    repo.cleanup();
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('the hotkeys are in the table, the footer keeps the start', async () => {
+  const { dir, env } = fakePath('claude-agent-acp');
+  const { ui, repo } = await openUi();
+  try {
+    ui.agents.listModels = listed;
+    ui.agents.refresh(env);
+    await ui.agents.open();
+    ui.color = true;
+    ui.draw();
+    const hot = seq(THEME.buttonHotFg, THEME.ctxBg);
+    for (const label of ['model', 'effort', 'fast', 'plan']) {
+      const row = labelRow(ui.lastFrame.rows, label);
+      assert.ok(row.includes(hot), label);
+    }
+    const statusRow = labelRow(ui.lastFrame.rows, 'Status');
+    assert.equal(statusRow.includes(hot), false);
+    const ids = ui.lastFrame.buttons.map((button) => button.id);
+    assert.deepEqual(
+      ids.filter((id) => id.startsWith('agent')),
+      ['agentStart'],
+    );
+  } finally {
+    ui.agents.reset();
+    repo.cleanup();
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('the install button is clicked or pressed with i', async () => {
+  const { dir, env } = fakePath('cursor-agent');
+  const { ui, repo } = await openUi();
+  try {
+    ui.agents.listModels = listed;
+    ui.agents.refresh(env);
+    await ui.agents.open();
+    ui.nav.agentCursor = AGENTS.findIndex((spec) => spec.id === 'opencode');
+    ui.color = true;
+    ui.draw();
+    const hit = ui.lastFrame.fileHits.find((h) => h.field === 'install');
+    assert.ok(hit);
+    assert.equal(hit.x1 - hit.x0, ' install '.length);
+    const row = ui.lastFrame.rows[hit.y - 1];
+    assert.ok(row.includes(seq(THEME.buttonHotFg, THEME.buttonBg)));
+    clickAt(ui, hit.x0 + 2, hit.y);
+    assert.equal(ui.mode, 'confirmAgentInstall');
+    assert.equal(ui.view().agentInstallPackage, 'opencode-ai');
+    keysOf(ui, 'n');
+    assert.equal(ui.mode, 'review');
+    keysOf(ui, 'i');
+    assert.equal(ui.mode, 'confirmAgentInstall');
+    keysOf(ui, 'n');
+    clickAt(ui, hit.x1 + 5, hit.y);
+    assert.equal(ui.mode, 'review');
+  } finally {
+    ui.agents.reset();
+    repo.cleanup();
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('the task box types, adds lines, and starts the run', async () => {
+  const { dir, env } = fakePath('claude-agent-acp');
+  const { ui, repo } = await openUi();
+  try {
+    ui.agents.listModels = listed;
+    ui.agents.refresh(env);
+    await ui.agents.open();
+    ui.stdout.rows = 30;
+    keysOf(ui, 'down', 'down', 'down', 'down', 'down');
+    assert.equal(ui.agents.currentField(), 'task');
+    typeInto(ui, 'make a test plan is');
+    assert.equal(ui.agents.pick, null);
+    assert.equal(ui.agents.task.text, 'make a test plan is');
+    keysOf(ui, 'shift-enter');
+    typeInto(ui, 'ok');
+    keysOf(ui, 'ctrl-enter');
+    keysOf(ui, 'shift-left', 'shift-left');
+    assert.equal(ui.agents.task.text, 'make a test plan is\nok\n');
+    assert.equal(ui.agents.jobs.length, 0);
+    ui.draw();
+    const text = stripAnsi(ui.lastFrame.rows.join('\n'));
+    assert.match(text, /make a test plan is/);
+    assert.equal(text.includes('Text typed here'), false);
+    assert.ok(ui.lastFrame.cursor);
+    const calls = [];
+    ui.agents.spawn = (cwd, launch) => {
+      calls.push(launch);
+      return { kill() {} };
+    };
+    keysOf(ui, 'end', 'enter');
+    assert.equal(calls.length, 1);
+    const [launch] = calls;
+    // The text comes first, then the plan the agent is told to execute
+    assert.match(launch.plan, /^\.plan\/.+\.md$/);
+    assert.equal(launch.task, 'make a test plan is\nok');
+    const head = 'make a test plan is\nok\n\nRead and execute repair plan at ';
+    assert.equal(launch.prompt.startsWith(`${head}${launch.plan}\n\n`), true);
+    assert.match(launch.prompt, /You are running unattended/);
+    assert.match(launch.command, /^claude .*\.plan\//);
+    assert.equal(ui.agents.task.text, '');
+    assert.equal(ui.agents.jobs[0].task, launch.task);
+    assert.equal(ui.agents.jobs[0].title, 'make a test plan is');
+    const record = ui.agents.jobs[0].record();
+    assert.equal(record.task, launch.task);
+    assert.equal(record.plan, launch.plan);
+  } finally {
+    ui.agents.reset();
+    repo.cleanup();
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('a run of a typed task is repeated with the same task', async () => {
+  const { dir, env } = fakePath('claude-agent-acp');
+  const { ui, repo } = await openUi();
+  try {
+    ui.agents.listModels = listed;
+    ui.agents.refresh(env);
+    await ui.agents.open();
+    const calls = [];
+    let close = null;
+    ui.agents.spawn = (cwd, launch, onData, onClose) => {
+      calls.push(launch);
+      close = onClose;
+      return { kill() {} };
+    };
+    ui.agents.task.insert('rename the helper');
+    ui.agents.start();
+    assert.equal(calls.length, 1);
+    close({ status: 0, text: 'done\n' });
+    keysOf(ui, 'r');
+    assert.equal(calls.length, 2);
+    assert.equal(calls[1].task, 'rename the helper');
+    assert.equal(calls[1].prompt, calls[0].prompt);
+    assert.equal(calls[1].plan, calls[0].plan);
+  } finally {
+    ui.agents.reset();
+    repo.cleanup();
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('a dropped list is as wide as its combo, a click closes', async () => {
+  const { dir, env } = fakePath('claude-agent-acp');
+  const { ui, repo } = await openUi();
+  try {
+    ui.agents.listModels = listed;
+    ui.agents.refresh(env);
+    await ui.agents.open();
+    ui.stdout.rows = 30;
+    ui.draw();
+    const rowText = (label) => stripAnsi(labelRow(ui.lastFrame.rows, label));
+    const closed = rowText('model');
+    assert.equal(closed.includes('▾'), false);
+    const start = closed.indexOf('sonnet') - 1;
+    keysOf(ui, 'm');
+    ui.draw();
+    const menu = ui.lastFrame.fileHits.filter((hit) => hit.field === 'menu');
+    assert.ok(menu.length > 1);
+    // The combo box is 40 columns wide here
+    for (const hit of menu) {
+      assert.equal(hit.x0, start);
+      assert.equal(hit.x1, start + 40);
+    }
+    const open = ui.lastFrame.fileHits.find((hit) => hit.field === 'model');
+    clickAt(ui, open.x0 + 3, open.y);
+    assert.equal(ui.agents.pick, null);
+    clickAt(ui, open.x0 + 3, open.y);
+    assert.equal(ui.agents.pick.field, 'model');
+    clickAt(ui, open.x0 + 3, open.y);
+    assert.equal(ui.agents.pick, null);
+  } finally {
+    ui.agents.reset();
+    repo.cleanup();
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('the caret shows in the task box while it has the cursor', async () => {
+  const { dir, env } = fakePath('claude-agent-acp');
+  const { ui, repo, stdout } = await openUi();
+  try {
+    ui.agents.listModels = listed;
+    ui.agents.refresh(env);
+    await ui.agents.open();
+    ui.stdout.rows = 30;
+    ui.draw();
+    const since = (mark) => stdout.dump().slice(mark);
+    let mark = stdout.dump().length;
+    keysOf(ui, 'down', 'down', 'down', 'down', 'down');
+    ui.draw();
+    assert.ok(since(mark).includes('\x1b[?25h'));
+    mark = stdout.dump().length;
+    keysOf(ui, 'up');
+    ui.draw();
+    assert.equal(since(mark).includes('\x1b[?25h'), false);
+    assert.ok(since(mark).includes('\x1b[?25l'));
+  } finally {
+    ui.agents.reset();
+    repo.cleanup();
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('fast shows on and off and marks the set one inverted', async () => {
+  const { dir, env } = fakePath('claude-agent-acp');
+  const { ui, repo } = await openUi();
+  try {
+    ui.agents.listModels = listed;
+    ui.agents.refresh(env);
+    await ui.agents.open();
+    ui.color = true;
+    ui.draw();
+    const fast = () => labelRow(ui.lastFrame.rows, 'fast');
+    assert.match(stripAnsi(fast()), /fast mode +on +off/);
+    const set = seq(THEME.noteBg, THEME.chromeFg);
+    const plain = seq(THEME.chromeFg, THEME.noteBg);
+    const at = (row, mark) => row.indexOf(mark);
+    assert.ok(at(fast(), set) > at(fast(), plain));
+    assert.ok(at(fast(), plain) >= 0);
+    keysOf(ui, 'o');
+    ui.draw();
+    // the field under the cursor has the colors of a selection
+    const hot = seq(THEME.popupBg, THEME.popupFg);
+    const rest = seq(THEME.popupFg, THEME.popupBg);
+    assert.ok(at(fast(), hot) >= 0);
+    assert.ok(at(fast(), hot) < at(fast(), rest));
+  } finally {
+    ui.agents.reset();
+    repo.cleanup();
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('progress is a line like the tasks of the dashboard', async () => {
+  const { dir, env } = fakePath('claude-agent-acp');
+  const { ui, repo } = await openUi();
+  try {
+    const reviewDir = path.join(repo.dir, '.plan');
+    fs.mkdirSync(reviewDir, { recursive: true });
+    const name = '2020-01-01-00.md';
+    const body =
+      '---\nstatus: editing\n---\n\n> a.js\n\n- [x] one\n- [ ] two\n';
+    fs.writeFileSync(path.join(reviewDir, name), body);
+    ui.review.store.reviewPath = '';
+    ui.agents.listModels = listed;
+    ui.agents.refresh(env);
+    await ui.agents.open();
+    ui.agents.planPath = path.join(reviewDir, name);
+    ui.color = true;
+    ui.draw();
+    const row = labelRow(ui.lastFrame.rows, 'Progress');
+    assert.match(stripAnsi(row), /Progress +1\/2 +─+/);
+    assert.ok(row.includes(seq(THEME.addLineFg, THEME.ctxBg)));
+  } finally {
+    ui.agents.reset();
+    repo.cleanup();
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('the table marks its hotkeys and unset settings say default', async () => {
+  const { dir, env } = fakePath('cursor-agent');
+  const { ui, repo } = await openUi();
+  try {
+    ui.agents.listModels = listed;
+    ui.agents.refresh(env);
+    await ui.agents.open();
+    ui.nav.agentCursor = AGENTS.findIndex((spec) => spec.id === 'cursor');
+    ui.stdout.rows = 30;
+    ui.color = true;
+    ui.draw();
+    const hot = seq(THEME.buttonHotFg, THEME.ctxBg);
+    const letterOf = (label) => {
+      const row = labelRow(ui.lastFrame.rows, label);
+      const at = row.indexOf(hot);
+      return stripAnsi(row.slice(at + hot.length)).trimStart()[0];
+    };
+    const caption = (label, letter) => {
+      const row = stripAnsi(labelRow(ui.lastFrame.rows, label));
+      assert.match(row, new RegExp(`^ +${label}`));
+      assert.equal(letterOf(label), letter, label);
+    };
+    caption('agent', 'a');
+    caption('model', 'm');
+    caption('effort', 'e');
+    caption('fast mode', 'o');
+    caption('context', 'x');
+    caption('plan', 'p');
+    assert.equal(actionFromKey('a', 'agents'), 'agentSelect');
+    assert.equal(actionFromKey('m', 'agents'), 'agentModel');
+    assert.equal(actionFromKey('e', 'agents'), 'agentEffort');
+    assert.equal(actionFromKey('o', 'agents'), 'agentFast');
+    assert.equal(actionFromKey('x', 'agents'), 'agentContext');
+    assert.equal(actionFromKey('p', 'agents'), 'agentReview');
+    keysOf(ui, 'a');
+    assert.equal(ui.agents.pick.field, 'agent');
+    keysOf(ui, 'escape');
+    const shown = stripAnsi(ui.lastFrame.rows.join('\n'));
+    assert.match(shown, /model +default/);
+    ui.agents.choice('cursor').model = '';
+    ui.draw();
+    assert.match(stripAnsi(labelRow(ui.lastFrame.rows, 'model')), /default/);
+    assert.match(
+      stripAnsi(labelRow(ui.lastFrame.rows, 'fast mode')),
+      /on {2}off/,
+    );
+  } finally {
+    ui.agents.reset();
+    repo.cleanup();
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('s starts, resumes, or stops by the selected session', async () => {
+  const { dir, env } = fakePath('claude-agent-acp');
+  const { ui, repo } = await openUi();
+  try {
+    ui.agents.listModels = listed;
+    ui.agents.refresh(env);
+    await ui.agents.open();
+    ui.stdout.rows = 30;
+    const footer = () => {
+      ui.draw();
+      return stripAnsi(ui.lastFrame.rows.at(-1));
+    };
+    assert.match(footer(), /start/);
+    const killed = [];
+    ui.agents.spawn = () => ({ kill: () => killed.push('child') });
+    keysOf(ui, 's');
+    keysOf(ui, 'escape');
+    assert.equal(ui.agents.jobs.length, 1);
+    const live = ui.agents.jobs[0];
+    live.session = '2fa698ba-9a19-4a84-8134-5a7cd9ec2c56';
+    ui.agents.focusRuns();
+    const rows = ui.agents.sessionRows();
+    ui.agents.runCursor = rows.findIndex((row) => row.status === 'running');
+    assert.equal(ui.view().agentStartMode, 'stop');
+    assert.match(footer(), /stop/);
+    keysOf(ui, 's');
+    assert.deepEqual(killed, ['child']);
+    assert.equal(live.status, 'stopped');
+    assert.equal(ui.status, 'stopped');
+    assert.equal(ui.agents.jobs.length, 1);
+    ui.agents.runCursor = ui.agents.sessionRows().findIndex((row) => row.id);
+    assert.equal(ui.view().agentStartMode, 'resume');
+    assert.match(footer(), /resume/);
+  } finally {
+    ui.agents.reset();
+    repo.cleanup();
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('the text goes before the plan, no text sends the plan alone', () => {
+  const row = rowOf(specOf('claude'));
+  const picked = emptyChoice();
+  const plan = '.plan/2026-10-16-02.md';
+  const alone = buildLaunch(row, picked, plan, '/repo');
+  assert.equal(alone.prompt, planPrompt(plan));
+  const blank = buildLaunch(row, picked, plan, '/repo', '', '  \n ');
+  assert.equal(blank.prompt, planPrompt(plan));
+  const typed = buildLaunch(row, picked, plan, '/repo', '', 'fix the loop');
+  assert.equal(typed.prompt, `fix the loop\n\n${planPrompt(plan)}`);
+  assert.equal(typed.plan, plan);
+  const noPlan = buildLaunch(row, picked, '', '/repo', '', 'fix the loop');
+  assert.equal(noPlan.ok, true);
+  assert.match(noPlan.prompt, /^fix the loop\n\nYou are running/);
+  assert.equal(buildLaunch(row, picked, '', '/repo').error, 'no plan');
+});
+
+test('none in the plan combo runs the agent without a plan file', async () => {
+  const { dir, env } = fakePath('claude-agent-acp');
+  const { ui, repo } = await openUi();
+  try {
+    ui.agents.listModels = listed;
+    ui.agents.refresh(env);
+    await ui.agents.open();
+    const calls = [];
+    ui.agents.spawn = (cwd, launch) => {
+      calls.push(launch);
+      return { kill() {} };
+    };
+    keysOf(ui, 'p');
+    assert.equal(ui.agents.pick.field, 'plan');
+    assert.equal(ui.agents.menuItems()[0], 'none');
+    keysOf(ui, 'up', 'up', 'up', 'enter');
+    assert.equal(ui.agents.pick, null);
+    assert.equal(ui.agents.planFile(), '');
+    assert.equal(ui.status, 'plan none');
+    ui.draw();
+    const text = stripAnsi(ui.lastFrame.rows.join('\n'));
+    assert.match(text, /plan +none/);
+    ui.agents.start();
+    assert.equal(calls.length, 0);
+    assert.equal(ui.status, 'no plan');
+    ui.agents.task.insert('check the build');
+    ui.agents.start();
+    assert.equal(calls.length, 1);
+    assert.equal(calls[0].plan, '');
+    assert.match(calls[0].prompt, /^check the build\n\nYou are running/);
+    assert.equal(calls[0].prompt.includes('repair plan'), false);
+    keysOf(ui, 'escape', 'p');
+    assert.equal(ui.agents.pick.cursor, 0);
+    keysOf(ui, 'down', 'enter');
+    assert.notEqual(ui.agents.planFile(), '');
+  } finally {
+    ui.agents.reset();
+    repo.cleanup();
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('the prompt keeps the panel color, the sessions are black', async () => {
+  const { dir, env } = fakePath('claude-agent-acp');
+  const { ui, repo } = await openUi();
+  try {
+    ui.agents.listModels = listed;
+    ui.agents.refresh(env);
+    await ui.agents.open();
+    ui.agents.spawn = () => ({ kill() {} });
+    ui.stdout.rows = 30;
+    ui.color = true;
+    ui.agents.start();
+    keysOf(ui, 'escape');
+    keysOf(ui, 'down', 'down', 'down', 'down', 'down');
+    assert.equal(ui.agents.currentField(), 'task');
+    const grey = bg(THEME.buttonBg);
+    const dark = bg(THEME.ctxBg);
+    ui.draw();
+    const empty = ui.lastFrame.editHits.find((h) => h.editor);
+    const emptyRow = ui.lastFrame.rows[empty.y - 1];
+    typeInto(ui, 'hello there');
+    ui.draw();
+    const typed = ui.lastFrame.rows[empty.y - 1];
+    for (const row of [emptyRow, typed]) {
+      const right = row.slice(row.indexOf(grey));
+      assert.equal(right.includes(dark), false);
+      assert.equal(right.includes(bg(THEME.popupBg)), false);
+    }
+    assert.ok(stripAnsi(typed).includes('hello there'));
+    const session = ui.lastFrame.rows.find((row) => row.includes('running'));
+    assert.ok(session);
+    const left = session.slice(0, session.indexOf(grey));
+    assert.ok(left.includes('running'));
+    assert.ok(left.includes(dark));
+  } finally {
+    ui.agents.reset();
+    repo.cleanup();
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('the session of the last run is selected on load', async () => {
+  const { dir, env } = fakePath('cursor-agent', 'claude-agent-acp');
+  const { ui, repo } = await openUi();
+  try {
+    const plan = path.join(repo.dir, '.plan');
+    fs.mkdirSync(plan, { recursive: true });
+    const run = (id, startedAt, name) => ({
+      id,
+      cliId: 'cursor',
+      name: 'cursor',
+      model: 'grok',
+      command: `cursor ${name}`,
+      plan: '.plan/a.md',
+      action: 'run',
+      exit: 0,
+      elapsed: 1,
+      startedAt,
+      session: `aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa${id}`,
+      log: `${name}.log`,
+      output: '',
+    });
+    const recorded = [run(1, 1, 'cursor-old'), run(2, 2, 'cursor-new')];
+    const file = path.join(plan, '.runs');
+    fs.writeFileSync(file, `${JSON.stringify(recorded, null, 2)}\n`);
+    ui.agents.listModels = listed;
+    ui.agents.refresh(env);
+    ui.agents.loadRuns();
+    await ui.agents.open();
+    ui.nav.agentCursor = ui.agents.rows().findIndex((r) => r.id === 'cursor');
+    ui.agents.selectLastSession();
+    assert.equal(ui.agents.runCursor, 1);
+    assert.equal(ui.agents.selectedSession().name, 'cursor-new');
+    assert.equal(ui.view().agentStartMode, 'resume');
+    // An agent without sessions starts a new one
+    ui.agents.chooseAgent(ui.agents.rows().findIndex((r) => r.id === 'claude'));
+    assert.equal(ui.agents.runCursor, 0);
+    assert.equal(ui.agents.selectedSession().fresh, true);
+    assert.equal(ui.view().agentStartMode, 'start');
+    ui.agents.chooseAgent(ui.agents.rows().findIndex((r) => r.id === 'cursor'));
+    assert.equal(ui.agents.selectedSession().name, 'cursor-new');
+  } finally {
+    ui.agents.reset();
+    repo.cleanup();
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('the scroller column of the sessions is black', async () => {
+  const { dir, env } = fakePath('claude-agent-acp');
+  const { ui, repo } = await openUi();
+  try {
+    ui.agents.listModels = listed;
+    ui.agents.refresh(env);
+    await ui.agents.open();
+    ui.stdout.rows = 30;
+    ui.color = true;
+    ui.agents.runCursor = 0;
+    ui.draw();
+    const grey = bg(THEME.buttonBg);
+    const rows = ui.lastFrame.rows.filter((row) => row.includes('<start'));
+    assert.equal(rows.length, 1);
+    const left = rows[0].slice(0, rows[0].indexOf(grey));
+    // The last cell of the left panel is the scroller column
+    const selected = `${seq(THEME.chromeFg, THEME.checkBg)} `;
+    assert.ok(left.length - left.lastIndexOf(selected) < 80);
+    const spare = ui.lastFrame.rows.at(-4);
+    const edge = spare.slice(0, spare.indexOf(grey));
+    const black = `${seq(THEME.chromeFg, THEME.ctxBg)} `;
+    assert.ok(edge.length - edge.lastIndexOf(black) < 80);
+    assert.equal(edge.includes(grey), false);
+  } finally {
+    ui.agents.reset();
+    repo.cleanup();
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+const rightClickAt = (ui, x, y) => {
+  const event = { type: 'mouse', kind: 'press', btn: 2, button: 2, x, y };
+  ui.handleEvent({ ...event, press: true });
+  ui.draw();
+};
+
+test('a double click in the prompt selects a word, three a line', async () => {
+  const { dir, env } = fakePath('claude-agent-acp');
+  const { ui, repo } = await openUi();
+  try {
+    ui.agents.listModels = listed;
+    ui.agents.refresh(env);
+    await ui.agents.open();
+    ui.stdout.rows = 30;
+    ui.agents.task.insert('alpha beta\nsecond line');
+    ui.draw();
+    const rows = ui.lastFrame.editHits.filter((h) => h.editor);
+    const first = rows.find((hit) => hit.text === 'alpha beta');
+    const second = rows.find((hit) => hit.text === 'second line');
+    const task = ui.agents.task;
+    clickAt(ui, first.textX + 7, first.y);
+    assert.equal(task.hasSelect(), false);
+    assert.equal(task.cursor, 7);
+    clickAt(ui, first.textX + 7, first.y);
+    assert.equal(task.selectedText(), 'beta');
+    clickAt(ui, first.textX + 7, first.y);
+    assert.equal(task.selectedText(), 'alpha beta');
+    clickAt(ui, first.textX + 7, first.y);
+    assert.equal(task.hasSelect(), false);
+    // another place starts the count again
+    clickAt(ui, second.textX + 1, second.y);
+    clickAt(ui, second.textX + 1, second.y);
+    assert.equal(task.selectedText(), 'second');
+    clickAt(ui, second.textX + 1, second.y);
+    assert.equal(task.selectedText(), 'second line');
+    assert.equal(ui.agents.currentField(), 'task');
+  } finally {
+    ui.agents.reset();
+    repo.cleanup();
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('the prompt has the context menu of a text area', async () => {
+  const { dir, env } = fakePath('claude-agent-acp');
+  const { ui, repo } = await openUi();
+  try {
+    ui.agents.listModels = listed;
+    ui.agents.refresh(env);
+    await ui.agents.open();
+    ui.stdout.rows = 30;
+    ui.agents.task.insert('hello world');
+    ui.draw();
+    const hit = ui.lastFrame.editHits.find((h) => h.editor);
+    const copied = [];
+    const copyText = clipboard.copyText;
+    clipboard.copyText = (text) => copied.push(text) > 0;
+    try {
+      clickAt(ui, hit.textX + 8, hit.y);
+      clickAt(ui, hit.textX + 8, hit.y);
+      assert.equal(ui.agents.task.selectedText(), 'world');
+      rightClickAt(ui, hit.textX + 8, hit.y);
+      const menu = ui.nav.contextMenu;
+      assert.ok(menu);
+      assert.equal(menu.editor, ui.agents.task);
+      assert.ok(menu.actions.includes('textCopy'));
+      assert.ok(menu.actions.includes('textCut'));
+      assert.equal(ui.agents.currentField(), 'task');
+      assert.equal(ui.agents.task.selectedText(), 'world');
+      keysOf(ui, 'ctrl-c');
+      assert.equal(ui.nav.contextMenu, null);
+      assert.deepEqual(copied, ['world']);
+      rightClickAt(ui, hit.textX + 8, hit.y);
+      keysOf(ui, 'ctrl-x');
+      assert.deepEqual(copied, ['world', 'world']);
+      assert.equal(ui.agents.task.text, 'hello ');
+      rightClickAt(ui, hit.textX + 2, hit.y);
+      keysOf(ui, 'ctrl-a');
+      assert.equal(ui.agents.task.selectedText(), 'hello ');
+    } finally {
+      clipboard.copyText = copyText;
+    }
+  } finally {
+    ui.agents.reset();
+    repo.cleanup();
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('space and the arrows set the fast mode', async () => {
+  const { dir, env } = fakePath('claude-agent-acp');
+  const { ui, repo } = await openUi();
+  try {
+    ui.agents.listModels = listed;
+    ui.agents.refresh(env);
+    await ui.agents.open();
+    const fast = () => ui.agents.rows()[0].fast;
+    keysOf(ui, 'down', 'down', 'down');
+    assert.equal(ui.agents.currentField(), 'fast');
+    assert.equal(fast(), 'off');
+    keysOf(ui, ' ');
+    assert.equal(fast(), 'on');
+    keysOf(ui, ' ');
+    assert.equal(fast(), 'off');
+    keysOf(ui, 'left');
+    assert.equal(fast(), 'on');
+    keysOf(ui, 'left');
+    assert.equal(fast(), 'on');
+    keysOf(ui, 'right');
+    assert.equal(fast(), 'off');
+    keysOf(ui, 'right');
+    assert.equal(fast(), 'off');
+    assert.equal(ui.agents.focus, 'cli');
+    // elsewhere the arrows still move between the table and the sessions
+    keysOf(ui, 'up');
+    assert.equal(ui.agents.currentField(), 'effort');
+    keysOf(ui, 'right');
+    assert.equal(ui.agents.focus, 'runs');
+  } finally {
+    ui.agents.reset();
+    repo.cleanup();
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('a focused combo and its selected item differ in color', async () => {
+  const { dir, env } = fakePath('claude-agent-acp');
+  const { ui, repo } = await openUi();
+  try {
+    ui.agents.listModels = listed;
+    ui.agents.refresh(env);
+    await ui.agents.open();
+    ui.stdout.rows = 30;
+    ui.color = true;
+    keysOf(ui, 'm');
+    ui.draw();
+    const model = labelRow(ui.lastFrame.rows, 'model');
+    assert.ok(model.includes(bg(THEME.popupBg)));
+    assert.equal(model.includes(bg(THEME.checkBg)), false);
+    const hits = ui.lastFrame.fileHits.filter((h) => h.field === 'menu');
+    hits.sort((left, right) => left.y - right.y);
+    const first = ui.lastFrame.rows[hits[0].y - 1];
+    assert.ok(first.includes(bg(THEME.checkBg)));
+    assert.equal(first.includes(bg(THEME.popupBg)), false);
+    assert.notEqual(THEME.popupBg, THEME.checkBg);
+  } finally {
+    ui.agents.reset();
+    repo.cleanup();
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('the task box moves lines, is clicked, and Escape leaves', async () => {
+  const { dir, env } = fakePath('claude-agent-acp');
+  const { ui, repo } = await openUi();
+  try {
+    ui.agents.listModels = listed;
+    ui.agents.refresh(env);
+    await ui.agents.open();
+    ui.stdout.rows = 30;
+    ui.draw();
+    const empty = ui.lastFrame.editHits.find(
+      (h) => h.editor === ui.agents.task,
+    );
+    assert.ok(empty);
+    clickAt(ui, empty.textX, empty.y);
+    assert.equal(ui.agents.currentField(), 'task');
+    typeInto(ui, 'one');
+    keysOf(ui, 'shift-enter');
+    typeInto(ui, 'two');
+    keysOf(ui, 'up');
+    assert.equal(ui.agents.currentField(), 'task');
+    assert.equal(ui.agents.task.linePos().line, 0);
+    keysOf(ui, 'up');
+    assert.equal(ui.agents.currentField(), 'plan');
+    keysOf(ui, 'down');
+    keysOf(ui, 'down');
+    assert.equal(ui.agents.task.linePos().line, 1);
+    ui.draw();
+    const second = ui.lastFrame.editHits.find((h) => h.text === 'two');
+    clickAt(ui, second.textX + 1, second.y);
+    assert.equal(ui.agents.task.cursor, 'one\nt'.length);
+    keysOf(ui, 'escape');
+    assert.equal(ui.pane, 'dashboard');
+    assert.equal(ui.agents.task.text, 'one\ntwo');
   } finally {
     ui.agents.reset();
     repo.cleanup();
@@ -2549,6 +3350,8 @@ test('continue starts the session selected in the right panel', async () => {
     const chooser = stripAnsi(ui.lastFrame.rows.join('\n'));
     assert.match(chooser, /<start new session>/);
     assert.equal(chooser.includes('session?'), false);
+    assert.match(stripAnsi(ui.lastFrame.rows.at(-1)), /start/);
+    assert.equal(ui.view().agentStartMode, 'start');
     assert.equal(ui.agents.focus, 'cli');
     assert.equal(ui.view().agentCanStart, true);
     ui.handleEvent({ type: 'key', key: 's' });
@@ -2569,8 +3372,9 @@ test('continue starts the session selected in the right panel', async () => {
     assert.equal(ui.view().agentCanStart, true);
     ui.draw();
     const footer = stripAnsi(ui.lastFrame.rows.at(-1));
-    assert.match(footer, /start/);
-    assert.equal(footer.includes('continue'), false);
+    assert.match(footer, /resume/);
+    assert.equal(footer.includes('start'), false);
+    assert.equal(ui.view().agentStartMode, 'resume');
     ui.handleEvent({ type: 'key', key: 's' });
     assert.equal(calls.length, 2);
     assert.equal(calls[1].session, sessionId);
