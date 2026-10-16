@@ -3,6 +3,7 @@
 ## [Unreleased][unreleased]
 
 - Put plan items with the same `F<number>` into one commit
+- Walk diffs in the order of the file list and of lines in each file
 
 ## [0.3.3][] - 2026-10-16
 
