@@ -4,6 +4,7 @@ const { test } = require('node:test');
 const assert = require('node:assert/strict');
 
 const { Editor } = require('../lib/input/editor.js');
+const clipboard = require('../lib/term/clipboard.js');
 const { lineKey } = require('../lib/input/line-edit.js');
 const { Composer } = require('../lib/session/compose.js');
 
@@ -151,6 +152,49 @@ test('backspaceWord deletes the previous word', () => {
   editor.backspaceWord();
   assert.equal(editor.text, '');
   assert.equal(editor.cursor, 0);
+});
+
+test('copy takes the character under the caret after shift-right', () => {
+  const editor = new Editor('hello world');
+  editor.place(0);
+  editor.move(3, true);
+  assert.equal(editor.selectedText(), 'hel');
+  assert.equal(editor.copiedText(), 'hell');
+  editor.move(-1, true);
+  assert.equal(editor.copiedText(), 'hel');
+  editor.end();
+  editor.move(-2, true);
+  assert.equal(editor.copiedText(), 'ld');
+  editor.place(0);
+  editor.move(11, true);
+  assert.equal(editor.copiedText(), 'hello world');
+});
+
+test('a mouse selection copies exactly what it selects', () => {
+  const editor = new Editor('hello world');
+  editor.place(0);
+  editor.anchor = 0;
+  editor.cursor = 5;
+  assert.equal(editor.copiedText(), 'hello');
+  editor.move(2, true);
+  assert.equal(editor.copiedText(), 'hello w');
+});
+
+test('cut removes what copy takes', () => {
+  const editor = new Editor('hello world');
+  editor.place(0);
+  editor.move(5, true);
+  const ui = { status: '', stdout: {} };
+  const copyText = clipboard.copyText;
+  const taken = [];
+  clipboard.copyText = (text) => taken.push(text) > 0;
+  try {
+    lineKey(editor, 'ctrl-x', ui, true);
+  } finally {
+    clipboard.copyText = copyText;
+  }
+  assert.deepEqual(taken, ['hello ']);
+  assert.equal(editor.text, 'world');
 });
 
 test('shift movement selects and edits replace the span', () => {

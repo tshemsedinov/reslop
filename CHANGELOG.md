@@ -3,6 +3,7 @@
 ## [Unreleased][unreleased]
 
 - Put plan items with the same `F<number>` into one commit
+- Copy and cut the character under the caret after a Shift-arrows selection
 - Ask the terminal to report Shift+Enter and Ctrl+Enter, so they add a line
 - Walk diffs in the order of the file list and of lines in each file
 
