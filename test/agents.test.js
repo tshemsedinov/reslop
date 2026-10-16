@@ -147,6 +147,7 @@ test('detectAgents finds the acp command of every agent', () => {
     'pi',
     'kiro-cli',
     'cline',
+    'devin',
   );
   try {
     const list = detectAgents(env);
@@ -163,6 +164,7 @@ test('detectAgents finds the acp command of every agent', () => {
       ['pi', bins['pi-acp'], []],
       ['kiro', bins['kiro-cli'], ['acp', '--agent-engine=v3']],
       ['cline', bins.cline, ['--acp']],
+      ['devin', bins.devin, ['acp']],
     ]);
     assert.equal(list[0].catalog, null);
   } finally {
@@ -227,19 +229,27 @@ test('detectAgents falls back to the next command of an agent', () => {
     const cline = list.find((row) => row.id === 'cline');
     assert.equal(cline.bin, '');
     assert.equal(cline.hint, 'npm i -g cline');
+    const devin = list.find((row) => row.id === 'devin');
+    assert.equal(devin.installable, true);
+    const hint = 'install the Devin CLI, the agent of Windsurf';
+    assert.equal(devin.hint, hint);
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
   }
 });
 
 test('the cli of an agent alone does not make it runnable', () => {
-  const { dir, env } = fakePath('claude', 'codex', 'agy', 'pi');
+  const names = ['claude', 'codex', 'agy', 'pi', 'windsurf'];
+  const { dir, env } = fakePath(...names);
   try {
     const agents = detectAgents(env);
     const found = agents.filter((row) => row.bin);
     assert.deepEqual(found, []);
     const agy = agents.find((row) => row.id === 'agy');
     assert.equal(agy.hint, 'agy installed; install Google Antigravity ACP');
+    const devin = agents.find((row) => row.id === 'devin');
+    assert.equal(devin.hint, 'windsurf installed; install the Devin CLI');
+    assert.equal(buildInstall(devin).installer, 'script');
     const pi = agents.find((row) => row.id === 'pi');
     assert.equal(pi.hint, 'npm i -g pi-acp');
     assert.deepEqual(buildInstall(pi).args, ['install', '--global', 'pi-acp']);

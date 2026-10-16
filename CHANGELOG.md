@@ -7,6 +7,7 @@
 - Add Pi coding agent support with its ACP adapter
 - Add Kiro by AWS support, installed with its vendor script
 - Add Cline support
+- Add Windsurf support through Devin CLI, its current agent
 
 ## [0.3.2][] - 2026-10-15
 
