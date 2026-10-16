@@ -2,6 +2,8 @@
 
 ## [Unreleased][unreleased]
 
+- Put plan items with the same `F<number>` into one commit
+
 ## [0.3.3][] - 2026-10-16
 
 - Add Junie by JetBrains support

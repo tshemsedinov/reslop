@@ -171,7 +171,8 @@ test('serializeReview writes the status and agent instructions', () => {
   assert.doesNotMatch(md, /near exit/);
   assert.match(md, /`npm t` for lint and tests that do not start/);
   assert.match(md, /tests that start processes with `node --test <files>`/);
-  assert.match(md, /prefixed with `F<number>:` gets its own commit/);
+  assert.match(md, /prefixed with `F<number>:` .* gets its own commit/);
+  assert.match(md, /same `F<number>` go into one commit/);
   assert.match(md, /without that prefix unstaged/);
   assert.match(md, /`Authored-by` or `Co-authored-by`/);
 });

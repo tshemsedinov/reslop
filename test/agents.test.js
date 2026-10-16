@@ -591,6 +591,10 @@ test('a plan caption prefers a heading over a dated review title', () => {
   assert.equal(captionFromPlan(dated), 'use start instead of continue');
   const titled = '# Fix the login form\n\n- [ ] F2: retry the request\n';
   assert.equal(captionFromPlan(titled), 'Fix the login form');
+  const lower = '- [ ] f19: tidy the footer\n';
+  assert.equal(captionFromPlan(lower), 'tidy the footer');
+  const bare = '- [ ] f4 tidy the header\n';
+  assert.equal(captionFromPlan(bare), 'tidy the header');
   assert.equal(captionFromPlan(''), '');
 });
 
