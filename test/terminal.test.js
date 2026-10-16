@@ -90,6 +90,13 @@ test('enter and leave restore raw mode and write term sequences', () => {
   assert.ok(stdout.dump().endsWith(LEAVE_TERM));
 });
 
+test('the terminal reports modified Enter while open', () => {
+  assert.ok(ENTER_TERM.includes('\x1b[>4;1m'));
+  assert.ok(ENTER_TERM.includes('\x1b[>1u'));
+  assert.ok(LEAVE_TERM.includes('\x1b[<u'));
+  assert.ok(LEAVE_TERM.includes('\x1b[>4;0m'));
+});
+
 test('pause and resume restore listening after an external command', () => {
   const { term, stdin, stdout } = openTerm();
   let n = 0;
