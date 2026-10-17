@@ -8,6 +8,8 @@ const path = require('node:path');
 const {
   startAgent,
   listModels,
+  signIn,
+  signOut,
   catalogOf,
 } = require('../lib/agents/agents.js');
 const { AcpConnection, authMethod } = require('../lib/agents/acp.js');
@@ -271,6 +273,63 @@ test('the settings of a model are read by asking about it', async () => {
       context: '',
       fast: 'on',
     });
+  });
+});
+
+test('listing models tells whether the agent is signed in', async () => {
+  await inTemp(async (dir) => {
+    const row = (scenario) => ({
+      bin: process.execPath,
+      args: [FIXTURE, '--acp', scenario],
+    });
+    const probe = async (scenario) => {
+      const auth = {};
+      await listModels(row(scenario), { cwd: dir, auth });
+      return auth;
+    };
+    const open = await probe('');
+    assert.equal(open.state, 'in');
+    assert.equal(open.method, null);
+    const out = await probe('auth');
+    assert.equal(out.state, 'out');
+    assert.equal(out.names, 'Browser login');
+    assert.equal(out.method.id, 'browser');
+    const locked = await probe('locked');
+    assert.equal(locked.state, 'out');
+    assert.equal(locked.method, null);
+    const gone = {};
+    await listModels(
+      { bin: path.join(dir, 'missing'), args: [] },
+      { auth: gone },
+    );
+    assert.equal(gone.state, undefined);
+  });
+});
+
+test('an agent is signed in and out over the protocol', async () => {
+  await inTemp(async (dir) => {
+    const row = (scenario) => ({
+      bin: process.execPath,
+      args: [FIXTURE, '--acp', scenario],
+    });
+    const options = { cwd: dir };
+    assert.deepEqual(await signIn(row('auth'), options), { ok: true });
+    const locked = await signIn(row('locked'), options);
+    assert.equal(locked.ok, false);
+    assert.match(locked.error, /no sign-in/);
+    assert.deepEqual(await signOut(row(''), options), { ok: true });
+    const stuck = await signOut(row('nologout'), options);
+    assert.equal(stuck.ok, false);
+    assert.match(stuck.error, /CLI/);
+    const missing = await signIn({ bin: '' }, options);
+    assert.deepEqual(missing, { ok: false, error: 'not installed' });
+    const aborted = new AbortController();
+    aborted.abort();
+    const stopped = await signIn(row('auth'), {
+      ...options,
+      signal: aborted.signal,
+    });
+    assert.deepEqual(stopped, { ok: false, error: 'stopped' });
   });
 });
 
