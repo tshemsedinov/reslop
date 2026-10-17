@@ -5,6 +5,9 @@
 - Put plan items with the same `F<number>` into one commit
 - Rework the agents screen: a table of agent, model, effort, fast, context, and plan beside the sessions, with the hotkeys marked in the table and an install button
 - Start an agent on a task typed in the text box of the agents screen
+- Show effort, context size, and fast mode on the agents screen only where the agent and model have them, put the status and progress of the plan in one row, and leave one spacer before the sessions
+- Ask the installed agents for their models and sign-in at startup, the default one first and a few at a time, and show `loading…` until an agent has answered
+- Show on the agents screen whether the selected agent is signed in, and propose to sign in or out with `l` or the button
 - Copy and cut the character under the caret after a Shift-arrows selection
 - Ask the terminal to report Shift+Enter and Ctrl+Enter, so they add a line
 - Walk diffs in the order of the file list and of lines in each file

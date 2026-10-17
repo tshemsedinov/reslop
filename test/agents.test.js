@@ -664,7 +664,7 @@ test('agents screen lists agents and starts with the review plan', async () => {
       assert.ok(text.includes(label), label);
     }
     assert.match(text, /Status +editing/);
-    assert.match(text, /Progress +\d+\/\d+/);
+    assert.match(text, /Status +editing +\d+\/\d+/);
     assert.match(text, /Text typed here/);
     assert.equal(text.includes('▶'), false);
     assert.equal(text.includes('install'), false);
@@ -981,7 +981,8 @@ test('agents screen picks a model from the list', async () => {
     assert.match(text, /agent +cursor/);
     assert.match(text, /model +grok-4\.6/);
     assert.match(text, /effort +high/);
-    assert.match(text, /fast mode +on/);
+    // A fast mode that the model fixes is not a switch
+    assert.equal(text.includes('fast mode'), false);
     assert.match(text, /\d{4}-\d{2}-\d{2}-\d+\.md/);
     assert.equal(text.includes('cursor-agent'), false);
     assert.equal(text.includes('effort='), false);
@@ -1070,7 +1071,7 @@ test('agents screen runs the review file chosen in the combo', async () => {
     const text = stripAnsi(ui.lastFrame.rows.join('\n'));
     assert.match(text, new RegExp(`plan +${older}`));
     assert.match(text, /Status +editing/);
-    assert.match(text, /Progress +1\/2/);
+    assert.match(text, /Status +editing +1\/2/);
     const calls = [];
     ui.agents.spawn = (cwd, launch) => {
       calls.push(launch);
@@ -1313,6 +1314,7 @@ test('model menu uses background and a right scroller', async () => {
   repo.git(['commit', '-m', 'init']);
   const stdout = uiSink();
   stdout.columns = 160;
+  stdout.rows = 24;
   const ui = new Session({
     cwd: repo.dir,
     stdout,
@@ -1352,10 +1354,10 @@ test('model menu uses background and a right scroller', async () => {
     assert.ok(hintRow);
     assert.match(stripAnsi(hintRow), / install /);
     assert.ok(hintRow.includes(seq(THEME.buttonHotFg, THEME.buttonBg)));
-    assert.equal(
-      stripAnsi(ui.lastFrame.rows.join('\n')).includes('model'),
-      true,
-    );
+    // An agent that is missing has no settings to show
+    for (const label of ['model', 'effort', 'fast mode', 'context']) {
+      assert.equal(labelRow(ui.lastFrame.rows, label), undefined, label);
+    }
     ui.nav.agentCursor = 2;
     ui.handleEvent({ type: 'key', key: 'm' });
     ui.draw();
@@ -1591,7 +1593,7 @@ test('agents screen lists sessions for the selected cli', async () => {
     const runHit = ui.lastFrame.fileHits.find((hit) => hit.side === 'runs');
     assert.ok(runHit);
     // The sessions are under the table of the settings
-    const progressAt = lines.findIndex((line) => /Progress/.test(line));
+    const progressAt = lines.findIndex((line) => /Status/.test(line));
     assert.ok(runHit.y - 1 > progressAt);
     assert.match(ui.agents.jobs[0].command, /^claude sonnet medium /);
     ui.handleEvent({ type: 'key', key: 'right' });
@@ -1661,6 +1663,7 @@ test('a new agent session is its own run with status', async () => {
     assert.equal(rows[1].session, undefined);
     assert.notEqual(rows[1].name, '<start new session>');
     stdout.columns = 160;
+    stdout.rows = 30;
     ui.draw();
     const lines = stripAnsi(ui.lastFrame.rows.join('\n')).split('\n');
     const fresh = lines.find((line) => line.includes('<start new session>'));
@@ -1721,6 +1724,7 @@ test('agents panels scroll past one screen', async () => {
       });
     }
     ui.agents.focusRuns();
+    ui.stdout.rows = 24;
     ui.draw();
     const top = stripAnsi(ui.lastFrame.rows.join('\n'));
     assert.match(top, /run-39/);
@@ -1888,7 +1892,7 @@ test('a model listed in several context sizes offers them', async () => {
     const text = stripAnsi(ui.lastFrame.rows.join('\n'));
     assert.match(text, /model +gpt-5/);
     assert.match(text, /effort +high/);
-    assert.match(text, /fast mode +on +off/);
+    assert.equal(text.includes('fast mode'), false);
     assert.match(text, /context +1m/);
     const file = path.join(repo.dir, '.reslop');
     const saved = JSON.parse(fs.readFileSync(file, 'utf8'));
@@ -2268,7 +2272,7 @@ test('the properties of an agent are a table beside the sessions', async () => {
     const plain = stripAnsi(ui.lastFrame.rows.join('\n')).split('\n');
     assert.equal(plain[1].trim(), '');
     const labels = ['agent', 'model', 'effort', 'fast mode', 'context'];
-    labels.push('plan', 'Status', 'Progress');
+    labels.push('plan', 'Status');
     const ends = new Set();
     for (const label of labels) {
       const line = plain.find((text) => new RegExp(`^ +${label} `).test(text));
@@ -2610,8 +2614,8 @@ test('progress is a line like the tasks of the dashboard', async () => {
     ui.agents.planPath = path.join(reviewDir, name);
     ui.color = true;
     ui.draw();
-    const row = labelRow(ui.lastFrame.rows, 'Progress');
-    assert.match(stripAnsi(row), /Progress +1\/2 +─+/);
+    const row = labelRow(ui.lastFrame.rows, 'Status');
+    assert.match(stripAnsi(row), /Status +editing +1\/2 +─+/);
     assert.ok(row.includes(seq(THEME.addLineFg, THEME.ctxBg)));
   } finally {
     ui.agents.reset();
@@ -2624,7 +2628,18 @@ test('the table marks its hotkeys and unset settings say default', async () => {
   const { dir, env } = fakePath('cursor-agent');
   const { ui, repo } = await openUi();
   try {
-    ui.agents.listModels = listed;
+    // A model with every setting: effort, context size, and fast mode
+    const variants = [];
+    for (const context of ['272k', '1m']) {
+      for (const effort of ['low', 'high']) {
+        for (const fast of ['false', 'true']) {
+          const id = `context=${context},reasoning=${effort},fast=${fast}`;
+          variants.push(`gpt-5[${id}]`);
+        }
+      }
+    }
+    const state = acpState({ models: variants });
+    ui.agents.listModels = async () => state;
     ui.agents.refresh(env);
     await ui.agents.open();
     ui.nav.agentCursor = AGENTS.findIndex((spec) => spec.id === 'cursor');
@@ -2657,15 +2672,19 @@ test('the table marks its hotkeys and unset settings say default', async () => {
     keysOf(ui, 'a');
     assert.equal(ui.agents.pick.field, 'agent');
     keysOf(ui, 'escape');
-    const shown = stripAnsi(ui.lastFrame.rows.join('\n'));
-    assert.match(shown, /model +default/);
-    ui.agents.choice('cursor').model = '';
+    ui.draw();
+    const fast = stripAnsi(labelRow(ui.lastFrame.rows, 'fast mode'));
+    assert.match(fast, /on {2}off/);
+    // Before the agent has listed anything an unset model is the default
+    ui.agents.reset();
+    ui.agents.refresh(env);
+    ui.agents.listModels = async () => null;
+    await ui.agents.open();
     ui.draw();
     assert.match(stripAnsi(labelRow(ui.lastFrame.rows, 'model')), /default/);
-    assert.match(
-      stripAnsi(labelRow(ui.lastFrame.rows, 'fast mode')),
-      /on {2}off/,
-    );
+    for (const label of ['effort', 'fast mode', 'context']) {
+      assert.equal(labelRow(ui.lastFrame.rows, label), undefined, label);
+    }
   } finally {
     ui.agents.reset();
     repo.cleanup();
@@ -3041,6 +3060,333 @@ test('a focused combo and its selected item differ in color', async () => {
   }
 });
 
+// A listing that reports whether the agent let a session open
+const listedAs = (state) => async (row, options) => {
+  if (state && options.auth) options.auth.state = state;
+  if (state === 'out') return null;
+  return STATES[row.id] ?? null;
+};
+
+const accountOf = (ui) => {
+  ui.draw();
+  const text = stripAnsi(labelRow(ui.lastFrame.rows, 'account'));
+  // The left panel of an 80 column screen
+  return text
+    .slice(0, 56)
+    .trim()
+    .replace(/^account\s+/, '');
+};
+
+test('the screen shows whether the selected agent is signed in', async () => {
+  const { dir, env } = fakePath('claude-agent-acp');
+  const { ui, repo } = await openUi();
+  try {
+    ui.stdout.rows = 30;
+    ui.agents.refresh(env);
+    ui.agents.listModels = listedAs('');
+    await ui.agents.open();
+    assert.match(accountOf(ui), /^unknown\s*$/);
+    assert.equal(
+      ui.lastFrame.fileHits.some((hit) => hit.field === 'auth'),
+      false,
+    );
+    ui.agents.reset();
+    ui.agents.refresh(env);
+    ui.agents.listModels = listedAs('in');
+    await ui.agents.open();
+    assert.match(accountOf(ui), /^logged in\s+logout\s*$/);
+    const lines = stripAnsi(ui.lastFrame.rows.join('\n')).split('\n');
+    assert.match(
+      lines.find((line) => /^ +account /.test(line)),
+      /logged in {6}logout/,
+    );
+    // It is under the settings, where a missing agent shows its install
+    const at = (label) =>
+      lines.findIndex((l) => new RegExp(`^ +${label} `).test(l));
+    assert.equal(at('account'), at('fast mode') + 2);
+    assert.equal(at('plan'), at('account') + 2);
+    ui.agents.reset();
+    ui.agents.refresh(env);
+    ui.agents.listModels = listedAs('out');
+    await ui.agents.open();
+    assert.match(accountOf(ui), /^not logged in\s+login\s*$/);
+    const hit = ui.lastFrame.fileHits.find((entry) => entry.field === 'auth');
+    assert.equal(hit.x1 - hit.x0, ' login '.length);
+    // An agent that is not installed has no account to show
+    ui.nav.agentCursor = 1;
+    ui.draw();
+    assert.equal(labelRow(ui.lastFrame.rows, 'account'), undefined);
+  } finally {
+    ui.agents.reset();
+    repo.cleanup();
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('the agent signs in on a proposal that is accepted', async () => {
+  const { dir, env } = fakePath('claude-agent-acp');
+  const { ui, repo } = await openUi();
+  try {
+    ui.stdout.rows = 30;
+    ui.agents.refresh(env);
+    let listings = 0;
+    const out = listedAs('out');
+    ui.agents.listModels = async (row, options) => {
+      listings += 1;
+      return listings > 1 ? listedAs('in')(row, options) : out(row, options);
+    };
+    const asked = [];
+    let finish = null;
+    ui.agents.signIn = (row) => {
+      asked.push(row.id);
+      return new Promise((resolve) => {
+        finish = resolve;
+      });
+    };
+    await ui.agents.open();
+    assert.equal(actionFromKey('l', 'agents'), 'agentAuth');
+    keysOf(ui, 'l');
+    assert.equal(ui.mode, 'confirmAgentAuth');
+    assert.equal(ui.view().agentAuthAsk, 'sign in to claude');
+    ui.draw();
+    assert.match(
+      stripAnsi(ui.lastFrame.rows.at(-2)),
+      /sign in to claude\? y\/n/,
+    );
+    keysOf(ui, 'n');
+    assert.equal(ui.mode, 'review');
+    assert.equal(asked.length, 0);
+    const hit = ui.lastFrame.fileHits.find((entry) => entry.field === 'auth');
+    clickAt(ui, hit.x0 + 2, hit.y);
+    assert.equal(ui.mode, 'confirmAgentAuth');
+    keysOf(ui, 'y');
+    assert.equal(ui.mode, 'review');
+    assert.deepEqual(asked, ['claude']);
+    assert.equal(ui.status, 'signing in to claude…');
+    assert.match(accountOf(ui), /^signing in…/);
+    // While it goes on another proposal waits
+    keysOf(ui, 'l');
+    assert.equal(ui.mode, 'review');
+    finish({ ok: true });
+    await settled();
+    await settled();
+    assert.equal(ui.status, 'signed in to claude');
+    assert.match(accountOf(ui), /^logged in\s+logout\s*$/);
+    // The models the agent refused to list are asked for again
+    assert.equal(listings, 2);
+    assert.equal(ui.agents.rows()[0].model, 'sonnet');
+  } finally {
+    ui.agents.reset();
+    repo.cleanup();
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('a failed sign-out leaves the account as it was', async () => {
+  const { dir, env } = fakePath('claude-agent-acp');
+  const { ui, repo } = await openUi();
+  try {
+    ui.stdout.rows = 30;
+    ui.agents.refresh(env);
+    ui.agents.listModels = listedAs('in');
+    const answers = [
+      { ok: false, error: 'sign out in the CLI of the agent' },
+      { ok: true },
+    ];
+    ui.agents.signOut = async () => answers.shift();
+    await ui.agents.open();
+    keysOf(ui, 'l');
+    assert.equal(ui.view().agentAuthAsk, 'sign out of claude');
+    keysOf(ui, 'y');
+    await settled();
+    assert.equal(ui.status, 'sign out in the CLI of the agent');
+    assert.match(accountOf(ui), /^logged in\s+logout\s*$/);
+    keysOf(ui, 'l', 'y');
+    await settled();
+    assert.equal(ui.status, 'signed out of claude');
+    assert.match(accountOf(ui), /^not logged in\s+login\s*$/);
+    ui.nav.agentCursor = 1;
+    keysOf(ui, 'l');
+    assert.equal(ui.status, 'not installed');
+    assert.equal(ui.mode, 'review');
+  } finally {
+    ui.agents.reset();
+    repo.cleanup();
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('an agent that is being asked shows loading, not unknown', async () => {
+  const { dir, env } = fakePath('claude-agent-acp');
+  const { ui, repo } = await openUi();
+  try {
+    ui.stdout.rows = 30;
+    ui.agents.refresh(env);
+    let answer = null;
+    ui.agents.listModels = (row, options) =>
+      new Promise((resolve) => {
+        answer = () => {
+          options.auth.state = 'in';
+          resolve(STATES[row.id]);
+        };
+      });
+    const opening = ui.agents.open();
+    assert.match(accountOf(ui), /^loading…\s*$/);
+    assert.equal(ui.view().agentAccount.loading, true);
+    answer();
+    await opening;
+    assert.match(accountOf(ui), /^logged in\s+logout\s*$/);
+    assert.equal(ui.view().agentAccount.loading, false);
+    // A probe that learns nothing leaves it unknown once it is over
+    ui.agents.reset();
+    ui.agents.refresh(env);
+    ui.agents.listModels = async () => null;
+    await ui.agents.open();
+    assert.match(accountOf(ui), /^unknown\s*$/);
+  } finally {
+    ui.agents.reset();
+    repo.cleanup();
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('the agents are asked default first, a few at a time', async () => {
+  const names = ['claude-agent-acp', 'cursor-agent', 'codex-acp', 'opencode'];
+  const { dir, env } = fakePath(...names);
+  const { ui, repo } = await openUi();
+  try {
+    const order = [];
+    let busy = 0;
+    let most = 0;
+    ui.agents.listModels = async (row, options) => {
+      order.push(row.id);
+      busy += 1;
+      most = Math.max(most, busy);
+      await settled();
+      await settled();
+      busy -= 1;
+      options.auth.state = 'in';
+      return STATES[row.id] ?? null;
+    };
+    ui.agents.refresh(env);
+    const installed = ui.agents.list.filter((row) => row.bin).map((r) => r.id);
+    assert.equal(installed.length, 4);
+    // Not installed agents are never asked, a duplicate call asks nothing
+    const first = ui.agents.loadModels();
+    const again = ui.agents.loadModels();
+    await Promise.all([first, again]);
+    assert.deepEqual(order, installed);
+    assert.ok(most <= 3 && most > 1);
+    assert.equal(ui.agents.accounts.size, 4);
+    // The agent the screen is on goes first
+    ui.agents.reset();
+    ui.agents.refresh(env);
+    order.length = 0;
+    ui.nav.agentCursor = ui.agents.list.findIndex((row) => row.id === 'codex');
+    ui.agents.opened = true;
+    await ui.agents.loadModels();
+    assert.equal(order[0], 'codex');
+    assert.deepEqual([...order].sort(), [...installed].sort());
+    // Without the screen the first installed agent is the default
+    ui.agents.reset();
+    ui.agents.refresh(env);
+    order.length = 0;
+    await ui.agents.loadModels();
+    assert.equal(order[0], installed[0]);
+  } finally {
+    ui.agents.reset();
+    repo.cleanup();
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('settings that do not apply are not shown', async () => {
+  const { dir, env } = fakePath('claude-agent-acp', 'cursor-agent');
+  const { ui, repo } = await openUi();
+  try {
+    ui.stdout.rows = 30;
+    ui.agents.listModels = listed;
+    ui.agents.refresh(env);
+    await ui.agents.open();
+    const shown = () => {
+      ui.draw();
+      const labels = ['model', 'effort', 'fast mode', 'context'];
+      return labels.filter((label) => labelRow(ui.lastFrame.rows, label));
+    };
+    // claude has efforts and a fast mode, no context sizes
+    assert.deepEqual(shown(), ['model', 'effort', 'fast mode']);
+    assert.deepEqual(ui.agents.fieldList(), [
+      'agent',
+      'model',
+      'effort',
+      'fast',
+      'plan',
+      'task',
+    ]);
+    // a model of cursor with one fixed fast mode and no choice of effort
+    ui.nav.agentCursor = AGENTS.findIndex((spec) => spec.id === 'cursor');
+    ui.agents.choice('cursor').model = 'composer-2';
+    assert.deepEqual(shown(), ['model']);
+    assert.deepEqual(ui.agents.fieldList(), ['agent', 'model', 'plan', 'task']);
+    // an agent that has listed nothing offers nothing to set
+    ui.agents.listModels = async () => null;
+    ui.agents.reset();
+    ui.agents.refresh(env);
+    await ui.agents.open();
+    assert.deepEqual(shown(), ['model']);
+    // a missing agent shows no settings at all
+    ui.nav.agentCursor = AGENTS.findIndex((spec) => spec.id === 'codex');
+    assert.deepEqual(shown(), []);
+    assert.deepEqual(ui.agents.fieldList(), [
+      'agent',
+      'install',
+      'plan',
+      'task',
+    ]);
+  } finally {
+    ui.agents.reset();
+    repo.cleanup();
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('status and progress are one row, one spacer follows', async () => {
+  const { dir, env } = fakePath('claude-agent-acp');
+  const { ui, repo } = await openUi();
+  try {
+    const reviewDir = path.join(repo.dir, '.plan');
+    fs.mkdirSync(reviewDir, { recursive: true });
+    const name = '2020-01-01-00.md';
+    const body =
+      '---\nstatus: partial\n---\n\n> a.js\n\n- [x] one\n- [ ] two\n';
+    fs.writeFileSync(path.join(reviewDir, name), body);
+    ui.review.store.reviewPath = '';
+    ui.agents.listModels = listed;
+    ui.agents.refresh(env);
+    await ui.agents.open();
+    ui.agents.planPath = path.join(reviewDir, name);
+    ui.stdout.rows = 30;
+    ui.draw();
+    // The left panel of an 80 column screen
+    const lines = stripAnsi(ui.lastFrame.rows.join('\n'))
+      .split('\n')
+      .map((line) => line.slice(0, 56));
+    const status = lines.findIndex((line) => /^ +Status /.test(line));
+    assert.match(lines[status], /Status +partial +1\/2 +─+/);
+    assert.equal(
+      lines.some((line) => /Progress/.test(line)),
+      false,
+    );
+    assert.match(lines[status - 1], /plan +2020-01-01-00\.md/);
+    assert.equal(lines[status + 1].trim(), '');
+    assert.match(lines[status + 2], /<start new session>/);
+  } finally {
+    ui.agents.reset();
+    repo.cleanup();
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test('the task box moves lines, is clicked, and Escape leaves', async () => {
   const { dir, env } = fakePath('claude-agent-acp');
   const { ui, repo } = await openUi();
@@ -3118,6 +3464,7 @@ test('agent history keeps the launch, output, time, and progress', async () => {
     assert.match(job.command, /claude/);
     assert.match(job.output, /hello from agent/);
     stdout.columns = 160;
+    stdout.rows = 24;
     assert.equal(ui.agents.viewing, true);
     ui.draw();
     const rows = ui.lastFrame.rows.map((row) => stripAnsi(row));
@@ -3346,6 +3693,7 @@ test('continue starts the session selected in the right panel', async () => {
       return { kill() {} };
     };
     stdout.columns = 160;
+    stdout.rows = 30;
     ui.draw();
     const chooser = stripAnsi(ui.lastFrame.rows.join('\n'));
     assert.match(chooser, /<start new session>/);
