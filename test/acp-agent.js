@@ -18,6 +18,13 @@ const PARAMS = {
   ],
 };
 
+const METHOD_NOT_FOUND = -32601;
+
+const missing = (method) => {
+  const error = new Error(`Method not found: ${method}`);
+  return Object.assign(error, { code: METHOD_NOT_FOUND });
+};
+
 const note = (line) => {
   const file = process.env.ACP_AGENT_LOG;
   if (file) fs.appendFileSync(file, `${line}\n`);
@@ -144,6 +151,11 @@ const serve = (scenario) => {
       signedIn = true;
       return {};
     },
+    logout: () => {
+      if (scenario === 'nologout') throw missing('logout');
+      signedIn = false;
+      return {};
+    },
     'session/new': () => opened({ sessionId: 'session-1' }),
     'session/resume': (params) => {
       calls.push(`resume:${params.sessionId}`);
@@ -174,7 +186,7 @@ const serve = (scenario) => {
   const answer = async (message) => {
     const handler = handlers[message.method];
     try {
-      if (!handler) throw new Error(`Method not found: ${message.method}`);
+      if (!handler) throw missing(message.method);
       const result = await handler(message.params ?? {});
       if (result) send({ id: message.id, result });
     } catch (error) {
