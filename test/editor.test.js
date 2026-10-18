@@ -47,6 +47,14 @@ test('insert and backspace at cursor', () => {
   assert.equal(editor.cursor, 1);
 });
 
+test('ctrl-a selects all text in a line editor', () => {
+  const editor = new Editor('hello');
+  editor.place(2);
+  const ui = { status: '', stdout: {} };
+  assert.equal(lineKey(editor, 'ctrl-a', ui, true), 'caret');
+  assert.equal(editor.selectedText(), 'hello');
+});
+
 test('undo and redo restore text and cursor', () => {
   const editor = new Editor('hi');
   editor.insert('!');
