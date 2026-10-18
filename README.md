@@ -58,6 +58,10 @@ Requires Node.js `>=18.15.0`.
 - `reslop -r` read-only mode
 - `reslop t -- <program> [args]` run one program and print a reduced report
 
+While editing a task, `Enter` inserts a newline inside the current task.
+`Esc` saves the task and exits editing. Select a task or a blank draft row and
+press `Enter` to start editing it.
+
 Prefix each program in an npm script with `reslop t --`. Keep `&&` between those wraps, so each program is captured on its own and a failing step does not start the next one:
 
 ```json

@@ -1728,7 +1728,8 @@ test('ctrl+up and ctrl+down reorder tasks and stay inside a file', async () => {
   const { session } = await openSession([sampleItem('a.js')]);
   session.dispatch('tasks');
   session.pushInput('first');
-  session.handleEvent({ type: 'key', key: 'enter' });
+  session.handleEvent({ type: 'key', key: 'escape' });
+  session.composer.tasks.startDraftCompose();
   session.pushInput('second');
   session.handleEvent({ type: 'key', key: 'escape' });
   session.tasksFocus = 0;
@@ -2345,14 +2346,14 @@ test('todo list keeps a blank row to start a new item', async () => {
   assert.equal(session.mode, 'compose');
   assert.equal(session.composeTaskId, null);
   session.pushInput('second note');
-  session.handleEvent({ type: 'key', key: 'enter' });
+  session.handleEvent({ type: 'key', key: 'escape' });
   assert.deepEqual(
     session.view().tasks,
     taskRows(['[ ] first note', '[ ] second note', '[ ] ']),
   );
-  assert.equal(session.mode, 'compose');
-  assert.equal(session.tasksFocus, 2);
-  assert.equal(session.editor.text, '');
+  assert.equal(session.mode, 'review');
+  assert.equal(session.tasksFocus, 1);
+  assert.equal(session.editor, null);
 });
 
 test('enter and click edit the focused todo', async () => {
@@ -2422,6 +2423,138 @@ test('enter and click edit the focused todo', async () => {
   assert.equal(session.editor.text, 'second note');
 });
 
+for (const protocol of ['kitty', 'xterm']) {
+  test(`${protocol} modified Enter keeps one multiline task`, async () => {
+    const { session } = await openSession([sampleItem('a.js')]);
+    const chord = (mod) =>
+      protocol === 'kitty' ? `\x1b[13;${mod}u` : `\x1b[27;${mod};13~`;
+    session.dispatch('tasks');
+    session.pushInput('first');
+    const editor = session.editor;
+    for (const mod of [5, 2, 6]) {
+      const sequence = chord(mod);
+      session.pushInput(sequence.slice(0, -1));
+      session.pushInput(sequence.slice(-1));
+      session.pushInput('next');
+      assert.equal(session.mode, 'compose');
+      assert.equal(session.editor, editor);
+      assert.equal(session.tasksFocus, 0);
+    }
+    assert.equal(editor.text, 'first\nnext\nnext\nnext');
+    session.handleEvent({ type: 'key', key: 'escape' });
+    assert.equal(session.notes.tasks.length, 1);
+    assert.equal(session.notes.tasks[0].text, 'first\nnext\nnext\nnext');
+    assert.equal(session.mode, 'review');
+    assert.equal(session.tasksFocus, 0);
+    assert.equal(session.editor, null);
+  });
+}
+
+test('Return edits a task and Escape saves it without advancing', async () => {
+  const { session } = await openSession([sampleItem('a.js')]);
+  session.dispatch('tasks');
+  session.pushInput('first\rsecond');
+  assert.equal(session.mode, 'compose');
+  assert.equal(session.tasksFocus, 0);
+  assert.equal(session.editor.text, 'first\nsecond');
+  session.handleEvent({ type: 'key', key: 'escape' });
+  session.composer.tasks.startDraftCompose();
+  session.pushInput('another');
+  session.handleEvent({ type: 'key', key: 'escape' });
+  const ids = session.notes.tasks.map((task) => task.id);
+  session.tasksFocus = 0;
+  session.pushInput('\r');
+  const editor = session.editor;
+  editor.place(2);
+  assert.match(session.view().status, /Enter: new line; Esc: save/);
+  session.pushInput('\rA\rB');
+  assert.equal(session.editor, editor);
+  assert.equal(session.editor.text, 'fi\nA\nBrst\nsecond');
+  assert.equal(session.tasksFocus, 0);
+  assert.equal(session.composeTaskId, ids[0]);
+  session.handleEvent({ type: 'key', key: 'escape' });
+  assert.equal(session.mode, 'review');
+  assert.equal(session.tasksFocus, 0);
+  assert.equal(session.editor, null);
+  assert.deepEqual(
+    session.notes.tasks.map((task) => task.id),
+    ids,
+  );
+  const saved = fs.readFileSync(session.notes.reviewPath, 'utf8');
+  assert.deepEqual(
+    parseReview(saved).tasks.map((task) => task.text),
+    ['fi\nA\nBrst\nsecond', 'another'],
+  );
+});
+
+for (const sequence of [
+  '\x1b[13;2u',
+  '\x1b[13;5u',
+  '\x1b[27;2;13~',
+  '\x1b[27;5;13~',
+]) {
+  test(`fragmented ${JSON.stringify(sequence)} stays in the task`, async () => {
+    const { session } = await openSession([sampleItem('a.js')]);
+    session.dispatch('tasks');
+    session.pushInput('beforeafter\x13\r');
+    const editor = session.editor;
+    editor.place(6);
+    for (const byte of sequence) {
+      session.pushInput(byte);
+      assert.equal(session.mode, 'compose');
+      assert.equal(session.editor, editor);
+    }
+    assert.equal(editor.text, 'before\nafter');
+    session.pushInput('\x13');
+    assert.equal(session.notes.tasks.length, 1);
+    assert.equal(session.notes.tasks[0].text, 'before\nafter');
+  });
+}
+
+test('a standalone Escape still saves and leaves the task editor', async () => {
+  const { session } = await openSession([sampleItem('a.js')]);
+  session.dispatch('tasks');
+  session.pushInput('task text\x1b');
+  assert.equal(session.mode, 'compose');
+  await new Promise((resolve) => {
+    setTimeout(resolve, 100);
+  });
+  assert.equal(session.mode, 'review');
+  assert.equal(session.notes.tasks[0].text, 'task text');
+  assert.equal(session.term.carry, '');
+});
+
+for (const [name, shift, ctrl] of [
+  ['kitty', '\x1b[13;2u', '\x1b[13;5u'],
+  ['xterm', '\x1b[27;2;13~', '\x1b[27;5;13~'],
+  ['line feed', '\n', '\n'],
+]) {
+  test(`${name} adds lines inside an existing task`, async () => {
+    const { session } = await openSession([sampleItem('a.js')]);
+    session.dispatch('tasks');
+    session.pushInput('alphaomega\x13');
+    const id = session.notes.tasks[0].id;
+    session.tasksFocus = 0;
+    session.pushInput('\r');
+    const editor = session.editor;
+    editor.place(5);
+    session.pushInput(`${shift}middle`);
+    session.autosave();
+    assert.equal(session.editor, editor);
+    assert.equal(session.mode, 'compose');
+    assert.equal(session.notes.tasks.length, 1);
+    assert.equal(session.notes.tasks[0].id, id);
+    session.pushInput(`${ctrl}tail`);
+    assert.equal(session.editor, editor);
+    assert.equal(session.tasksFocus, 0);
+    session.pushInput('\x13');
+    assert.equal(session.notes.tasks.length, 1);
+    assert.equal(session.notes.tasks[0].text, 'alpha\nmiddle\ntailomega');
+    const saved = fs.readFileSync(session.notes.reviewPath, 'utf8');
+    assert.equal(parseReview(saved).tasks[0].text, 'alpha\nmiddle\ntailomega');
+  });
+}
+
 test('todo list stays on screen while composing', async () => {
   const { session } = await openSession([sampleItem('a.js')]);
   session.dispatch('tasks');
@@ -2485,10 +2618,10 @@ test('empty autosave does not persist a draft todo', async () => {
   session.autosave();
   assert.equal(session.notes.tasks.length, 0);
   session.pushInput('keep this');
-  session.handleEvent({ type: 'key', key: 'enter' });
-  assert.equal(session.mode, 'compose');
-  assert.equal(session.editor.text, '');
-  assert.equal(session.tasksFocus, 1);
+  session.handleEvent({ type: 'key', key: 'escape' });
+  assert.equal(session.mode, 'review');
+  assert.equal(session.editor, null);
+  assert.equal(session.tasksFocus, 0);
   assert.equal(session.notes.tasks[0].text, 'keep this');
   assert.equal(session.current().origin, 'task');
 });
@@ -2506,10 +2639,10 @@ test('todo autosave updates one draft instead of duplicating', async () => {
   session.autosave();
   assert.equal(session.notes.tasks.length, 1);
   assert.equal(session.notes.tasks[0].text, 'keep this more');
-  session.handleEvent({ type: 'key', key: 'enter' });
-  assert.equal(session.mode, 'compose');
-  assert.equal(session.editor.text, '');
-  assert.equal(session.tasksFocus, 1);
+  session.handleEvent({ type: 'key', key: 'escape' });
+  assert.equal(session.mode, 'review');
+  assert.equal(session.editor, null);
+  assert.equal(session.tasksFocus, 0);
   assert.deepEqual(
     session.view().tasks,
     taskRows(['[ ] keep this more', '[ ] ']),
@@ -2533,9 +2666,11 @@ test('home end and page keys jump the todo list', async () => {
   const { session } = await openSession([sampleItem('a.js')]);
   session.dispatch('tasks');
   session.pushInput('one');
-  session.handleEvent({ type: 'key', key: 'enter' });
+  session.handleEvent({ type: 'key', key: 'escape' });
+  session.composer.tasks.startDraftCompose();
   session.pushInput('two');
-  session.handleEvent({ type: 'key', key: 'enter' });
+  session.handleEvent({ type: 'key', key: 'escape' });
+  session.composer.tasks.startDraftCompose();
   session.pushInput('three');
   session.handleEvent({ type: 'key', key: 'escape' });
   assert.equal(session.mode, 'review');
@@ -2554,7 +2689,8 @@ test('todo edit arrows move across todos without leaving edit', async () => {
   const { session } = await openSession([sampleItem('a.js')]);
   session.dispatch('tasks');
   session.pushInput('first');
-  session.handleEvent({ type: 'key', key: 'enter' });
+  session.handleEvent({ type: 'key', key: 'escape' });
+  session.composer.tasks.startDraftCompose();
   session.pushInput('second');
   session.handleEvent({ type: 'key', key: 'up' });
   assert.equal(session.mode, 'compose');
@@ -2586,7 +2722,8 @@ test('todo edit arrows move inside a multiline todo', async () => {
   const { session } = await openSession([sampleItem('a.js')]);
   session.dispatch('tasks');
   session.pushInput('first');
-  session.handleEvent({ type: 'key', key: 'enter' });
+  session.handleEvent({ type: 'key', key: 'escape' });
+  session.composer.tasks.startDraftCompose();
   session.pushInput('second');
   session.handleEvent({ type: 'key', key: 'escape' });
   session.notes.tasks[1].text = 'one\ntwo\nthree';
@@ -2616,7 +2753,8 @@ test('todo list arrows skip over multiline items', async () => {
   const { session } = await openSession([sampleItem('a.js')]);
   session.dispatch('tasks');
   session.pushInput('first');
-  session.handleEvent({ type: 'key', key: 'enter' });
+  session.handleEvent({ type: 'key', key: 'escape' });
+  session.composer.tasks.startDraftCompose();
   session.pushInput('second');
   session.handleEvent({ type: 'key', key: 'escape' });
   session.notes.tasks[1].text = 'one\ntwo\nthree';
@@ -2635,7 +2773,8 @@ test('todo edit arrows move across wrapped lines', async () => {
   const { session } = await openSession([sampleItem('a.js')]);
   session.dispatch('tasks');
   session.pushInput('first');
-  session.handleEvent({ type: 'key', key: 'enter' });
+  session.handleEvent({ type: 'key', key: 'escape' });
+  session.composer.tasks.startDraftCompose();
   session.pushInput('second');
   session.handleEvent({ type: 'key', key: 'escape' });
   const long = 'x'.repeat(90);
@@ -2655,9 +2794,11 @@ test('todo edit page keys jump across todos', async () => {
   const { session } = await openSession([sampleItem('a.js')]);
   session.dispatch('tasks');
   session.pushInput('first');
-  session.handleEvent({ type: 'key', key: 'enter' });
+  session.handleEvent({ type: 'key', key: 'escape' });
+  session.composer.tasks.startDraftCompose();
   session.pushInput('second');
-  session.handleEvent({ type: 'key', key: 'enter' });
+  session.handleEvent({ type: 'key', key: 'escape' });
+  session.composer.tasks.startDraftCompose();
   session.pushInput('third');
   session.handleEvent({ type: 'key', key: 'pageUp' });
   assert.equal(session.mode, 'compose');
@@ -2668,21 +2809,21 @@ test('todo edit page keys jump across todos', async () => {
   assert.equal(session.editor.text, '');
 });
 
-test('enter edits the next todo and escape stays on it', async () => {
+test('enter adds task lines and escape stays on the saved task', async () => {
   const { session } = await openSession([sampleItem('a.js')]);
   session.dispatch('tasks');
   session.pushInput('first');
   session.handleEvent({ type: 'key', key: 'enter' });
   assert.equal(session.mode, 'compose');
-  assert.equal(session.tasksFocus, 1);
-  assert.equal(session.editor.text, '');
+  assert.equal(session.tasksFocus, 0);
+  assert.equal(session.editor.text, 'first\n');
   session.pushInput('second');
   session.handleEvent({ type: 'key', key: 'escape' });
   assert.equal(session.mode, 'review');
-  assert.equal(session.tasksFocus, 1);
+  assert.equal(session.tasksFocus, 0);
   assert.deepEqual(
     session.view().tasks,
-    taskRows(['[ ] first', '[ ] second', '[ ] ']),
+    taskRows(['[ ] first\nsecond', '[ ] ']),
   );
 });
 

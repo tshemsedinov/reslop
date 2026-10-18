@@ -102,6 +102,26 @@ test('decodeChunk maps ctrl-enter and shift-enter', () => {
   assert.equal(f3.key, 'f3');
 });
 
+test('decodeChunk distinguishes legacy Alt+Enter from Return', () => {
+  for (const text of ['\x1b\r', '\x1b\n', '\x1b[13;3u', '\x1b[27;3;13~']) {
+    assert.deepEqual(decodeChunk(text).events, [
+      { type: 'key', key: 'alt-enter' },
+    ]);
+  }
+  assert.equal(decodeChunk('\r').events[0].key, 'enter');
+});
+
+test('decodeChunk keeps shortcuts and typing in xterm modifier mode', () => {
+  const keys = (text) => decodeChunk(text).events.map((event) => event.key);
+  for (const letter of ['a', 'c', 'v', 'x', 's', 'y', 'z']) {
+    const code = letter.charCodeAt(0);
+    assert.deepEqual(keys(`\x1b[27;5;${code}~`), [`ctrl-${letter}`]);
+  }
+  assert.deepEqual(keys('\x1b[27;2;65~\x1b[27;2;33~'), ['A', '!']);
+  assert.deepEqual(keys('\x1b[27;2;9~'), ['shift-tab']);
+  assert.deepEqual(keys('\x1b[27;5;127~'), ['ctrl-backspace']);
+});
+
 test('decodeChunk maps kitty reports of plain keys', () => {
   const keys = (text) => decodeChunk(text).events.map((event) => event.key);
   assert.deepEqual(keys('\x1b[27u'), ['escape']);
