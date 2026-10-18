@@ -25,6 +25,8 @@ test('decodeChunk maps letters and arrows', () => {
   assert.equal(completed.events[0].key, 'up');
   const enter = decodeChunk('\r').events[0];
   assert.equal(enter.key, 'enter');
+  const linefeed = decodeChunk('\n').events[0];
+  assert.equal(linefeed.key, 'ctrl-enter');
   const back = decodeChunk('\x7f').events[0];
   assert.equal(back.key, 'backspace');
   const ctrlBackspace = decodeChunk('\x1b[127;5u').events[0];
@@ -131,6 +133,7 @@ test('decodeChunk maps kitty reports of plain keys', () => {
   assert.deepEqual(keys('\x1b[115;5u'), ['ctrl-s']);
   assert.deepEqual(keys('\x1b[104;5u'), ['backspace']);
   assert.deepEqual(keys('\x1b[127;5u'), ['ctrl-backspace']);
+  assert.deepEqual(keys('\x1b[106;5u'), ['ctrl-enter']);
 });
 
 test('decodeChunk parses SGR mouse press', () => {
