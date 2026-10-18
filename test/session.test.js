@@ -6598,7 +6598,7 @@ test('slash searches paths on the files and diff screens', async () => {
 });
 
 test('the file view reads a file once, not on every frame', async () => {
-  const { FileReads } = require('../lib/session/reads.js');
+  const { FileReads } = require('../lib/session/lifecycle.js');
   let calls = 0;
   const repo = {
     fileText: async (top, rel, rev) => {

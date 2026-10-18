@@ -20,16 +20,13 @@ const dashTable = require('../lib/render/table.js');
 const { cell, flexCell, tableLines } = dashTable;
 const { ago } = require('../lib/common/format.js');
 const { labelOf, pickGroups, titleAside } = dashTable;
-const activity = require('../lib/render/dashboard/activity.js');
-const { runMetrics, branchesBlock, runsBlock, commitsBlock } = activity;
+const dashboardPaint = require('../lib/render/dashboard/dashboard.js');
+const { runMetrics, branchesBlock, runsBlock, commitsBlock } = dashboardPaint;
+const { TILES, paintBodyDashboard } = dashboardPaint;
 const { agentsBlock } = require('../lib/render/agents.js');
 const dashBlocks = require('../lib/render/dashboard/blocks.js');
 const { filesBlock, diffsBlock, npmBlock, npmContent, tasksBlock } = dashBlocks;
-const { paintBodyPackages } = require('../lib/render/packages.js');
-const {
-  TILES,
-  paintBodyDashboard,
-} = require('../lib/render/dashboard/dashboard.js');
+const { paintBodyPackages } = require('../lib/render/npm.js');
 const dashboardSession = require('../lib/session/dashboard.js');
 const { Dashboard, classify, ageDelay } = dashboardSession;
 const { UNKNOWN_PATH } = require('../lib/dashboard/watch.js');

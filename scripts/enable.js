@@ -128,8 +128,16 @@ if (check.error) {
   process.exit(1);
 }
 
-const pathStep = IS_WIN
-  ? ['Ready. Add this directory to PATH if needed:', '', `  ${destDir}`]
-  : ['Ready. Apply in this terminal:', '', '  source ~/.bashrc.d/reslop.sh'];
+const WIN_STEP = [
+  'Ready. Add this directory to PATH if needed:',
+  '',
+  `  ${destDir}`,
+];
+const SHELL_STEP = [
+  'Ready. Apply in this terminal:',
+  '',
+  '  source ~/.bashrc.d/reslop.sh',
+];
+const pathStep = IS_WIN ? WIN_STEP : SHELL_STEP;
 const ready = ['', ...pathStep, '', 'Then run reslop from any git repository.'];
 console.log([...ready, ''].join('\n'));

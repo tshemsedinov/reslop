@@ -5,7 +5,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 
-const dir = require('../lib/git/dir.js');
+const dir = require('../lib/git/local.js');
 const linked = require('../lib/git/linked.js');
 const { parseWorktrees, listWorktrees, addWorktree } = linked;
 const { removeWorktree, isDirty, dirKey } = linked;

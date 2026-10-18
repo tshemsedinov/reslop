@@ -5,7 +5,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 
-const reports = require('../lib/dashboard/reports.js');
+const reports = require('../lib/dashboard/npm.js');
 const { remembered, reportCounts, forgetReports } = reports;
 const {
   makeRepo,

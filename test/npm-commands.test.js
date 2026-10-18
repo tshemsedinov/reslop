@@ -5,7 +5,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 
-const npm = require('../lib/runs/commands.js');
+const npm = require('../lib/runs/process.js');
 const { stripAnsi } = require('../lib/term/ansi.js');
 const { tempDir } = require('./helpers.js');
 
@@ -25,8 +25,7 @@ const {
   staleLogFiles,
   removeStaleLogs,
 } = require('../lib/runs/logs.js');
-const { commandEnv } = require('../lib/runs/process.js');
-const { startNpm } = npm;
+const { startNpm, commandEnv } = npm;
 const { elapsedText } = require('../lib/session/npm/history.js');
 
 test('only running commands use the current time for their duration', () => {

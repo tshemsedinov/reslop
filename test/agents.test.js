@@ -27,8 +27,8 @@ const render = require('../lib/render/render.js');
 const { renderFrame } = render;
 const ansi = require('../lib/term/ansi.js');
 const { stripAnsi, THEME, bg, RESET, seq } = ansi;
-const jobs = require('../lib/session/agents/jobs.js');
-const { launchJob } = jobs;
+const AgentJobs = require('../lib/session/agents/job.js');
+const { AgentJob } = AgentJobs;
 const clipboard = require('../lib/term/clipboard.js');
 const { setImmediate: settle } = require('node:timers/promises');
 
@@ -187,12 +187,9 @@ test('detectAgents finds the acp command of every agent', () => {
 });
 
 test('the official Antigravity server uses its registry command', () => {
-  const server =
-    process.platform === 'win32' ? 'agy_acp_server.exe' : 'agy_acp_server.par';
-  const helper =
-    process.platform === 'win32'
-      ? 'localharness_external.exe'
-      : 'localharness_external';
+  const exe = process.platform === 'win32' ? '.exe' : '';
+  const server = exe ? 'agy_acp_server.exe' : 'agy_acp_server.par';
+  const helper = `localharness_external${exe}`;
   const { dir, bins, env } = fakePath(server);
   const helperBin = makeBin(dir, helper);
   try {
@@ -563,7 +560,7 @@ test('an effort a model lacks moves to the nearest it offers', () => {
 
 test('a finished run reports its session, files and tokens', () => {
   const launch = buildLaunch(rowOf(specOf('claude')), {}, '/tmp/plan.md');
-  const job = launchJob(1, launch, 'sonnet');
+  const job = AgentJob.launch(1, launch, 'sonnet');
   assert.equal(job.status, 'running');
   job.child = { stats: () => ({ session: 'live-1', files: null }) };
   assert.equal(job.record().session, 'live-1');
@@ -577,12 +574,12 @@ test('a finished run reports its session, files and tokens', () => {
   assert.equal(job.tokens, 1234);
   assert.deepEqual(saved.choice, launch.choice);
   assert.equal(saved.cmd, undefined);
-  const failed = launchJob(2, launch, '');
+  const failed = AgentJob.launch(2, launch, '');
   failed.finish({ status: 1, text: '' });
   assert.equal(failed.status, 'exit 1');
-  const continued = launchJob(3, { ...launch, session: 'old-1' }, '');
+  const continued = AgentJob.launch(3, { ...launch, session: 'old-1' }, '');
   assert.equal(continued.record().resume, 'old-1');
-  const restored = jobs.restoreJobs([
+  const restored = AgentJobs.restoreJobs([
     { id: 5, cliId: 'claude', model: 'opus', exit: 0 },
     { id: 6, cliId: 'cursor', action: 'login', exit: 0 },
   ]);
