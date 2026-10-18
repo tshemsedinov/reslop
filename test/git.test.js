@@ -764,7 +764,7 @@ for (const method of ['rebaseBranch']) {
 }
 
 for (const method of ['rebaseBranch']) {
-  test(`${method} aborts a conflicting rebase`, async () => {
+  test(`${method} merges a conflicting rebase`, async () => {
     const repo = makeRepo();
     try {
       repo.write('f.txt', 'base\n');
@@ -778,6 +778,30 @@ for (const method of ['rebaseBranch']) {
       repo.write('f.txt', 'main\n');
       repo.git(['add', 'f.txt']);
       repo.git(['commit', '-m', 'on-main']);
+      await checkoutBranch(repo.dir, 'feat');
+      await git[method](repo.dir, 'main');
+      assert.equal(await currentBranch(repo.dir), 'feat');
+      assert.equal(repo.read('f.txt'), 'main\nfeat\n');
+    } finally {
+      repo.cleanup();
+    }
+  });
+}
+
+for (const method of ['rebaseBranch']) {
+  test(`${method} aborts when a conflict has no merge markers`, async () => {
+    const repo = makeRepo();
+    try {
+      repo.write('f.txt', 'base\n');
+      repo.git(['add', 'f.txt']);
+      repo.git(['commit', '-m', 'init']);
+      await createBranch(repo.dir, 'feat');
+      repo.write('f.txt', 'feat\n');
+      repo.git(['add', 'f.txt']);
+      repo.git(['commit', '-m', 'feat']);
+      await checkoutBranch(repo.dir, 'main');
+      repo.git(['rm', 'f.txt']);
+      repo.git(['commit', '-m', 'remove']);
       await checkoutBranch(repo.dir, 'feat');
       await assert.rejects(async () => git[method](repo.dir, 'main'));
       assert.equal(await currentBranch(repo.dir), 'feat');
