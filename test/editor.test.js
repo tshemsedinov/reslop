@@ -79,7 +79,7 @@ test('ctrl-enter and shift-enter insert a newline in input boxes', () => {
 });
 
 test('ctrl-enter and shift-enter insert a newline in every editor', () => {
-  const chords = ['ctrl-enter', 'shift-enter', 'ctrl-shift-enter'];
+  const chords = ['ctrl-enter', 'shift-enter', 'ctrl-shift-enter', 'alt-enter'];
   for (const kind of EDIT_KINDS) {
     for (const key of chords) {
       const composer = composeOf(kind);
@@ -90,12 +90,15 @@ test('ctrl-enter and shift-enter insert a newline in every editor', () => {
   }
 });
 
-test('modified enter keeps a task editor open', () => {
+test('enter inserts a newline at the task cursor and keeps editing', () => {
   const composer = composeOf('tasks');
-  composer.handleKey('ctrl-enter');
-  composer.handleKey('shift-enter');
+  const editor = composer.editor;
+  composer.handleKey('enter');
+  composer.handleKey('enter');
+  assert.equal(composer.editor, editor);
   assert.equal(composer.composeKind, 'tasks');
   assert.equal(composer.editor.text, 'a\n\nb');
+  assert.equal(composer.editor.cursor, 3);
 });
 
 test('newline and line movement', () => {
