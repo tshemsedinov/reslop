@@ -812,6 +812,106 @@ for (const method of ['rebaseBranch']) {
   });
 }
 
+const conflictingRepo = async () => {
+  const repo = makeRepo();
+  repo.write('f.txt', 'base\n');
+  repo.git(['add', 'f.txt']);
+  repo.git(['commit', '-m', 'init']);
+  await createBranch(repo.dir, 'feat');
+  repo.write('f.txt', 'feat\n');
+  repo.git(['add', 'f.txt']);
+  repo.git(['commit', '-m', 'feat']);
+  await checkoutBranch(repo.dir, 'main');
+  repo.write('f.txt', 'main\n');
+  repo.git(['add', 'f.txt']);
+  repo.git(['commit', '-m', 'on-main']);
+  await checkoutBranch(repo.dir, 'feat');
+  return repo;
+};
+
+test('rebaseBranch rolls back when writing a resolution fails', async (t) => {
+  const repo = await conflictingRepo();
+  try {
+    const head = repo.git(['rev-parse', 'HEAD']);
+    const write = fs.promises.writeFile;
+    t.mock.method(fs.promises, 'writeFile', (file, ...args) => {
+      if (file === path.join(repo.dir, 'f.txt')) {
+        return Promise.reject(new Error('resolution write failed'));
+      }
+      return write(file, ...args);
+    });
+    await assert.rejects(git.rebaseBranch(repo.dir, 'main'), /write failed/);
+    assert.equal(repo.git(['rev-parse', 'HEAD']), head);
+    assert.equal(await currentBranch(repo.dir), 'feat');
+    assert.equal(repo.read('f.txt'), 'feat\n');
+    assert.equal(repo.git(['status', '--porcelain']), '');
+    assert.equal(repo.exists('.git/rebase-merge'), false);
+  } finally {
+    repo.cleanup();
+  }
+});
+
+test('rebaseBranch preserves an existing rebase and resolution', async () => {
+  const repo = await conflictingRepo();
+  try {
+    assert.throws(() => repo.git(['rebase', 'main']));
+    const head = repo.git(['rev-parse', 'HEAD']);
+    repo.write('f.txt', 'manual resolution\n');
+    repo.git(['add', 'f.txt']);
+    await assert.rejects(
+      git.rebaseBranch(repo.dir, 'main'),
+      /already in progress/,
+    );
+    assert.equal(repo.git(['rev-parse', 'HEAD']), head);
+    assert.equal(repo.read('f.txt'), 'manual resolution\n');
+    assert.equal(repo.exists('.git/rebase-merge'), true);
+    assert.match(repo.git(['diff', '--cached']), /manual resolution/);
+  } finally {
+    repo.cleanup();
+  }
+});
+
+test('rebaseBranch rolls back if a later conflict cannot merge', async () => {
+  const repo = await conflictingRepo();
+  try {
+    repo.write('f.txt', 'feat\0binary\n');
+    repo.git(['add', 'f.txt']);
+    repo.git(['commit', '-m', 'binary change']);
+    const head = repo.git(['rev-parse', 'HEAD']);
+    await assert.rejects(git.rebaseBranch(repo.dir, 'main'));
+    assert.equal(repo.git(['rev-parse', 'HEAD']), head);
+    assert.equal(repo.read('f.txt'), 'feat\0binary\n');
+    assert.equal(await currentBranch(repo.dir), 'feat');
+    assert.equal(repo.git(['status', '--porcelain']), '');
+    assert.equal(repo.exists('.git/rebase-merge'), false);
+  } finally {
+    repo.cleanup();
+  }
+});
+
+test('rebaseBranch rejects conflict markers inside binary files', async () => {
+  const repo = await conflictingRepo();
+  try {
+    repo.write('f.txt', '\0\nfeature data\n');
+    repo.git(['add', 'f.txt']);
+    repo.git(['commit', '-m', 'binary feature']);
+    const head = repo.git(['rev-parse', 'HEAD']);
+    await checkoutBranch(repo.dir, 'main');
+    const markers = '\0\n<<<<<<< HEAD\nleft\n=======\nright\n>>>>>>> end\n';
+    repo.write('f.txt', markers);
+    repo.git(['add', 'f.txt']);
+    repo.git(['commit', '-m', 'binary main']);
+    await checkoutBranch(repo.dir, 'feat');
+    await assert.rejects(git.rebaseBranch(repo.dir, 'main'));
+    assert.equal(repo.git(['rev-parse', 'HEAD']), head);
+    assert.equal(repo.read('f.txt'), '\0\nfeature data\n');
+    assert.equal(repo.git(['status', '--porcelain']), '');
+    assert.equal(repo.exists('.git/rebase-merge'), false);
+  } finally {
+    repo.cleanup();
+  }
+});
+
 test('listCommits is newest first with author date and hash', async () => {
   const repo = makeRepo();
   try {

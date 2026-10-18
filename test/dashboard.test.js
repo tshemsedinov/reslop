@@ -2259,19 +2259,18 @@ test('agent status sits in the table and the header totals sessions', () => {
     },
   };
   const text = (line) => line.map((part) => part.text).join('');
-  // The parts of one agent: from its bubble up to its name
+  // The parts of one agent: its bubble, name, and optional session count
   const entryOf = (block, name) => {
     for (const line of block.lines) {
       const at = line.findIndex((part) => part.text === name);
       if (at < 0) continue;
       const before = line.slice(0, at + 1);
       const start = before.findLastIndex((part) => part.text === '●');
-      return before.slice(start);
+      return line.slice(start, at + 2);
     }
     return null;
   };
-  const tones = ['key', 'add', 'sha', 'warn'];
-  for (let frame = 0; frame < tones.length; frame++) {
+  for (let frame = 0; frame < 4; frame++) {
     const block = agentsBlock(model, 40, 4, { now: 1, frame }, tile);
     const header = text(block.titleLine);
     assert.equal(header.startsWith('agents'), true);
@@ -2282,15 +2281,17 @@ test('agent status sits in the table and the header totals sessions', () => {
     assert.equal(total.tone, 'key');
     assert.equal(total.bold, true);
     const claude = entryOf(block, 'claude');
-    assert.equal(claude[0].tone, tones[frame]);
-    const sessions = claude.find((part) => part.text === ' 2');
-    assert.equal(sessions.tone, 'key');
+    const lit = frame % 2 === 0;
+    assert.equal(claude[0].tone, lit ? 'add' : 'muted');
+    const name = claude.find((part) => part.text === 'claude');
+    assert.equal(name.tone, lit ? 'sha' : 'muted');
+    const sessions = claude.find((part) => part.text === ' (2)');
+    assert.equal(sessions.tone, lit ? 'add' : 'muted');
     assert.equal(sessions.bold, true);
-    const gapBefore = (entry) => entry[entry.length - 2].text;
-    assert.equal(gapBefore(claude), ' ');
+    assert.equal(text(claude), '● claude (2)');
     const cursor = entryOf(block, 'cursor');
     assert.equal(cursor[0].tone, 'muted');
-    assert.equal(gapBefore(cursor), ' ');
+    assert.equal(cursor.find((part) => part.text === 'cursor').tone, 'muted');
     assert.equal(text(cursor).includes('0'), false);
     const shown = text(block.lines[0]);
     assert.equal(shown.includes('sonnet'), false);

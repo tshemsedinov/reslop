@@ -477,6 +477,26 @@ test('a transcript turns session updates into the log text', () => {
   assert.equal(new Transcript().text(), '');
 });
 
+test('thoughts omit leading blank lines and keep internal spacing', () => {
+  const transcript = new Transcript();
+  const thought = (text) =>
+    transcript.update({
+      sessionUpdate: 'agent_thought_chunk',
+      content: { type: 'text', text },
+    });
+  transcript.write('text', 'Starting');
+  thought('\n');
+  thought(' \t\r\n');
+  assert.equal(transcript.text(), 'Starting\n');
+  thought('  first\n\nsecond\n\n');
+  assert.equal(transcript.text(), 'Starting\n\n│   first\n│ \n│ second\n');
+  transcript.write('text', 'Done');
+  assert.equal(
+    transcript.text(),
+    'Starting\n\n│   first\n│ \n│ second\n\nDone\n',
+  );
+});
+
 test('a tool title shows a windows path with slashes', () => {
   const transcript = new Transcript('C:\\work\\repo');
   transcript.update({
