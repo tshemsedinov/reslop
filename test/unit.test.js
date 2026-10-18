@@ -5,7 +5,7 @@ const assert = require('node:assert/strict');
 
 const diff = require('../lib/diff/diff.js');
 const { unitLines, blockLineIndex, blockLineRange, fileOffset } = diff;
-const { itemsForPath, mergeEditRows, splitFile } = diff;
+const { itemsForPath, mergeEditRows } = diff;
 
 const item = (blockId, lines, newStart = 1) => ({
   origin: 'unstaged',
@@ -66,12 +66,12 @@ test('mergeEditRows keeps dels and turns inserts into ctx', () => {
     { type: 'add', text: 'new', noNl: false, blockId: 0 },
   ]);
   const base = unitLines('new\ntail\n', [hunk]);
-  const inserted = mergeEditRows(base, splitFile('new\nextra\ntail\n'));
+  const inserted = mergeEditRows(base, 'new\nextra\ntail');
   const types = inserted.map((line) => `${line.type}:${line.text}`);
   assert.deepEqual(types, ['del:old', 'add:new', 'ctx:extra', 'ctx:tail']);
   assert.equal(inserted[0].editStart, undefined);
   assert.equal(inserted[1].editStart, 0);
-  const edited = mergeEditRows(base, splitFile('NEW\ntail\n'));
+  const edited = mergeEditRows(base, 'NEW\ntail');
   assert.equal(edited[1].type, 'add');
   assert.equal(edited[1].text, 'NEW');
   assert.equal(edited[0].type, 'del');
@@ -83,8 +83,7 @@ test('mergeEditRows keeps a trailing empty editor line', () => {
     { type: 'add', text: 'new', noNl: false, blockId: 0 },
   ]);
   const base = unitLines('new\n', [hunk]);
-  const { splitEditor } = diff;
-  const merged = mergeEditRows(base, splitEditor('new\n'));
+  const merged = mergeEditRows(base, 'new\n');
   const types = merged.map((line) => `${line.type}:${line.text}`);
   assert.deepEqual(types, ['del:old', 'add:new', 'ctx:']);
   const last = merged[merged.length - 1];

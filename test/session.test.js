@@ -2182,17 +2182,21 @@ test('a standalone Escape still saves and leaves the task editor', async () => {
   assert.equal(session.term.carry, '');
 });
 
-test('one standalone Escape ends the read loop on the file list', async () => {
+test('one standalone Escape ends the read loop on the file list', async (t) => {
   const stdin = new EventEmitter();
   const { session } = await openSession([sampleItem('a.js')], {
     startPane: 'files',
     stdin,
   });
   const ended = session.readLoop();
+  t.after(() => session.finishInput());
   stdin.emit('data', Buffer.from('\x1b'));
+  assert.equal(session.term.timers.get('input-escape').hasRef(), true);
   await ended;
   assert.equal(session.done, true);
   assert.equal(session.finishReadLoop, null);
+  assert.equal(stdin.listenerCount('data'), 0);
+  assert.equal(session.term.timers.size, 0);
 });
 
 for (const [name, shift, ctrl] of [

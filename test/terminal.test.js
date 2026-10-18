@@ -241,12 +241,24 @@ test('later runs once and can be scheduled again', async () => {
   let runs = 0;
   term.later('save', () => (runs += 1), 5);
   term.later('save', () => (runs += 10), 5);
+  assert.equal(term.timers.get('save').hasRef(), false);
   await sleep(30);
   assert.equal(runs, 1);
   assert.equal(term.timers.has('save'), false);
   term.later('save', () => (runs += 1), 5);
   await sleep(30);
   assert.equal(runs, 2);
+  await term.close();
+});
+
+test('later can keep pending input alive until it runs', async () => {
+  const { term } = openTerm();
+  const completed = new Promise((resolve) => {
+    term.later('input-escape', resolve, 5, { ref: true });
+  });
+  assert.equal(term.timers.get('input-escape').hasRef(), true);
+  await completed;
+  assert.equal(term.timers.has('input-escape'), false);
   await term.close();
 });
 
