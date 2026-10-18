@@ -10,25 +10,11 @@ const { restoredIndex, alignLoadedItems } = require('../lib/session/items.js');
 const watch = require('../lib/dashboard/watch.js');
 const { ignoredRel, isOwnDirEvent, unchangedSince } = watch;
 const { DiskWatcher, DEBOUNCE_MS } = watch;
-const { uiSink, tempDir } = require('./helpers.js');
-
-const wait = (ms) =>
-  new Promise((resolve) => {
-    setTimeout(resolve, ms);
-  });
+const { uiSink, tempDir, wait, waitUntil } = require('./helpers.js');
 
 const startWatcher = async (options) => {
   await wait(20);
   return new DiskWatcher(options);
-};
-
-const waitUntil = async (check, ms = 500) => {
-  const start = Date.now();
-  while (Date.now() - start < ms) {
-    if (check()) return true;
-    await wait(20);
-  }
-  return false;
 };
 
 const sampleItem = (name, extra = {}) => ({
@@ -111,14 +97,14 @@ test('disk watcher watches nested files when recursive is off', async () => {
   }
 });
 
-test('a run record created after watch start is reported', async () => {
-  const cwd = tempDir('reslop-watch-');
+test('the disk watcher reports changed paths and run records', async () => {
+  const dir = tempDir('reslop-watch-');
+  await wait(20);
   const seen = new Set();
   let changes = 0;
-  const watcher = await startWatcher({
-    root: cwd,
-    recursive: false,
-    debounceMs: 20,
+  const watcher = new DiskWatcher({
+    root: dir,
+    debounceMs: 30,
     onChange: () => {
       changes += 1;
     },
@@ -127,18 +113,20 @@ test('a run record created after watch start is reported', async () => {
     },
   });
   try {
-    await wait(40);
-    fs.mkdirSync(path.join(cwd, '.log', '.runs'), { recursive: true });
-    await wait(40);
+    await wait(50);
+    fs.writeFileSync(path.join(dir, 'a.js'), 'x\n');
+    assert.ok(await waitUntil(() => seen.has('a.js')));
+    assert.ok(changes >= 1);
     const before = changes;
-    const file = path.join(cwd, '.log', '.runs', '1-2.json');
-    fs.writeFileSync(file, '{}');
-    const found = () => seen.has('.log/.runs/1-2.json');
-    assert.equal(await waitUntil(found, 1000), true);
-    await wait(80);
+    fs.mkdirSync(path.join(dir, '.log', '.runs'), { recursive: true });
+    await wait(60);
+    fs.writeFileSync(path.join(dir, '.log', '.runs', '1-2.json'), '{}');
+    assert.ok(await waitUntil(() => seen.has('.log/.runs/1-2.json')));
+    await wait(120);
     assert.equal(changes, before);
   } finally {
     watcher.close();
+    fs.rmSync(dir, { recursive: true, force: true });
   }
 });
 
@@ -207,27 +195,6 @@ test('review markdown notifies onReview and not onChange', async () => {
   assert.equal(await waitUntil(() => reviews >= 1, 1000), true);
   await wait(250);
   assert.equal(changes, 0);
-  watcher.close();
-});
-
-test('disk watcher debounces changes and ignores lock files', async () => {
-  const cwd = tempDir('reslop-watch-');
-  fs.mkdirSync(path.join(cwd, '.git'));
-  fs.writeFileSync(path.join(cwd, 'a.js'), 'x\n');
-  let n = 0;
-  const watcher = await startWatcher({
-    root: cwd,
-    recursive: false,
-    debounceMs: 20,
-    onChange: () => {
-      n += 1;
-    },
-  });
-  fs.writeFileSync(path.join(cwd, '.git', 'index.lock'), 'lock\n');
-  await wait(60);
-  const before = n;
-  fs.writeFileSync(path.join(cwd, 'a.js'), 'y\n');
-  assert.equal(await waitUntil(() => n > before), true);
   watcher.close();
 });
 

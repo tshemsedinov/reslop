@@ -13,95 +13,62 @@ const { COMMITS_DISABLED, UNIT_DISABLED } = actions;
 const { actionFromKey, disabledActions, DASH_IDS } = actions;
 const { layoutButtons } = require('../lib/render/render.js');
 
-test('decodeChunk maps letters and arrows', () => {
+const KEY_SEQUENCES = [
+  ['\x1b[A', 'up'],
+  ['\r', 'enter'],
+  ['\n', 'ctrl-enter'],
+  ['\x7f', 'backspace'],
+  ['\x1b[127;5u', 'ctrl-backspace'],
+  ['\t', 'tab'],
+  ['\x1b[Z', 'shift-tab'],
+  ['\x13', 'ctrl-s'],
+  ['\x1a', 'ctrl-z'],
+  ['\x05', 'ctrl-e'],
+  ['\x06', 'ctrl-f'],
+  ['\x1bOP', 'f1'],
+  ['\x1b[15~', 'f5'],
+  ['\x1b[24~', 'f12'],
+  ['\x1b[2~', 'insert'],
+  ['\x1b[3~', 'delete'],
+  ['\x1b[5~', 'pageUp'],
+  ['\x1b[6~', 'pageDown'],
+  ['\x1b[H', 'home'],
+  ['\x1b[F', 'end'],
+  ['\x1b[1~', 'home'],
+  ['\x1bOH', 'home'],
+  ['\x1b[1;5D', 'ctrl-left'],
+  ['\x1b[1;5C', 'ctrl-right'],
+  ['\x1b[1;5A', 'ctrl-up'],
+  ['\x1b[1;5B', 'ctrl-down'],
+  ['\x1b[1;2D', 'shift-left'],
+  ['\x1b[1;2C', 'shift-right'],
+  ['\x1b[1;6D', 'ctrl-shift-left'],
+  ['\x1b[1;2H', 'shift-home'],
+  ['\x1b[1;2F', 'shift-end'],
+  ['\x1b[13;2u', 'shift-enter'],
+  ['\x1b[13;5u', 'ctrl-enter'],
+  ['\x1b[13;6u', 'ctrl-shift-enter'],
+  ['\x1b[13u', 'enter'],
+  ['\x1b[27;2;13~', 'shift-enter'],
+  ['\x1b[27;5;13~', 'ctrl-enter'],
+  ['\x1b[27;6;13~', 'ctrl-shift-enter'],
+  ['\x1b[13~', 'f3'],
+];
+
+test('decodeChunk maps letters, control codes, and escape sequences', () => {
   const keys = decodeChunk('ar').events.map((event) => event.key);
   assert.deepEqual(keys, ['a', 'r']);
-  const up = decodeChunk('\x1b[A').events[0];
-  assert.equal(up.key, 'up');
+  for (const [text, key] of KEY_SEQUENCES) {
+    assert.deepEqual(decodeChunk(text).events, [{ type: 'key', key }], key);
+  }
+});
+
+test('decodeChunk carries a split sequence to the next chunk', () => {
   const pending = decodeChunk('\x1b');
   assert.equal(pending.events.length, 0);
   assert.equal(pending.carry, '\x1b');
   const completed = decodeChunk('[A', pending.carry);
   assert.equal(completed.events[0].key, 'up');
-  const enter = decodeChunk('\r').events[0];
-  assert.equal(enter.key, 'enter');
-  const linefeed = decodeChunk('\n').events[0];
-  assert.equal(linefeed.key, 'ctrl-enter');
-  const back = decodeChunk('\x7f').events[0];
-  assert.equal(back.key, 'backspace');
-  const ctrlBackspace = decodeChunk('\x1b[127;5u').events[0];
-  assert.equal(ctrlBackspace.key, 'ctrl-backspace');
-  const tab = decodeChunk('\t').events[0];
-  assert.equal(tab.key, 'tab');
-  const backTab = decodeChunk('\x1b[Z').events[0];
-  assert.equal(backTab.key, 'shift-tab');
-  const save = decodeChunk('\x13').events[0];
-  assert.equal(save.key, 'ctrl-s');
-  const undo = decodeChunk('\x1a').events[0];
-  assert.equal(undo.key, 'ctrl-z');
-  const scrollDown = decodeChunk('\x05').events[0];
-  assert.equal(scrollDown.key, 'ctrl-e');
-  const pageDown = decodeChunk('\x06').events[0];
-  assert.equal(pageDown.key, 'ctrl-f');
-  const f1 = decodeChunk('\x1bOP').events[0];
-  assert.equal(f1.key, 'f1');
-  const f5 = decodeChunk('\x1b[15~').events[0];
-  assert.equal(f5.key, 'f5');
-  const f12 = decodeChunk('\x1b[24~').events[0];
-  assert.equal(f12.key, 'f12');
-  const ins = decodeChunk('\x1b[2~').events[0];
-  assert.equal(ins.key, 'insert');
-  const del = decodeChunk('\x1b[3~').events[0];
-  assert.equal(del.key, 'delete');
-  const pgUp = decodeChunk('\x1b[5~').events[0];
-  assert.equal(pgUp.key, 'pageUp');
-  const pgDown = decodeChunk('\x1b[6~').events[0];
-  assert.equal(pgDown.key, 'pageDown');
-  const home = decodeChunk('\x1b[H').events[0];
-  assert.equal(home.key, 'home');
-  const end = decodeChunk('\x1b[F').events[0];
-  assert.equal(end.key, 'end');
-  const homeTilde = decodeChunk('\x1b[1~').events[0];
-  assert.equal(homeTilde.key, 'home');
-  const ss3Home = decodeChunk('\x1bOH').events[0];
-  assert.equal(ss3Home.key, 'home');
-  const ctrlLeft = decodeChunk('\x1b[1;5D').events[0];
-  assert.equal(ctrlLeft.key, 'ctrl-left');
-  const ctrlRight = decodeChunk('\x1b[1;5C').events[0];
-  assert.equal(ctrlRight.key, 'ctrl-right');
-  const ctrlUp = decodeChunk('\x1b[1;5A').events[0];
-  assert.equal(ctrlUp.key, 'ctrl-up');
-  const ctrlDown = decodeChunk('\x1b[1;5B').events[0];
-  assert.equal(ctrlDown.key, 'ctrl-down');
-  const shiftLeft = decodeChunk('\x1b[1;2D').events[0];
-  assert.equal(shiftLeft.key, 'shift-left');
-  const shiftRight = decodeChunk('\x1b[1;2C').events[0];
-  assert.equal(shiftRight.key, 'shift-right');
-  const word = decodeChunk('\x1b[1;6D').events[0];
-  assert.equal(word.key, 'ctrl-shift-left');
-  const shiftHome = decodeChunk('\x1b[1;2H').events[0];
-  assert.equal(shiftHome.key, 'shift-home');
-  const shiftEnd = decodeChunk('\x1b[1;2F').events[0];
-  assert.equal(shiftEnd.key, 'shift-end');
-});
-
-test('decodeChunk maps ctrl-enter and shift-enter', () => {
-  const shift = decodeChunk('\x1b[13;2u').events[0];
-  assert.equal(shift.key, 'shift-enter');
-  const ctrl = decodeChunk('\x1b[13;5u').events[0];
-  assert.equal(ctrl.key, 'ctrl-enter');
-  const both = decodeChunk('\x1b[13;6u').events[0];
-  assert.equal(both.key, 'ctrl-shift-enter');
-  const plain = decodeChunk('\x1b[13u').events[0];
-  assert.equal(plain.key, 'enter');
-  const xtermShift = decodeChunk('\x1b[27;2;13~').events[0];
-  assert.equal(xtermShift.key, 'shift-enter');
-  const xtermCtrl = decodeChunk('\x1b[27;5;13~').events[0];
-  assert.equal(xtermCtrl.key, 'ctrl-enter');
-  const xtermBoth = decodeChunk('\x1b[27;6;13~').events[0];
-  assert.equal(xtermBoth.key, 'ctrl-shift-enter');
-  const f3 = decodeChunk('\x1b[13~').events[0];
-  assert.equal(f3.key, 'f3');
 });
 
 test('decodeChunk distinguishes legacy Alt+Enter from Return', () => {
@@ -132,7 +99,6 @@ test('decodeChunk maps kitty reports of plain keys', () => {
   assert.deepEqual(keys('\x1b[99;5u'), ['ctrl-c']);
   assert.deepEqual(keys('\x1b[115;5u'), ['ctrl-s']);
   assert.deepEqual(keys('\x1b[104;5u'), ['backspace']);
-  assert.deepEqual(keys('\x1b[127;5u'), ['ctrl-backspace']);
   assert.deepEqual(keys('\x1b[106;5u'), ['ctrl-enter']);
 });
 
@@ -163,150 +129,159 @@ test('decodeChunk reports mouse motion without a pressed button', () => {
   assert.equal(shifted.kind, 'move');
 });
 
+// [key, pane, action]; undefined is the pane of the default bindings
+const KEY_ACTIONS = [
+  ['ctrl-c', undefined, null],
+  ['right', undefined, 'next'],
+  ['j', undefined, 'next'],
+  ['left', undefined, 'prev'],
+  ['k', undefined, 'prev'],
+  ['up', undefined, 'scrollUp'],
+  ['down', undefined, 'scrollDown'],
+  ['ctrl-y', undefined, 'scrollUp'],
+  ['ctrl-e', undefined, 'scrollDown'],
+  ['ctrl-b', undefined, 'pageUp'],
+  ['ctrl-f', undefined, 'pageDown'],
+  ['pageUp', undefined, 'pageUp'],
+  ['pageDown', undefined, 'pageDown'],
+  ['home', undefined, 'home'],
+  ['end', undefined, 'end'],
+  ['ctrl-u', undefined, 'halfUp'],
+  ['ctrl-d', undefined, 'halfDown'],
+  ['enter', undefined, 'open'],
+  ['e', undefined, 'code'],
+  ['d', undefined, 'revert'],
+  ['c', undefined, 'commit'],
+  ['l', undefined, 'theme'],
+  ['x', undefined, null],
+  [' ', undefined, 'check'],
+  ['g', undefined, null],
+  ['r', undefined, null],
+  ['backspace', undefined, 'removeTask'],
+  ['delete', undefined, 'removeTask'],
+  ['s', undefined, null],
+  ['h', undefined, null],
+  ['?', undefined, null],
+  ['v', undefined, null],
+  ['p', undefined, 'prev'],
+  ['u', undefined, 'unstage'],
+  ['b', undefined, null],
+  ['b', 'files', 'dashBranches'],
+  ['p', 'files', 'prev'],
+  ['u', 'files', 'unstage'],
+  ['u', 'unit', 'unstage'],
+  ['f', 'files', 'dashFiles'],
+  ['f', 'diff', 'dashFiles'],
+  ['d', 'files', 'revert'],
+  ['d', 'diff', 'revert'],
+  ['d', 'unit', 'revert'],
+  ['left', 'unit', 'prev'],
+  ['right', 'unit', 'next'],
+  ['s', 'files', null],
+  ['n', undefined, 'next'],
+  ['n', 'branches', 'dashNpm'],
+  ['insert', 'branches', 'newBranch'],
+  ['e', 'branches', 'rebase'],
+  ['r', 'branches', 'dashRun'],
+  ['d', 'branches', 'dashDiffs'],
+  ['delete', 'branches', 'drop'],
+  ['p', 'branches', 'pull'],
+  ['s', 'branches', 'push'],
+  ['left', 'branches', 'treeLeft'],
+  ['right', 'branches', 'treeRight'],
+  ['left', 'commits', null],
+  ['j', 'branches', 'next'],
+  ['k', 'branches', 'prev'],
+  ['up', 'branches', 'scrollUp'],
+  ['down', 'branches', 'scrollDown'],
+  ['a', 'commits', 'add'],
+  ['p', 'commits', 'apply'],
+  ['e', 'commits', 'reword'],
+  ['x', 'commits', null],
+  ['r', 'commits', 'dashRun'],
+  ['f', 'commits', 'dashFiles'],
+  ['d', 'commits', 'dashDiffs'],
+  ['delete', 'commits', 'drop'],
+  ['c', 'commits', 'dashCommits'],
+  ['insert', 'commits', 'newCommit'],
+  ['s', 'commits', 'push'],
+  ['v', 'commits', 'view'],
+  ['m', 'commits', 'layout'],
+  ['m', undefined, 'layout'],
+  ['right', 'commits', null],
+  ['left', 'files', null],
+  ['right', 'files', null],
+  ['n', 'files', 'dashNpm'],
+  ['t', 'files', 'dashTasks'],
+  ['c', 'files', 'dashCommits'],
+  ['e', 'npm', 'npmEdit'],
+  ['insert', 'npm', 'npmNew'],
+  ['q', 'diff', 'feedback'],
+  ['q', 'unit', 'feedback'],
+  ['q', 'files', null],
+  ['e', 'files', 'code'],
+  ['e', 'diff', 'code'],
+  ['m', 'diff', 'layout'],
+  ['ctrl-l', 'diff', 'lines'],
+  ['ctrl-l', 'unit', 'lines'],
+  ['l', 'diff', 'theme'],
+  ['p', 'dashboard', 'pull'],
+  ['s', 'dashboard', 'push'],
+  ['f1', 'diff', null],
+  ['f12', undefined, null],
+  ['n', 'npm', 'dashNpm'],
+  ['d', 'npm', 'dashDiffs'],
+  ['delete', 'npm', 'npmDrop'],
+  ['l', 'npm', 'npmLogs'],
+  ['insert', 'packages', 'packageNew'],
+  ['delete', 'packages', 'packageDrop'],
+  ['w', 'packages', 'packageWanted'],
+  ['l', 'packages', 'packageLatest'],
+  ['c', 'npm', 'dashCommits'],
+  ['delete', 'tasks', 'drop'],
+  ['j', 'files', 'next'],
+  ['k', 'files', 'prev'],
+  ['a', 'files', 'add'],
+  ['a', 'diff', 'add'],
+  ['a', 'unit', 'add'],
+  ['a', 'dashboard', 'dashAgents'],
+  ['a', 'npm', 'add'],
+  ['m', 'agents', 'agentModel'],
+  ['e', 'agents', 'agentEffort'],
+  ['a', 'agents', 'agentSelect'],
+  ['o', 'agents', 'agentFast'],
+  ['x', 'agents', 'agentContext'],
+  ['p', 'agents', 'agentReview'],
+  ['c', 'agents', 'dashCommits'],
+  ['r', 'agents', 'dashRun'],
+  ['l', 'agents', 'agentAuth'],
+  ['g', 'agents', null],
+  ['s', 'agents', 'agentStart'],
+  ['enter', 'agents', 'open'],
+  ['i', 'agents', 'agentInstall'],
+  ['i', 'files', 'ignore'],
+  ['r', 'files', 'dashRun'],
+  ['escape', undefined, null],
+];
+
 test('actionFromKey maps aliases and ignores unbound keys', () => {
-  assert.equal(actionFromKey('ctrl-c'), null);
-  assert.equal(actionFromKey('right'), 'next');
-  assert.equal(actionFromKey('j'), 'next');
-  assert.equal(actionFromKey('left'), 'prev');
-  assert.equal(actionFromKey('k'), 'prev');
-  assert.equal(actionFromKey('up'), 'scrollUp');
-  assert.equal(actionFromKey('down'), 'scrollDown');
-  assert.equal(actionFromKey('ctrl-y'), 'scrollUp');
-  assert.equal(actionFromKey('ctrl-e'), 'scrollDown');
-  assert.equal(actionFromKey('ctrl-b'), 'pageUp');
-  assert.equal(actionFromKey('ctrl-f'), 'pageDown');
-  assert.equal(actionFromKey('pageUp'), 'pageUp');
-  assert.equal(actionFromKey('pageDown'), 'pageDown');
-  assert.equal(actionFromKey('home'), 'home');
-  assert.equal(actionFromKey('end'), 'end');
-  assert.equal(actionFromKey('ctrl-u'), 'halfUp');
-  assert.equal(actionFromKey('ctrl-d'), 'halfDown');
-  assert.equal(actionFromKey('enter'), 'open');
-  assert.equal(actionFromKey('e'), 'code');
-  assert.equal(actionFromKey('d'), 'revert');
-  assert.equal(actionFromKey('c'), 'commit');
-  assert.equal(actionFromKey('l'), 'theme');
-  assert.equal(actionFromKey('x'), null);
-  assert.equal(actionFromKey(' '), 'check');
-  assert.equal(actionFromKey('g'), null);
-  assert.equal(actionFromKey('r'), null);
-  assert.equal(actionFromKey('backspace'), 'removeTask');
-  assert.equal(actionFromKey('delete'), 'removeTask');
-  assert.equal(actionFromKey('s'), null);
-  assert.equal(actionFromKey('h'), null);
-  assert.equal(actionFromKey('?'), null);
-  assert.equal(actionFromKey('v'), null);
-  assert.equal(actionFromKey('p'), 'prev');
-  assert.equal(actionFromKey('u'), 'unstage');
-  assert.equal(actionFromKey('b'), null);
-  assert.equal(actionFromKey('b', 'files'), 'dashBranches');
-  assert.equal(actionFromKey('p', 'files'), 'prev');
-  assert.equal(actionFromKey('u', 'files'), 'unstage');
-  assert.equal(actionFromKey('u', 'unit'), 'unstage');
-  assert.equal(actionFromKey('f', 'files'), 'dashFiles');
-  assert.equal(actionFromKey('f', 'diff'), 'dashFiles');
-  assert.equal(actionFromKey('d', 'files'), 'revert');
-  assert.equal(actionFromKey('d', 'diff'), 'revert');
-  assert.equal(actionFromKey('d', 'unit'), 'revert');
-  assert.equal(actionFromKey('left', 'unit'), 'prev');
-  assert.equal(actionFromKey('right', 'unit'), 'next');
-  assert.equal(actionFromKey('s', 'files'), null);
-  assert.equal(actionFromKey('n'), 'next');
-  assert.equal(actionFromKey('n', 'branches'), 'dashNpm');
-  assert.equal(actionFromKey('insert', 'branches'), 'newBranch');
-  assert.equal(actionFromKey('e', 'branches'), 'rebase');
-  assert.equal(actionFromKey('r', 'branches'), 'dashRun');
-  assert.equal(actionFromKey('d', 'branches'), 'dashDiffs');
-  assert.equal(actionFromKey('delete', 'branches'), 'drop');
-  assert.equal(actionFromKey('p', 'branches'), 'pull');
-  assert.equal(actionFromKey('s', 'branches'), 'push');
-  assert.equal(actionFromKey('left', 'branches'), 'treeLeft');
-  assert.equal(actionFromKey('right', 'branches'), 'treeRight');
-  assert.equal(actionFromKey('left', 'commits'), null);
-  assert.equal(actionFromKey('j', 'branches'), 'next');
-  assert.equal(actionFromKey('k', 'branches'), 'prev');
-  assert.equal(actionFromKey('up', 'branches'), 'scrollUp');
-  assert.equal(actionFromKey('down', 'branches'), 'scrollDown');
-  assert.equal(actionFromKey('a', 'commits'), 'add');
-  assert.equal(actionFromKey('p', 'commits'), 'apply');
-  assert.equal(actionFromKey('e', 'commits'), 'reword');
-  assert.equal(actionFromKey('x', 'commits'), null);
-  assert.equal(actionFromKey('r', 'commits'), 'dashRun');
-  assert.equal(actionFromKey('f', 'commits'), 'dashFiles');
-  assert.equal(actionFromKey('d', 'commits'), 'dashDiffs');
-  assert.equal(actionFromKey('delete', 'commits'), 'drop');
-  assert.equal(actionFromKey('c', 'commits'), 'dashCommits');
-  assert.equal(actionFromKey('insert', 'commits'), 'newCommit');
+  for (const [key, pane, action] of KEY_ACTIONS) {
+    assert.equal(actionFromKey(key, pane), action, `${key} on ${pane}`);
+  }
+});
+
+test('button words and letters name the bound keys', () => {
   assert.equal(actions.buttonWord('newBranch'), 'insert');
+  assert.equal(actions.buttonWord('npmNew'), 'insert');
   assert.equal(actions.actionLetter('newCommit'), 'ins');
-  assert.equal(actionFromKey('s', 'commits'), 'push');
-  assert.equal(actionFromKey('v', 'commits'), 'view');
-  assert.equal(actionFromKey('m', 'commits'), 'layout');
-  assert.equal(actionFromKey('m'), 'layout');
-  assert.equal(actionFromKey('left', 'commits'), null);
-  assert.equal(actionFromKey('right', 'commits'), null);
-  assert.equal(actionFromKey('left', 'files'), null);
-  assert.equal(actionFromKey('right', 'files'), null);
-  assert.equal(actionFromKey('n', 'files'), 'dashNpm');
-  assert.equal(actionFromKey('t', 'files'), 'dashTasks');
-  assert.equal(actionFromKey('c', 'files'), 'dashCommits');
-  assert.equal(actionFromKey('e', 'npm'), 'npmEdit');
-  assert.equal(actionFromKey('insert', 'npm'), 'npmNew');
-  assert.equal(actionFromKey('q', 'diff'), 'feedback');
-  assert.equal(actionFromKey('q', 'unit'), 'feedback');
-  assert.equal(actionFromKey('q', 'files'), null);
-  assert.equal(actionFromKey('e', 'files'), 'code');
-  assert.equal(actionFromKey('e', 'diff'), 'code');
-  assert.equal(actionFromKey('m', 'diff'), 'layout');
-  assert.equal(actionFromKey('ctrl-l', 'diff'), 'lines');
-  assert.equal(actionFromKey('ctrl-l', 'unit'), 'lines');
-  assert.equal(actionFromKey('l', 'diff'), 'theme');
   assert.equal(actions.buttonWord('lines'), 'ctrl+l');
-  assert.equal(actionFromKey('p', 'dashboard'), 'pull');
-  assert.equal(actionFromKey('s', 'dashboard'), 'push');
+  assert.equal(actions.actionLetter('feedback'), 'q');
+  assert.equal(actions.buttonWord('feedback'), 'quote');
+  assert.equal(actions.buttonWord('packageWanted'), 'wanted');
+  assert.equal(actions.buttonWord('packageLatest'), 'latest');
   const dashOff = disabledActions('dashboard', null);
   assert.equal(dashOff.includes('pull'), false);
   assert.equal(dashOff.includes('push'), false);
-  assert.equal(actionFromKey('f1', 'diff'), null);
-  assert.equal(actionFromKey('f12'), null);
-  assert.equal(actions.actionLetter('feedback'), 'q');
-  assert.equal(actions.buttonWord('feedback'), 'quote');
-  assert.equal(actions.buttonWord('npmNew'), 'insert');
-  assert.equal(actionFromKey('n', 'npm'), 'dashNpm');
-  assert.equal(actionFromKey('d', 'npm'), 'dashDiffs');
-  assert.equal(actionFromKey('delete', 'npm'), 'npmDrop');
-  assert.equal(actionFromKey('l', 'npm'), 'npmLogs');
-  assert.equal(actionFromKey('insert', 'packages'), 'packageNew');
-  assert.equal(actionFromKey('delete', 'packages'), 'packageDrop');
-  assert.equal(actionFromKey('w', 'packages'), 'packageWanted');
-  assert.equal(actionFromKey('l', 'packages'), 'packageLatest');
-  assert.equal(actions.buttonWord('packageWanted'), 'wanted');
-  assert.equal(actions.buttonWord('packageLatest'), 'latest');
-  assert.equal(actionFromKey('c', 'npm'), 'dashCommits');
-  assert.equal(actionFromKey('delete', 'tasks'), 'drop');
-  assert.equal(actionFromKey('j', 'files'), 'next');
-  assert.equal(actionFromKey('k', 'files'), 'prev');
-  assert.equal(actionFromKey('a', 'files'), 'add');
-  assert.equal(actionFromKey('a', 'diff'), 'add');
-  assert.equal(actionFromKey('a', 'unit'), 'add');
-  assert.equal(actionFromKey('a', 'dashboard'), 'dashAgents');
-  assert.equal(actionFromKey('a', 'npm'), 'add');
-  assert.equal(actionFromKey('m', 'agents'), 'agentModel');
-  assert.equal(actionFromKey('e', 'agents'), 'agentEffort');
-  assert.equal(actionFromKey('a', 'agents'), 'agentSelect');
-  assert.equal(actionFromKey('o', 'agents'), 'agentFast');
-  assert.equal(actionFromKey('x', 'agents'), 'agentContext');
-  assert.equal(actionFromKey('p', 'agents'), 'agentReview');
-  assert.equal(actionFromKey('c', 'agents'), 'dashCommits');
-  assert.equal(actionFromKey('r', 'agents'), 'dashRun');
-  assert.equal(actionFromKey('l', 'agents'), 'agentAuth');
-  assert.equal(actionFromKey('g', 'agents'), null);
-  assert.equal(actionFromKey('s', 'agents'), 'agentStart');
-  assert.equal(actionFromKey('enter', 'agents'), 'open');
-  assert.equal(actionFromKey('i', 'files'), 'ignore');
-  assert.equal(actionFromKey('d'), 'revert');
-  assert.equal(actionFromKey('r', 'files'), 'dashRun');
-  assert.equal(actionFromKey('escape'), null);
 });
 
 test('layoutButtons hitboxes cover labels', () => {

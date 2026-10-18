@@ -7,9 +7,12 @@ const path = require('node:path');
 
 const reports = require('../lib/dashboard/reports.js');
 const { remembered, reportCounts, forgetReports } = reports;
-const { Session } = require('../lib/session/session.js');
-const { createGitRepo } = require('../lib/git/git.js');
-const { makeRepo, uiSink, tempDir, removeTree } = require('./helpers.js');
+const {
+  makeRepo,
+  tempDir,
+  removeTree,
+  openRepoSession,
+} = require('./helpers.js');
 
 // What npm would answer: the number of problems asked for, counted
 const counter = (sizes = { audit: 2, outdated: 3 }) => {
@@ -97,25 +100,12 @@ test('a directory without package files does not ask npm', async () => {
   }
 });
 
-const sessionAt = async (cwd) => {
-  const ui = new Session({
-    cwd,
-    stdout: uiSink(),
-    repo: createGitRepo(),
-    color: false,
-    startPane: 'dashboard',
-  });
-  await ui.ensureRepo();
-  await ui.load();
-  return ui;
-};
-
 test('tiles ask npm again only where nothing is known', async () => {
   const repo = makeRepo();
   repo.write('a.js', 'ok\n');
   repo.git(['add', '.']);
   repo.git(['commit', '-m', 'init']);
-  const ui = await sessionAt(repo.dir);
+  const ui = await openRepoSession(repo.dir);
   try {
     ui.trees.start();
     ui.trees.stop();
@@ -144,7 +134,7 @@ test('the reports of npm are kept for each worktree', async () => {
   repo.git(['commit', '-m', 'init']);
   const other = `${repo.dir}-other`;
   repo.git(['worktree', 'add', '-b', 'other', other]);
-  const ui = await sessionAt(repo.dir);
+  const ui = await openRepoSession(repo.dir);
   try {
     const { lifecycle } = ui;
     const home = ui.top;

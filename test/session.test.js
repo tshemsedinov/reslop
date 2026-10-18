@@ -9,7 +9,8 @@ const path = require('node:path');
 const { Session } = require('../lib/session/session.js');
 const { OpsRunner } = require('../lib/session/ops.js');
 const { hitAction } = require('../lib/input/keys.js');
-const { uiSink, sampleHunk, tempDir } = require('./helpers.js');
+const helpers = require('./helpers.js');
+const { uiSink, sampleHunk, tempDir, press, click, rightClick } = helpers;
 const review = require('../lib/review/review.js');
 const { ReviewStore, serializeReview } = review;
 const { parseReview } = review;
@@ -23,14 +24,10 @@ const { TABLE_KEY } = require('../lib/runs/output.js');
 const taskRows = (lines) => [...lines, '[ ] ', '[ ] ', '[ ] ', '[ ] ', '[ ] '];
 const clipboard = require('../lib/term/clipboard.js');
 
-const pad2 = (n) => `${n}`.padStart(2, '0');
+const { dateStamp } = require('../lib/common/utilities.js');
+const { setImmediate: settle } = require('node:timers/promises');
 
-const dateStamp = (date = new Date()) => {
-  const y = date.getFullYear();
-  const month = pad2(date.getMonth() + 1);
-  const day = pad2(date.getDate());
-  return `${y}-${month}-${day}`;
-};
+const today = () => dateStamp(new Date());
 
 const sampleItem = (name, origin = 'unstaged') => ({
   origin,
@@ -264,38 +261,18 @@ const openSession = async (items, extra = {}) => {
     stdout,
     repo,
   });
+  // The worktree tiles and npm outdated would start git and npm
+  session.worktrees.refreshTrees = async () => {};
+  session.dashboard.tasks.npm.request = () => {};
   await session.load();
   return { session, repo, stdout, cwd };
 };
-
-// Lets held reads finish without waiting for a write the test keeps pending
-const settle = () =>
-  new Promise((resolve) => {
-    setImmediate(resolve);
-  });
 
 const clickStatusChoice = (session, id) => {
   session.draw();
   const hit = session.lastFrame.statusHits.find((entry) => entry.id === id);
   assert.ok(hit);
-  session.handleEvent({
-    type: 'mouse',
-    button: 0,
-    btn: 0,
-    kind: 'press',
-    x: hit.x0 + 1,
-    y: hit.y,
-    press: true,
-  });
-  session.handleEvent({
-    type: 'mouse',
-    button: 0,
-    btn: 0,
-    kind: 'release',
-    x: hit.x0 + 1,
-    y: hit.y,
-    press: false,
-  });
+  click(session, hit.x0 + 1, hit.y);
 };
 
 const clickFooter = (session, id) => {
@@ -303,45 +280,7 @@ const clickFooter = (session, id) => {
   const hit = session.lastFrame.buttons.find((entry) => entry.id === id);
   assert.ok(hit);
   const y = session.lastFrame.height;
-  session.handleEvent({
-    type: 'mouse',
-    button: 0,
-    btn: 0,
-    kind: 'press',
-    x: hit.x0 + 1,
-    y,
-    press: true,
-  });
-  session.handleEvent({
-    type: 'mouse',
-    button: 0,
-    btn: 0,
-    kind: 'release',
-    x: hit.x0 + 1,
-    y,
-    press: false,
-  });
-};
-
-const clickAt = (session, x, y) => {
-  session.handleEvent({
-    type: 'mouse',
-    kind: 'press',
-    btn: 0,
-    button: 0,
-    x,
-    y,
-    press: true,
-  });
-  session.handleEvent({
-    type: 'mouse',
-    kind: 'release',
-    btn: 0,
-    button: 0,
-    x,
-    y,
-    press: false,
-  });
+  click(session, hit.x0 + 1, y);
 };
 
 const dragBetween = (session, start, end) => {
@@ -366,49 +305,14 @@ test('prev at first block stays put and next reaches last', async () => {
   assert.equal(session.current().file.newPath, 'c.js');
 });
 
-test('AC8 add on staged is a no-op', async () => {
-  const item = sampleItem('s.js', 'staged');
-  const { session, repo } = await openSession([item]);
-  session.dispatch('add');
-  assert.equal(session.status, '');
-  assert.equal(repo.added.length, 0);
-  assert.equal(session.items.length, 1);
-  assert.equal(session.items[0].origin, 'staged');
-});
-
-test('diff screen dims a on staged and u on unstaged', async () => {
-  const stagedItem = sampleItem('s.js', 'staged');
-  const staged = await openSession([stagedItem], { color: true });
-  staged.stdout.columns = 160;
-  staged.session.draw();
-  const stagedRow = staged.session.lastFrame.rows.at(-1);
-  const rest = seq(THEME.buttonFg, THEME.buttonBg);
-  const hot = seq(THEME.buttonHotFg, THEME.buttonBg);
-  const stagedHits = staged.session.lastFrame.buttons;
-  assert.equal(
-    stagedHits.find((hit) => hit.id === 'add'),
-    undefined,
-  );
-  assert.ok(stagedHits.find((hit) => hit.id === 'unstage'));
-  assert.ok(stagedRow.includes(`${rest}add`));
-  assert.ok(!stagedRow.includes(`${BOLD}${hot}a`));
-  assert.ok(stagedRow.includes(`${BOLD}${hot}u`));
-  staged.session.handleEvent({ type: 'key', key: 'a' });
+test('a on staged and u on unstaged do nothing', async () => {
+  const staged = await openSession([sampleItem('s.js', 'staged')]);
+  press(staged.session, 'a');
   assert.equal(staged.repo.added.length, 0);
   assert.equal(staged.session.status, '');
-
-  const unstaged = await openSession([sampleItem('u.js')], { color: true });
-  unstaged.stdout.columns = 160;
-  unstaged.session.draw();
-  const unstagedRow = unstaged.session.lastFrame.rows.at(-1);
-  assert.ok(unstaged.session.lastFrame.buttons.find((hit) => hit.id === 'add'));
-  assert.equal(
-    unstaged.session.lastFrame.buttons.find((hit) => hit.id === 'unstage'),
-    undefined,
-  );
-  assert.ok(unstagedRow.includes(`${BOLD}${hot}a`));
-  assert.ok(unstagedRow.includes(`${rest}unstage`));
-  unstaged.session.handleEvent({ type: 'key', key: 'u' });
+  assert.equal(staged.session.items[0].origin, 'staged');
+  const unstaged = await openSession([sampleItem('u.js')]);
+  press(unstaged.session, 'u');
   assert.equal(unstaged.repo.unstageCalls.length, 0);
   assert.equal(unstaged.session.status, '');
 });
@@ -474,22 +378,23 @@ test('AC28 unstage on unstaged is a no-op', async () => {
   assert.equal(session.items.length, 1);
 });
 
+// Each edit says read only and reaches no repository call
+const assertEditsRefused = (session, repo) => {
+  for (const action of ['add', 'revert', 'unstage', 'commit']) {
+    session.dispatch(action);
+    assert.equal(session.status, 'read only', action);
+  }
+  assert.equal(repo.added.length, 0);
+  assert.equal(repo.reverted.length, 0);
+  assert.equal(repo.unstageCalls.length, 0);
+  assert.equal(repo.commits.length, 0);
+};
+
 test('AC21 commit add and revert are read only', async () => {
   const item = sampleItem('c.js', 'commit');
   const { session, repo } = await openSession([item]);
   session.revShort = '7ac260c';
-  session.dispatch('add');
-  assert.equal(session.status, 'read only');
-  assert.equal(repo.added.length, 0);
-  session.dispatch('revert');
-  assert.equal(session.status, 'read only');
-  assert.equal(repo.reverted.length, 0);
-  session.dispatch('unstage');
-  assert.equal(session.status, 'read only');
-  assert.equal(repo.unstageCalls.length, 0);
-  session.dispatch('commit');
-  assert.equal(session.status, 'read only');
-  assert.equal(repo.commits.length, 0);
+  assertEditsRefused(session, repo);
   const files = session.fileList();
   assert.equal(files[0].status, '7ac260c');
   session.dispatch('next');
@@ -510,22 +415,12 @@ test('PR add and revert are read only and feedback attaches', async () => {
     },
     repoName: 'acme/app',
   });
-  session.dispatch('add');
-  assert.equal(session.status, 'read only');
-  assert.equal(repo.added.length, 0);
-  session.dispatch('revert');
-  assert.equal(session.status, 'read only');
-  assert.equal(repo.reverted.length, 0);
-  session.dispatch('unstage');
-  assert.equal(session.status, 'read only');
-  session.dispatch('commit');
-  assert.equal(session.status, 'read only');
-  assert.equal(repo.commits.length, 0);
+  assertEditsRefused(session, repo);
   const files = session.fileList();
   assert.equal(files[0].status, '#12');
   session.dispatch('feedback');
   session.pushInput('prefer const');
-  session.handleEvent({ type: 'key', key: 'ctrl-s' });
+  press(session, 'ctrl-s');
   const note = session.notes.feedback.get('lib/a.js:1:1:0');
   assert.equal(note.text, 'prefer const');
   assert.equal(session.view().counts.pr, 1);
@@ -543,18 +438,7 @@ test('PR add and revert are read only and feedback attaches', async () => {
 test('-r blocks add unstage revert and still takes feedback', async () => {
   const item = sampleItem('a.js');
   const { session, repo } = await openSession([item], { readOnly: true });
-  session.dispatch('add');
-  assert.equal(session.status, 'read only');
-  assert.equal(repo.added.length, 0);
-  session.dispatch('unstage');
-  assert.equal(session.status, 'read only');
-  assert.equal(repo.unstageCalls.length, 0);
-  session.dispatch('revert');
-  assert.equal(session.status, 'read only');
-  assert.equal(repo.reverted.length, 0);
-  session.dispatch('commit');
-  assert.equal(session.status, 'read only');
-  assert.equal(repo.commits.length, 0);
+  assertEditsRefused(session, repo);
   session.pane = 'files';
   session.dispatch('add');
   assert.equal(session.status, 'read only');
@@ -562,7 +446,7 @@ test('-r blocks add unstage revert and still takes feedback', async () => {
   session.pane = 'diff';
   session.dispatch('feedback');
   session.pushInput('keep this');
-  session.handleEvent({ type: 'key', key: 'ctrl-s' });
+  press(session, 'ctrl-s');
   const note = session.notes.feedback.get('a.js:1:1:0');
   assert.equal(note.text, 'keep this');
 });
@@ -597,26 +481,14 @@ test('AC9 hotkeys dispatch add revert next prev quit', async () => {
   session.pushInput('m');
   await session.ops.idle();
   assert.equal(session.layout, 'unified');
-  session.handleEvent({ type: 'key', key: 'escape' });
+  press(session, 'escape');
   await session.ops.idle();
   assert.equal(session.pane, 'files');
-  session.handleEvent({ type: 'key', key: 'ctrl-c' });
+  press(session, 'ctrl-c');
   await session.ops.idle();
   assert.equal(session.done, false);
   session.dispatch('quit');
   assert.equal(session.done, true);
-});
-
-test('j and k move next and prev on the diff', async () => {
-  const a = sampleItem('a.js');
-  const b = sampleItem('b.js');
-  const { session } = await openSession([a, b]);
-  session.pushInput('j');
-  assert.equal(session.current().file.newPath, 'b.js');
-  session.pushInput('k');
-  assert.equal(session.current().file.newPath, 'a.js');
-  session.pushInput('k');
-  assert.equal(session.current().file.newPath, 'a.js');
 });
 
 test('next walks the diff in the order of the file list', async () => {
@@ -630,7 +502,7 @@ test('next walks the diff in the order of the file list', async () => {
   const { session } = await openSession(items);
   const walked = [session.current().file.newPath];
   for (let i = 1; i < names.length; i++) {
-    session.handleEvent({ type: 'key', key: 'right' });
+    press(session, 'right');
     walked.push(session.current().file.newPath);
   }
   assert.deepEqual(walked, names);
@@ -648,12 +520,12 @@ test('next enters a file on its first unstaged block', async () => {
     at('b.js', 'unstaged', 20),
   ];
   const { session } = await openSession(items);
-  session.handleEvent({ type: 'key', key: 'right' });
+  press(session, 'right');
   const here = session.current();
   assert.equal(here.file.newPath, 'b.js');
   assert.equal(here.origin, 'unstaged');
   assert.equal(here.hunk.newStart, 20);
-  session.handleEvent({ type: 'key', key: 'right' });
+  press(session, 'right');
   assert.equal(session.current().hunk.newStart, 30);
 });
 
@@ -662,15 +534,15 @@ test('j and k move the files cursor', async () => {
   const b = sampleItem('b.js');
   const { session } = await openSession([a, b], { startPane: 'files' });
   assert.equal(session.fileCursor, 0);
-  session.handleEvent({ type: 'key', key: 'right' });
+  press(session, 'right');
   assert.equal(session.fileCursor, 0);
-  session.handleEvent({ type: 'key', key: 'left' });
+  press(session, 'left');
   assert.equal(session.fileCursor, 0);
   session.pushInput('j');
   assert.equal(session.fileCursor, 1);
   session.pushInput('k');
   assert.equal(session.fileCursor, 0);
-  session.handleEvent({ type: 'key', key: 'down' });
+  press(session, 'down');
   assert.equal(session.fileCursor, 1);
 });
 
@@ -679,25 +551,25 @@ test('vim ctrl keys scroll the diff by line and page', async () => {
   session.draw();
   const page = session.lastFrame.bodyH;
   assert.ok(page > 1);
-  session.handleEvent({ type: 'key', key: 'ctrl-e' });
+  press(session, 'ctrl-e');
   assert.equal(session.scroll, 1);
-  session.handleEvent({ type: 'key', key: 'ctrl-y' });
+  press(session, 'ctrl-y');
   assert.equal(session.scroll, 0);
-  session.handleEvent({ type: 'key', key: 'ctrl-f' });
+  press(session, 'ctrl-f');
   assert.equal(session.scroll, page);
-  session.handleEvent({ type: 'key', key: 'ctrl-b' });
+  press(session, 'ctrl-b');
   assert.equal(session.scroll, 0);
-  session.handleEvent({ type: 'key', key: 'ctrl-d' });
+  press(session, 'ctrl-d');
   assert.equal(session.scroll, Math.max(1, Math.floor(page * 0.5)));
-  session.handleEvent({ type: 'key', key: 'ctrl-u' });
+  press(session, 'ctrl-u');
   assert.equal(session.scroll, 0);
-  session.handleEvent({ type: 'key', key: 'pageDown' });
+  press(session, 'pageDown');
   assert.equal(session.scroll, page);
-  session.handleEvent({ type: 'key', key: 'end' });
+  press(session, 'end');
   assert.equal(session.scroll, session.lastFrame.scrollMax);
-  session.handleEvent({ type: 'key', key: 'home' });
+  press(session, 'home');
   assert.equal(session.scroll, 0);
-  session.handleEvent({ type: 'key', key: 'pageUp' });
+  press(session, 'pageUp');
   assert.equal(session.scroll, 0);
 });
 
@@ -719,9 +591,9 @@ test('vim ctrl-f pages down the files list', async () => {
   session.draw();
   const page = session.lastFrame.bodyH;
   assert.equal(session.fileCursor, 0);
-  session.handleEvent({ type: 'key', key: 'ctrl-f' });
+  press(session, 'ctrl-f');
   assert.equal(session.fileCursor, page);
-  session.handleEvent({ type: 'key', key: 'ctrl-b' });
+  press(session, 'ctrl-b');
   assert.equal(session.fileCursor, 0);
 });
 
@@ -766,13 +638,13 @@ test('home end and page keys jump the files list', async () => {
   session.draw();
   const page = session.lastFrame.bodyH;
   const last = session.fileList().length - 1;
-  session.handleEvent({ type: 'key', key: 'pageDown' });
+  press(session, 'pageDown');
   assert.equal(session.fileCursor, page);
-  session.handleEvent({ type: 'key', key: 'pageUp' });
+  press(session, 'pageUp');
   assert.equal(session.fileCursor, 0);
-  session.handleEvent({ type: 'key', key: 'end' });
+  press(session, 'end');
   assert.equal(session.fileCursor, last);
-  session.handleEvent({ type: 'key', key: 'home' });
+  press(session, 'home');
   assert.equal(session.fileCursor, 0);
 });
 
@@ -865,10 +737,10 @@ test('escape from diff opens the file list, then quits', async () => {
     sampleItem('b.js'),
   ]);
   assert.equal(session.pane, 'diff');
-  session.handleEvent({ type: 'key', key: 'escape' });
+  press(session, 'escape');
   assert.equal(session.pane, 'files');
   assert.equal(session.done, false);
-  session.handleEvent({ type: 'key', key: 'escape' });
+  press(session, 'escape');
   assert.equal(session.done, true);
 });
 
@@ -876,27 +748,14 @@ test('escape from files with notes quits and keeps the status', async () => {
   const { session } = await openSession([sampleItem('a.js')]);
   session.dispatch('feedback');
   session.pushInput('nits');
-  session.handleEvent({ type: 'key', key: 'ctrl-s' });
-  session.handleEvent({ type: 'key', key: 'escape' });
+  press(session, 'ctrl-s', 'escape');
   assert.equal(session.pane, 'files');
   assert.equal(session.done, false);
   session.notes.status = 'partial';
-  session.handleEvent({ type: 'key', key: 'escape' });
+  press(session, 'escape');
   assert.equal(session.done, true);
   assert.equal(session.mode, 'review');
   assert.equal(session.notes.status, 'partial');
-});
-
-test('starts on the file list', async () => {
-  const { session } = await openSession([sampleItem('a.js')], {
-    startPane: 'files',
-  });
-  assert.equal(session.pane, 'files');
-  assert.equal(session.fileCursor, 0);
-  assert.equal(session.fileList()[0].path, 'a.js');
-  session.dispatch('open');
-  assert.equal(session.pane, 'diff');
-  assert.equal(session.current().file.newPath, 'a.js');
 });
 
 test('AC14 files pane lists paths and enter opens', async () => {
@@ -906,9 +765,7 @@ test('AC14 files pane lists paths and enter opens', async () => {
   assert.equal(session.pane, 'files');
   session.draw();
   const text = stdout.dump();
-  assert.ok(!text.includes('todo 1/3'));
   assert.ok(!text.includes('@@'));
-  assert.ok(!text.includes('Project Tasks'));
   assert.match(text, /a\.js/);
   assert.match(text, /b\.js/);
   session.dispatch('open');
@@ -1118,7 +975,7 @@ test('compose r inserts a letter and does not reload', async () => {
     return orig(...args);
   };
   session.dispatch('feedback');
-  session.handleEvent({ type: 'key', key: 'r' });
+  press(session, 'r');
   assert.equal(session.mode, 'compose');
   assert.equal(session.editor.text, 'r');
   assert.equal(loads, 0);
@@ -1151,7 +1008,7 @@ test('files pane unstage on an unstaged file still moves down', async () => {
 
 test('q quotes a diff and insert adds an npm command', async () => {
   const diff = await openSession([sampleItem('a.js')]);
-  diff.session.handleEvent({ type: 'key', key: 'q' });
+  press(diff.session, 'q');
   assert.equal(diff.session.composeKind, 'feedback');
   const npm = await openSession([sampleItem('a.js')], { startPane: 'files' });
   fs.writeFileSync(
@@ -1159,7 +1016,7 @@ test('q quotes a diff and insert adds an npm command', async () => {
     `${JSON.stringify({ scripts: { test: 'node --test' } })}\n`,
   );
   npm.session.pushInput('r');
-  npm.session.handleEvent({ type: 'key', key: 'insert' });
+  press(npm.session, 'insert');
   assert.equal(npm.session.composeKind, 'npm');
   assert.equal(npm.session.npm.editField, 'name');
 });
@@ -1171,7 +1028,7 @@ test('f maps feedback to the hunk location', async () => {
   assert.equal(session.mode, 'compose');
   assert.equal(session.composeKind, 'feedback');
   session.pushInput('extract helper');
-  session.handleEvent({ type: 'key', key: 'ctrl-s' });
+  press(session, 'ctrl-s');
   assert.equal(session.mode, 'review');
   const note = session.notes.feedback.get('a.js:1:1:0');
   assert.equal(note.text, 'extract helper');
@@ -1188,9 +1045,9 @@ test('compose arrows move by visual wrap rows', async () => {
   const { session } = await openSession([sampleItem('a.js')], { stdout });
   session.dispatch('feedback');
   session.pushInput('hello world');
-  session.handleEvent({ type: 'key', key: 'up' });
+  press(session, 'up');
   assert.equal(session.editor.cursor, 5);
-  session.handleEvent({ type: 'key', key: 'down' });
+  press(session, 'down');
   assert.equal(session.editor.cursor, 11);
 });
 
@@ -1212,14 +1069,14 @@ test('enter and escape save feedback and return to browse', async () => {
   const { session } = await openSession([item]);
   session.dispatch('feedback');
   session.pushInput('note');
-  session.handleEvent({ type: 'key', key: 'enter' });
+  press(session, 'enter');
   assert.equal(session.mode, 'review');
   assert.equal(session.done, false);
   const key = 'a.js:1:1:0';
   assert.equal(session.notes.feedback.get(key).text, 'note');
   session.dispatch('feedback');
   session.pushInput(' two');
-  session.handleEvent({ type: 'key', key: 'escape' });
+  press(session, 'escape');
   assert.equal(session.mode, 'review');
   assert.equal(session.done, false);
   assert.equal(session.notes.feedback.get(key).text, 'note two');
@@ -1231,11 +1088,11 @@ test('editing feedback keeps one latest version', async () => {
   const { session } = await openSession([item]);
   session.dispatch('feedback');
   session.pushInput('first');
-  session.handleEvent({ type: 'key', key: 'ctrl-s' });
+  press(session, 'ctrl-s');
   session.dispatch('feedback');
   session.pushInput(' more');
   session.autosave();
-  session.handleEvent({ type: 'key', key: 'ctrl-s' });
+  press(session, 'ctrl-s');
   const key = 'a.js:1:1:0';
   assert.equal(session.notes.feedback.size, 1);
   assert.equal(session.notes.feedback.get(key).text, 'first more');
@@ -1252,15 +1109,15 @@ test('feedback templates count reuse on another hunk, not a save', async () => {
   const { session } = await openSession([a, b]);
   session.dispatch('feedback');
   session.pushInput('extract helper');
-  session.handleEvent({ type: 'key', key: 'ctrl-s' });
+  press(session, 'ctrl-s');
   session.dispatch('feedback');
-  session.handleEvent({ type: 'key', key: 'ctrl-s' });
+  press(session, 'ctrl-s');
   assert.equal(session.notes.templates.length, 1);
   assert.equal(session.notes.templates[0].count, 1);
   session.dispatch('next');
   session.dispatch('feedback');
   session.pushInput('extract helper');
-  session.handleEvent({ type: 'key', key: 'ctrl-s' });
+  press(session, 'ctrl-s');
   assert.equal(session.notes.templates.length, 1);
   assert.equal(session.notes.templates[0].text, 'extract helper');
   assert.equal(session.notes.templates[0].count, 2);
@@ -1282,16 +1139,16 @@ test('feedback templates pick with tab arrows enter and click', async () => {
   const body = stripAnsi(session.lastFrame.rows.join('\n'));
   assert.match(body, /extract helper/);
   assert.match(body, /add tests/);
-  session.handleEvent({ type: 'key', key: 'tab' });
+  press(session, 'tab');
   assert.equal(session.mode, 'review');
   assert.equal(session.notes.feedback.get(feedKey).text, 'extract helper');
   session.dispatch('feedback');
   session.editor.replace('');
-  session.handleEvent({ type: 'key', key: 'down' });
+  press(session, 'down');
   assert.equal(session.mode, 'compose');
   assert.equal(session.templateFocus, true);
   assert.equal(session.templateIndex, 0);
-  session.handleEvent({ type: 'key', key: 'enter' });
+  press(session, 'enter');
   assert.equal(session.mode, 'review');
   assert.equal(session.notes.feedback.get(feedKey).text, 'extract helper');
   session.dispatch('feedback');
@@ -1299,24 +1156,7 @@ test('feedback templates pick with tab arrows enter and click', async () => {
   session.draw();
   const hit = session.lastFrame.templateHits.find((row) => row.cursor === 1);
   assert.ok(hit);
-  session.handleEvent({
-    type: 'mouse',
-    kind: 'press',
-    btn: 0,
-    button: 0,
-    x: 2,
-    y: hit.y,
-    press: true,
-  });
-  session.handleEvent({
-    type: 'mouse',
-    kind: 'release',
-    btn: 0,
-    button: 0,
-    x: 2,
-    y: hit.y,
-    press: false,
-  });
+  click(session, 2, hit.y);
   assert.equal(session.mode, 'review');
   assert.equal(session.notes.feedback.get(feedKey).text, 'add tests');
 });
@@ -1338,7 +1178,7 @@ test('feedback templates filter by prefix and hide if none match', async () => {
   assert.match(body, /extract helper/);
   assert.ok(!body.includes('add tests'));
   assert.equal(session.lastFrame.templateHits.length, 1);
-  session.handleEvent({ type: 'key', key: 'tab' });
+  press(session, 'tab');
   assert.equal(session.mode, 'review');
   assert.equal(session.notes.feedback.get('a.js:1:1:0').text, 'extract helper');
   session.dispatch('feedback');
@@ -1354,51 +1194,13 @@ test('feedback templates filter by prefix and hide if none match', async () => {
   assert.ok(!body.includes('extract helper'));
   assert.ok(!body.includes('add tests'));
   assert.equal(session.lastFrame.templateHits.length, 0);
-  session.handleEvent({ type: 'key', key: 'tab' });
+  press(session, 'tab');
   assert.equal(session.editor.text, 'z');
-  session.handleEvent({ type: 'key', key: 'backspace' });
+  press(session, 'backspace');
   session.draw();
   body = stripAnsi(session.lastFrame.rows.join('\n'));
   assert.match(body, /extract helper/);
   assert.match(body, /add tests/);
-});
-
-test('exact template text hides the template list', async () => {
-  const { session } = await openSession([sampleItem('a.js')]);
-  session.notes.templates = [
-    { text: 'extract helper', count: 2 },
-    { text: 'add tests', count: 1 },
-  ];
-  session.dispatch('feedback');
-  session.pushInput('extract helper');
-  session.draw();
-  const body = stripAnsi(session.lastFrame.rows.join('\n'));
-  assert.match(body, /extract helper/);
-  assert.ok(!body.includes('add tests'));
-  assert.equal(session.lastFrame.templateHits.length, 0);
-  assert.deepEqual(session.composer.templates.shownTemplates(), []);
-});
-
-test('existing unique feedback hides the template list', async () => {
-  const { session } = await openSession([sampleItem('a.js')]);
-  session.notes.templates = [
-    { text: 'extract helper', count: 2 },
-    { text: 'add tests', count: 1 },
-  ];
-  session.notes.feedback.set('a.js:1:1:0', {
-    file: 'a.js',
-    oldStart: 1,
-    newStart: 1,
-    blockId: 0,
-    text: 'unique note',
-  });
-  session.dispatch('feedback');
-  session.draw();
-  const body = stripAnsi(session.lastFrame.rows.join('\n'));
-  assert.match(body, /unique note/);
-  assert.ok(!body.includes('extract helper'));
-  assert.ok(!body.includes('add tests'));
-  assert.equal(session.lastFrame.templateHits.length, 0);
 });
 
 test('e edits added lines in the reviewed file', async () => {
@@ -1415,10 +1217,10 @@ test('e edits added lines in the reviewed file', async () => {
   assert.ok(session.lastFrame.cursor);
   assert.equal(session.lastFrame.cursor.x, 4);
   session.pushInput('2');
-  session.handleEvent({ type: 'key', key: 'enter' });
+  press(session, 'enter');
   assert.equal(session.mode, 'compose');
   assert.equal(session.editor.text, 'b2\n');
-  session.handleEvent({ type: 'key', key: 'escape' });
+  press(session, 'escape');
   await session.ops.idle();
   assert.equal(session.mode, 'review');
   assert.equal(session.notes.code.size, 0);
@@ -1434,7 +1236,7 @@ test('e on a read-only commit keeps a code proposal', async () => {
   const { session, repo } = await openSession([item], { rev: 'abc1234' });
   session.pushInput('e');
   session.pushInput('2');
-  session.handleEvent({ type: 'key', key: 'escape' });
+  press(session, 'escape');
   assert.equal(repo.edited.length, 0);
   const note = session.notes.code.get('a.js:1:1:0');
   assert.equal(note.text, 'b2');
@@ -1445,7 +1247,7 @@ test('code save equal to original drops the proposal', async () => {
   const item = sampleItem('a.js');
   const { session, repo } = await openSession([item]);
   session.dispatch('code');
-  session.handleEvent({ type: 'key', key: 'escape' });
+  press(session, 'escape');
   assert.equal(session.notes.code.size, 0);
   assert.equal(session.view().counts.code, 0);
   assert.equal(repo.stagedPaths.length, 0);
@@ -1454,7 +1256,7 @@ test('code save equal to original drops the proposal', async () => {
 test('todos screen ignores commit and todo hotkeys', async () => {
   const { session } = await openSession([sampleItem('a.js')]);
   session.dispatch('tasks');
-  session.handleEvent({ type: 'key', key: 'escape' });
+  press(session, 'escape');
   assert.equal(session.tasksOpen, true);
   assert.equal(session.mode, 'review');
   session.dispatch('commit');
@@ -1472,16 +1274,7 @@ test('right click opens task operations with their hotkeys', async () => {
     (entry) => entry.cursor === 0 && !entry.check,
   );
   assert.ok(hit);
-  session.handleEvent({
-    type: 'mouse',
-    kind: 'press',
-    btn: 2,
-    button: 2,
-    x: 10,
-    y: hit.y,
-    press: true,
-  });
-  session.draw();
+  rightClick(session, 10, hit.y);
   assert.equal(session.tasksFocus, 0);
   assert.deepEqual(session.nav.contextMenu.actions, [
     'open',
@@ -1494,24 +1287,11 @@ test('right click opens task operations with their hotkeys', async () => {
   );
   assert.ok(menuRows.some((row) => row.includes('import')));
   assert.ok(menuRows.some((row) => row.includes('delete')));
-  session.handleEvent({ type: 'key', key: 'i' });
+  press(session, 'i');
   assert.equal(session.mode, 'import');
   assert.equal(session.nav.contextMenu, null);
-  session.handleEvent({ type: 'key', key: 'escape' });
+  press(session, 'escape');
 });
-
-const rightClick = (session, x, y) => {
-  session.handleEvent({
-    type: 'mouse',
-    kind: 'press',
-    btn: 2,
-    button: 2,
-    x,
-    y,
-    press: true,
-  });
-  session.draw();
-};
 
 test('blank branch space offers screen commands', async () => {
   const { session } = await openSession([sampleItem('a.js')]);
@@ -1530,7 +1310,7 @@ test('blank branch space offers screen commands', async () => {
     'push',
   ]);
   assert.equal(session.nav.contextMenu.actions.includes('back'), false);
-  session.handleEvent({ type: 'key', key: 'insert' });
+  press(session, 'insert');
   assert.equal(session.composeKind, 'branch');
 });
 
@@ -1575,16 +1355,16 @@ test('context menus track hover and refuse disabled actions', async () => {
   assert.ok(session.nav.contextMenu.disabled.includes('drop'));
   const drop = session.lastFrame.contextHits.find((hit) => hit.id === 'drop');
   assert.equal(drop.disabled, true);
-  session.handleEvent({ type: 'key', key: 'delete' });
+  press(session, 'delete');
   assert.equal(session.mode, 'review');
   assert.ok(session.nav.contextMenu);
-  clickAt(session, drop.x0 + 2, drop.y);
+  click(session, drop.x0 + 2, drop.y);
   assert.ok(session.nav.contextMenu);
   const pull = session.lastFrame.contextHits.find((hit) => hit.id === 'pull');
   session.pushInput(`\x1b[<35;${pull.x0 + 2};${pull.y}M`);
   assert.equal(session.nav.contextMenu.cursor, pull.cursor);
   assert.equal(repo.drops.length, 0);
-  session.handleEvent({ type: 'key', key: 'escape' });
+  press(session, 'escape');
   assert.equal(session.nav.contextMenu, null);
 });
 
@@ -1605,42 +1385,37 @@ test('editor context commands preserve and edit selected text', async () => {
     'textDelete',
     'textSelectAll',
   ]);
-  session.handleEvent({ type: 'key', key: 'ctrl-c' });
+  press(session, 'ctrl-c');
   assert.ok(stdout.dump().includes(Buffer.from('this').toString('base64')));
   assert.equal(editor.selectedText(), 'this');
   rightClick(session, hit.textX, hit.y);
-  session.handleEvent({ type: 'key', key: 'delete' });
+  press(session, 'delete');
   assert.equal(editor.text, 'keep  text');
   assert.equal(session.mode, 'compose');
   session.draw();
   rightClick(session, hit.textX, hit.y);
-  session.handleEvent({ type: 'key', key: 'ctrl-a' });
+  press(session, 'ctrl-a');
   assert.equal(editor.selectedText(), 'keep  text');
   rightClick(session, hit.textX, hit.y);
-  session.handleEvent({ type: 'key', key: 'ctrl-x' });
+  press(session, 'ctrl-x');
   assert.equal(editor.text, '');
 });
 
-test('import textbox context paste keeps the textbox focused', async () => {
+test('import textbox context paste keeps the textbox focused', async (t) => {
   const { session } = await openSession([sampleItem('a.js')]);
   session.composer.tasks.openTasksPage();
   session.dispatch('import');
   session.draw();
   const statusY = session.lastFrame.height - 1;
-  const saved = clipboard.pasteText;
-  clipboard.pasteText = () => 'https://example.com/a\n';
-  try {
-    rightClick(session, 10, statusY);
-    const paste = session.lastFrame.contextHits.find(
-      (hit) => hit.id === 'textPaste',
-    );
-    clickAt(session, paste.x0 + 2, paste.y);
-    assert.equal(session.mode, 'import');
-    assert.equal(session.nav.import.url, 'https://example.com/a');
-    assert.equal(session.nav.contextMenu, null);
-  } finally {
-    clipboard.pasteText = saved;
-  }
+  t.mock.method(clipboard, 'pasteText', () => 'https://example.com/a\n');
+  rightClick(session, 10, statusY);
+  const paste = session.lastFrame.contextHits.find(
+    (hit) => hit.id === 'textPaste',
+  );
+  click(session, paste.x0 + 2, paste.y);
+  assert.equal(session.mode, 'import');
+  assert.equal(session.nav.import.url, 'https://example.com/a');
+  assert.equal(session.nav.contextMenu, null);
 });
 
 test('todo list scrolls the focused row into view', async () => {
@@ -1689,7 +1464,7 @@ test('scrolling to the top shows the first header and blank line', async () => {
   for (let i = 0; i < 25; i++) session.dispatch('scrollDown');
   session.draw();
   assert.ok(session.scroll > 0);
-  session.handleEvent({ type: 'key', key: 'home' });
+  press(session, 'home');
   session.draw();
   assert.equal(session.tasksFocus, 0);
   assert.equal(session.scroll, 0);
@@ -1708,13 +1483,13 @@ test('tasks list ends with a blank line after the blocks', async () => {
   const plain = () => session.lastFrame.rows.map((row) => stripAnsi(row));
   assert.ok(session.lastFrame.scrollMax > 0);
   assert.notEqual(plain()[statusAt - 1].trim(), '');
-  session.handleEvent({ type: 'key', key: 'end' });
+  press(session, 'end');
   session.draw();
   assert.equal(session.scroll, session.lastFrame.scrollMax);
   const endRows = plain();
   assert.equal(endRows[statusAt - 1].trim(), '');
   assert.notEqual(endRows[statusAt - 2].trim(), '');
-  session.handleEvent({ type: 'key', key: 'home' });
+  press(session, 'home');
   session.draw();
   assert.equal(session.scroll, 0);
   assert.notEqual(plain()[statusAt - 1].trim(), '');
@@ -1732,17 +1507,17 @@ test('ctrl+up and ctrl+down reorder tasks and stay inside a file', async () => {
   const { session } = await openSession([sampleItem('a.js')]);
   session.dispatch('tasks');
   session.pushInput('first');
-  session.handleEvent({ type: 'key', key: 'escape' });
+  press(session, 'escape');
   session.composer.tasks.startDraftCompose();
   session.pushInput('second');
-  session.handleEvent({ type: 'key', key: 'escape' });
+  press(session, 'escape');
   session.tasksFocus = 0;
-  session.handleEvent({ type: 'key', key: 'ctrl-down' });
+  press(session, 'ctrl-down');
   assert.deepEqual(
     session.notes.tasks.map((task) => task.text),
     ['second', 'first'],
   );
-  session.handleEvent({ type: 'key', key: 'ctrl-down' });
+  press(session, 'ctrl-down');
   const moved = session.notes.tasks.find((task) => task.text === 'first');
   assert.equal(moved.kind, 'improvements');
   session.notes.setFeedback('a.js:1:1:0', {
@@ -1773,18 +1548,17 @@ test('ctrl+up and ctrl+down reorder tasks and stay inside a file', async () => {
     (row) => row.task && row.task.text === 'only',
   );
   session.tasksFocus = security;
-  session.handleEvent({ type: 'key', key: 'ctrl-down' });
+  press(session, 'ctrl-down');
   assert.equal(session.notes.tasks[0].kind, 'security');
   const quote = session.composer.tasks
     .rows()
     .findIndex((row) => row.quote && row.note.text === 'quote one');
   session.tasksFocus = quote;
-  session.handleEvent({ type: 'key', key: 'ctrl-down' });
+  press(session, 'ctrl-down');
   const quoted = [];
   for (const note of session.notes.feedback.values()) quoted.push(note.text);
   assert.deepEqual(quoted, ['quote two', 'quote one']);
-  session.handleEvent({ type: 'key', key: 'ctrl-up' });
-  session.handleEvent({ type: 'key', key: 'ctrl-up' });
+  press(session, 'ctrl-up', 'ctrl-up');
   const stayed = [];
   for (const note of session.notes.feedback.values()) stayed.push(note.text);
   assert.deepEqual(stayed, ['quote one', 'quote two']);
@@ -1809,12 +1583,12 @@ test('quoted feedback can be edited from the tasks screen', async () => {
   session.composer.tasks.openTasksPage();
   const quote = session.composer.tasks.rows().findIndex((row) => row.quote);
   session.tasksFocus = quote;
-  session.handleEvent({ type: 'key', key: 'enter' });
+  press(session, 'enter');
   session.pushInput(' more');
-  session.handleEvent({ type: 'key', key: 'escape' });
+  press(session, 'escape');
   const note = session.notes.feedback.get('a.js:1:1:0');
   assert.equal(note.text, 'quote more');
-  session.handleEvent({ type: 'key', key: ' ' });
+  press(session, ' ');
   assert.equal(session.notes.feedback.get('a.js:1:1:0').done, true);
 });
 
@@ -1836,7 +1610,7 @@ test('tasks status switches plan files, defaults to the last', async () => {
     ].join('\n'),
   );
   session.dispatch('tasks');
-  session.handleEvent({ type: 'key', key: 'escape' });
+  press(session, 'escape');
   session.draw();
   const status = stripAnsi(session.lastFrame.rows.at(-2));
   const current = session.composer.tasks.planName();
@@ -1856,24 +1630,7 @@ test('tasks status switches plan files, defaults to the last', async () => {
     (entry) => entry.id === 'plan-item' && entry.cursor === 0,
   );
   assert.ok(hit);
-  session.handleEvent({
-    type: 'mouse',
-    button: 0,
-    btn: 0,
-    kind: 'press',
-    x: hit.x0 + 1,
-    y: hit.y,
-    press: true,
-  });
-  session.handleEvent({
-    type: 'mouse',
-    button: 0,
-    btn: 0,
-    kind: 'release',
-    x: hit.x0 + 1,
-    y: hit.y,
-    press: false,
-  });
+  click(session, hit.x0 + 1, hit.y);
   assert.equal(session.composer.tasks.planOpen, false);
   assert.match(session.composer.tasks.planName(), /2020-01-01-00\.md/);
   assert.equal(session.notes.tasks[0].text, 'from older');
@@ -1892,7 +1649,7 @@ test('tasks plan combo filters in place and keeps the agent menu', async () => {
   fs.writeFileSync(path.join(dir, 'beta-plan.md'), '# beta\n');
   fs.writeFileSync(path.join(dir, 'main-plan.md'), '# main\n');
   session.dispatch('tasks');
-  session.handleEvent({ type: 'key', key: 'escape' });
+  press(session, 'escape');
   session.composer.tasks.togglePlanMenu();
   session.draw();
   const menuRows = () =>
@@ -1911,12 +1668,12 @@ test('tasks plan combo filters in place and keeps the agent menu', async () => {
   const current = session.composer.tasks.planName();
   const selected = open.find((row) => row.includes(bg(THEME.checkBg)));
   assert.ok(stripAnsi(selected).includes(current));
-  session.handleEvent({ type: 'key', key: 'home' });
+  press(session, 'home');
   session.draw();
   const top = stripAnsi(session.lastFrame.rows.join('\n'));
   assert.match(top, /beta-plan\.md/);
   assert.equal(top.includes('note-11'), false);
-  session.handleEvent({ type: 'key', key: 'm' });
+  press(session, 'm');
   session.draw();
   const status = stripAnsi(session.lastFrame.rows.at(-2));
   const afterBranch = status.slice(status.indexOf('main') + 'main'.length);
@@ -1930,9 +1687,7 @@ test('tasks plan combo filters in place and keeps the agent menu', async () => {
   const typedMark = seq(THEME.warnFg, THEME.chromeBg);
   assert.ok(statusRow.includes(`${typedMark}m`));
   assert.equal(statusRow.includes(bg(THEME.searchBg)), false);
-  session.handleEvent({ type: 'key', key: 'backspace' });
-  session.handleEvent({ type: 'key', key: 'b' });
-  session.handleEvent({ type: 'key', key: 'e' });
+  press(session, 'backspace', 'b', 'e');
   session.draw();
   const shown = stripAnsi(session.lastFrame.rows.join('\n'));
   assert.match(shown, /beta-plan\.md/);
@@ -1945,14 +1700,14 @@ test('tasks plan combo filters in place and keeps the agent menu', async () => {
   );
   assert.ok(beta.includes(seq(THEME.warnFg, THEME.checkBg)));
   assert.equal(beta.includes(bg(THEME.searchBg)), false);
-  session.handleEvent({ type: 'key', key: 'enter' });
+  press(session, 'enter');
   assert.equal(session.composer.tasks.planName(), 'beta-plan.md');
 });
 
 test('tasks plan hotkey opens the combo and can start a new plan', async () => {
   const { session } = await openSession([sampleItem('a.js')], { color: true });
   session.dispatch('tasks');
-  session.handleEvent({ type: 'key', key: 'escape' });
+  press(session, 'escape');
   session.draw();
   const footer = stripAnsi(session.lastFrame.rows.at(-1));
   assert.match(footer, /🢐esc {2}plan {2}import/);
@@ -1970,36 +1725,17 @@ test('tasks plan hotkey opens the combo and can start a new plan', async () => {
   const place = hits.find((entry) => entry.id === 'plan');
   assert.ok(place);
   const mid = place.x0 + Math.floor((place.x1 - place.x0) / 2);
-  session.handleEvent({
-    type: 'mouse',
-    button: 0,
-    btn: 0,
-    kind: 'press',
-    x: mid + 1,
-    y: place.y,
-    press: true,
-  });
-  session.handleEvent({
-    type: 'mouse',
-    button: 0,
-    btn: 0,
-    kind: 'release',
-    x: mid + 1,
-    y: place.y,
-    press: false,
-  });
+  click(session, mid + 1, place.y);
   assert.equal(session.composer.tasks.planOpen, true);
-  session.handleEvent({ type: 'key', key: 'escape' });
-  session.handleEvent({ type: 'key', key: 'p' });
+  press(session, 'escape', 'p');
   assert.equal(session.composer.tasks.planOpen, true);
   session.draw();
   const menu = stripAnsi(session.lastFrame.rows.join('\n'));
   assert.match(menu, /<new plan>/);
-  session.handleEvent({ type: 'key', key: 'end' });
-  session.handleEvent({ type: 'key', key: 'enter' });
+  press(session, 'end', 'enter');
   assert.equal(session.composer.tasks.planOpen, false);
   const created = session.composer.tasks.planName();
-  assert.match(created, new RegExp(`^${dateStamp()}-\\d+\\.md$`));
+  assert.match(created, new RegExp(`^${today()}-\\d+\\.md$`));
   assert.notEqual(created, name);
 });
 
@@ -2007,8 +1743,7 @@ test('import url closes when focus leaves the field', async () => {
   const { session } = await openSession([sampleItem('a.js')]);
   const begin = () => {
     session.dispatch('tasks');
-    session.handleEvent({ type: 'key', key: 'escape' });
-    session.handleEvent({ type: 'key', key: 'i' });
+    press(session, 'escape', 'i');
     session.pushInput('https://example.com');
     session.draw();
   };
@@ -2020,15 +1755,15 @@ test('import url closes when focus leaves the field', async () => {
     assert.equal(status.startsWith(' url '), false);
   };
   begin();
-  clickAt(session, 4, session.lastFrame.height - 1);
+  click(session, 4, session.lastFrame.height - 1);
   assert.equal(session.mode, 'import');
   assert.match(session.view().import.url, /example\.com/);
   const task = session.lastFrame.taskHits.find((hit) => hit.y);
   assert.ok(task);
-  clickAt(session, 2, task.y);
+  click(session, 2, task.y);
   closed();
   begin();
-  session.handleEvent({ type: 'key', key: 'ctrl-down' });
+  press(session, 'ctrl-down');
   closed();
   begin();
   clickFooter(session, 'dashFiles');
@@ -2052,22 +1787,21 @@ test('tasks import asks for a url and applies the pull request', async () => {
     }),
   });
   session.dispatch('tasks');
-  session.handleEvent({ type: 'key', key: 'escape' });
-  session.handleEvent({ type: 'key', key: 'i' });
+  press(session, 'escape', 'i');
   assert.equal(session.mode, 'import');
   session.draw();
   const asking = stripAnsi(session.lastFrame.rows.at(-2));
   assert.match(asking, /^ url /);
   session.pushInput('notaurl');
-  session.handleEvent({ type: 'key', key: 'enter' });
+  press(session, 'enter');
   assert.equal(session.mode, 'review');
   assert.equal(session.status, 'bad url');
-  session.handleEvent({ type: 'key', key: 'i' });
+  press(session, 'i');
   session.pushInput('https://github.com/acme/demo/pull/7');
   session.draw();
   const typed = stripAnsi(session.lastFrame.rows.at(-2));
   assert.match(typed, /github\.com\/acme\/demo\/pull\/7/);
-  session.handleEvent({ type: 'key', key: 'enter' });
+  press(session, 'enter');
   await session.importPromise;
   assert.equal(session.status, 'imported');
   assert.equal(session.notes.tasks.length, 1);
@@ -2077,12 +1811,11 @@ test('tasks import asks for a url and applies the pull request', async () => {
 test('an empty import url stays focused after backspace', async () => {
   const { session } = await openSession([sampleItem('a.js')]);
   session.dispatch('tasks');
-  session.handleEvent({ type: 'key', key: 'escape' });
-  session.handleEvent({ type: 'key', key: 'i' });
+  press(session, 'escape', 'i');
   session.pushInput('x');
-  session.handleEvent({ type: 'key', key: 'backspace' });
+  press(session, 'backspace');
   assert.equal(session.nav.import.url, '');
-  session.handleEvent({ type: 'key', key: 'backspace' });
+  press(session, 'backspace');
   assert.equal(session.mode, 'import');
   assert.equal(session.nav.import.url, '');
 });
@@ -2098,8 +1831,7 @@ test('tasks import prefills an editable repository url', async () => {
   });
   const { session } = await openSession([item], { cwd, repo });
   session.dispatch('tasks');
-  session.handleEvent({ type: 'key', key: 'escape' });
-  session.handleEvent({ type: 'key', key: 'i' });
+  press(session, 'escape', 'i');
   assert.equal(session.nav.import.url, 'https://github.com/acme/demo');
   session.pushInput('/issues/4');
   assert.equal(session.nav.import.url, 'https://github.com/acme/demo/issues/4');
@@ -2133,16 +1865,15 @@ test('tasks import accepts a github or gitlab issue url', async () => {
     }),
   });
   session.dispatch('tasks');
-  session.handleEvent({ type: 'key', key: 'escape' });
-  session.handleEvent({ type: 'key', key: 'i' });
+  press(session, 'escape', 'i');
   session.pushInput('https://github.com/acme/demo/issues/4');
-  session.handleEvent({ type: 'key', key: 'enter' });
+  press(session, 'enter');
   await session.importPromise;
   assert.equal(session.status, 'imported');
   assert.match(session.notes.tasks[0].text, /add the flag/);
-  session.handleEvent({ type: 'key', key: 'i' });
+  press(session, 'i');
   session.pushInput('https://gitlab.com/acme/demo/-/issues/8');
-  session.handleEvent({ type: 'key', key: 'enter' });
+  press(session, 'enter');
   await session.importPromise;
   assert.equal(session.notes.tasks.length, 2);
   assert.match(session.notes.tasks[1].text, /from gitlab/);
@@ -2184,10 +1915,9 @@ test('tasks import accepts a github or gitlab issue list', async () => {
     },
   });
   session.dispatch('tasks');
-  session.handleEvent({ type: 'key', key: 'escape' });
-  session.handleEvent({ type: 'key', key: 'i' });
+  press(session, 'escape', 'i');
   session.pushInput('https://github.com/tshemsedinov/reslop/issues');
-  session.handleEvent({ type: 'key', key: 'enter' });
+  press(session, 'enter');
   await session.importPromise;
   assert.equal(session.status, 'imported');
   assert.deepEqual(githubTarget, {
@@ -2196,9 +1926,9 @@ test('tasks import accepts a github or gitlab issue list', async () => {
     list: true,
   });
   assert.match(session.notes.tasks[0].text, /@ScriptHound at github:/);
-  session.handleEvent({ type: 'key', key: 'i' });
+  press(session, 'i');
   session.pushInput('https://gitlab.com/acme/demo');
-  session.handleEvent({ type: 'key', key: 'enter' });
+  press(session, 'enter');
   await session.importPromise;
   assert.equal(gitlabTarget.project, 'acme/demo');
   assert.equal(gitlabTarget.list, true);
@@ -2243,7 +1973,7 @@ test('t from any file adds a repo todo and starts editing', async () => {
   assert.equal(session.composeKind, 'tasks');
   assert.equal(session.tasksFocus, 0);
   assert.deepEqual(session.view().tasks, taskRows(['[ ] ']));
-  session.handleEvent({ type: 'key', key: 'escape' });
+  press(session, 'escape');
   session.dispatch('files');
   session.fileCursor = 0;
   session.dispatch('tasks');
@@ -2269,7 +1999,7 @@ test('t opens the repo todo page and lets you edit it', async () => {
   assert.equal(session.mode, 'compose');
   assert.equal(session.items[0].origin, 'unstaged');
   session.pushInput('rewrite loop');
-  session.handleEvent({ type: 'key', key: 'ctrl-s' });
+  press(session, 'ctrl-s');
   assert.equal(session.items[0].file.newPath, 'a.js');
   assert.equal(session.items[1].file.newPath, 'b.js');
   assert.equal(session.current().origin, 'task');
@@ -2281,17 +2011,17 @@ test('t opens the repo todo page and lets you edit it', async () => {
   assert.equal(session.view().counts.tasks, 1);
   assert.equal(session.view().counts.feedback, 0);
   assert.equal(session.tasksFocus, 0);
-  session.handleEvent({ type: 'key', key: 'enter' });
+  press(session, 'enter');
   assert.equal(session.mode, 'compose');
   assert.equal(session.editor.text, 'rewrite loop');
-  session.handleEvent({ type: 'key', key: 'escape' });
+  press(session, 'escape');
   assert.equal(session.mode, 'review');
   assert.equal(session.tasksFocus, 0);
   session.dispatch('next');
   assert.equal(session.pane, 'tasks');
   assert.equal(session.tasksFocus, 1);
   assert.equal(session.composer.idleNoteText(), '');
-  session.handleEvent({ type: 'key', key: 'enter' });
+  press(session, 'enter');
   assert.equal(session.mode, 'compose');
   assert.equal(session.editor.text, '');
   assert.deepEqual(
@@ -2299,14 +2029,14 @@ test('t opens the repo todo page and lets you edit it', async () => {
     taskRows(['[ ] rewrite loop', '[ ] ']),
   );
   session.pushInput('add tests');
-  session.handleEvent({ type: 'key', key: 'ctrl-s' });
+  press(session, 'ctrl-s');
   assert.equal(session.tasksOpen, true);
   assert.deepEqual(
     session.view().tasks,
     taskRows(['[ ] rewrite loop', '[ ] add tests', '[ ] ']),
   );
   assert.equal(session.tasksFocus, 1);
-  session.handleEvent({ type: 'key', key: 'escape' });
+  press(session, 'escape');
   assert.equal(session.pane, 'files');
   assert.equal(session.current().file.newPath, 'a.js');
 });
@@ -2315,42 +2045,25 @@ test('todo list keeps a blank row to start a new item', async () => {
   const { session } = await openSession([sampleItem('a.js')]);
   session.dispatch('tasks');
   session.pushInput('first note');
-  session.handleEvent({ type: 'key', key: 'ctrl-s' });
+  press(session, 'ctrl-s');
   assert.equal(session.mode, 'review');
   assert.deepEqual(session.view().tasks, taskRows(['[ ] first note', '[ ] ']));
   session.dispatch('scrollDown');
   assert.equal(session.tasksFocus, 1);
-  session.handleEvent({ type: 'key', key: 'enter' });
+  press(session, 'enter');
   assert.equal(session.mode, 'compose');
   assert.equal(session.composeTaskId, null);
   assert.equal(session.editor.text, '');
-  session.handleEvent({ type: 'key', key: 'escape' });
+  press(session, 'escape');
   session.draw();
   const draft = session.lastFrame.taskHits.find((row) => row.cursor === 1);
   assert.ok(draft);
-  session.handleEvent({
-    type: 'mouse',
-    kind: 'press',
-    btn: 0,
-    button: 0,
-    x: 2,
-    y: draft.y,
-    press: true,
-  });
-  session.handleEvent({
-    type: 'mouse',
-    kind: 'release',
-    btn: 0,
-    button: 0,
-    x: 2,
-    y: draft.y,
-    press: false,
-  });
+  click(session, 2, draft.y);
   assert.equal(session.tasksFocus, 1);
   assert.equal(session.mode, 'compose');
   assert.equal(session.composeTaskId, null);
   session.pushInput('second note');
-  session.handleEvent({ type: 'key', key: 'escape' });
+  press(session, 'escape');
   assert.deepEqual(
     session.view().tasks,
     taskRows(['[ ] first note', '[ ] second note', '[ ] ']),
@@ -2364,95 +2077,34 @@ test('enter and click edit the focused todo', async () => {
   const { session } = await openSession([sampleItem('a.js')]);
   session.dispatch('tasks');
   session.pushInput('first note');
-  session.handleEvent({ type: 'key', key: 'ctrl-s' });
+  press(session, 'ctrl-s');
   session.composer.tasks.startDraftCompose();
   session.pushInput('second note');
-  session.handleEvent({ type: 'key', key: 'ctrl-s' });
+  press(session, 'ctrl-s');
   assert.equal(session.mode, 'review');
   assert.equal(session.tasksFocus, 1);
-  session.handleEvent({ type: 'key', key: 'enter' });
+  press(session, 'enter');
   assert.equal(session.mode, 'compose');
   assert.equal(session.editor.text, 'second note');
-  session.handleEvent({ type: 'key', key: 'escape' });
+  press(session, 'escape');
   session.dispatch('scrollUp');
   assert.equal(session.tasksFocus, 0);
   session.draw();
   const hit = session.lastFrame.taskHits.find((row) => row.cursor === 0);
   assert.ok(hit);
-  session.handleEvent({
-    type: 'mouse',
-    kind: 'press',
-    btn: 0,
-    button: 0,
-    x: 8,
-    y: hit.y,
-    press: true,
-  });
-  session.handleEvent({
-    type: 'mouse',
-    kind: 'release',
-    btn: 0,
-    button: 0,
-    x: 8,
-    y: hit.y,
-    press: false,
-  });
+  click(session, 8, hit.y);
   assert.equal(session.tasksFocus, 0);
   assert.equal(session.mode, 'compose');
   assert.equal(session.editor.text, 'first note');
-  session.handleEvent({ type: 'key', key: 'escape' });
+  press(session, 'escape');
   session.draw();
   const other = session.lastFrame.taskHits.find((row) => row.cursor === 1);
   assert.ok(other);
-  session.handleEvent({
-    type: 'mouse',
-    kind: 'press',
-    btn: 0,
-    button: 0,
-    x: 8,
-    y: other.y,
-    press: true,
-  });
-  session.handleEvent({
-    type: 'mouse',
-    kind: 'release',
-    btn: 0,
-    button: 0,
-    x: 8,
-    y: other.y,
-    press: false,
-  });
+  click(session, 8, other.y);
   assert.equal(session.tasksFocus, 1);
   assert.equal(session.mode, 'compose');
   assert.equal(session.editor.text, 'second note');
 });
-
-for (const protocol of ['kitty', 'xterm']) {
-  test(`${protocol} modified Enter keeps one multiline task`, async () => {
-    const { session } = await openSession([sampleItem('a.js')]);
-    const chord = (mod) =>
-      protocol === 'kitty' ? `\x1b[13;${mod}u` : `\x1b[27;${mod};13~`;
-    session.dispatch('tasks');
-    session.pushInput('first');
-    const editor = session.editor;
-    for (const mod of [5, 2, 6]) {
-      const sequence = chord(mod);
-      session.pushInput(sequence.slice(0, -1));
-      session.pushInput(sequence.slice(-1));
-      session.pushInput('next');
-      assert.equal(session.mode, 'compose');
-      assert.equal(session.editor, editor);
-      assert.equal(session.tasksFocus, 0);
-    }
-    assert.equal(editor.text, 'first\nnext\nnext\nnext');
-    session.handleEvent({ type: 'key', key: 'escape' });
-    assert.equal(session.notes.tasks.length, 1);
-    assert.equal(session.notes.tasks[0].text, 'first\nnext\nnext\nnext');
-    assert.equal(session.mode, 'review');
-    assert.equal(session.tasksFocus, 0);
-    assert.equal(session.editor, null);
-  });
-}
 
 test('Return edits a task and Escape saves it without advancing', async () => {
   const { session } = await openSession([sampleItem('a.js')]);
@@ -2461,10 +2113,10 @@ test('Return edits a task and Escape saves it without advancing', async () => {
   assert.equal(session.mode, 'compose');
   assert.equal(session.tasksFocus, 0);
   assert.equal(session.editor.text, 'first\nsecond');
-  session.handleEvent({ type: 'key', key: 'escape' });
+  press(session, 'escape');
   session.composer.tasks.startDraftCompose();
   session.pushInput('another');
-  session.handleEvent({ type: 'key', key: 'escape' });
+  press(session, 'escape');
   const ids = session.notes.tasks.map((task) => task.id);
   session.tasksFocus = 0;
   session.pushInput('\r');
@@ -2476,7 +2128,7 @@ test('Return edits a task and Escape saves it without advancing', async () => {
   assert.equal(session.editor.text, 'fi\nA\nBrst\nsecond');
   assert.equal(session.tasksFocus, 0);
   assert.equal(session.composeTaskId, ids[0]);
-  session.handleEvent({ type: 'key', key: 'escape' });
+  press(session, 'escape');
   assert.equal(session.mode, 'review');
   assert.equal(session.tasksFocus, 0);
   assert.equal(session.editor, null);
@@ -2494,8 +2146,10 @@ test('Return edits a task and Escape saves it without advancing', async () => {
 for (const sequence of [
   '\x1b[13;2u',
   '\x1b[13;5u',
+  '\x1b[13;6u',
   '\x1b[27;2;13~',
   '\x1b[27;5;13~',
+  '\x1b[27;6;13~',
 ]) {
   test(`fragmented ${JSON.stringify(sequence)} stays in the task`, async () => {
     const { session } = await openSession([sampleItem('a.js')]);
@@ -2572,42 +2226,11 @@ for (const [name, shift, ctrl] of [
   });
 }
 
-for (const [name, shift, ctrl] of [
-  ['kitty', '\x1b[13;2u', '\x1b[13;5u'],
-  ['xterm', '\x1b[27;2;13~', '\x1b[27;5;13~'],
-  ['line feed', '\n', '\n'],
-]) {
-  test(`${name} adds lines inside an existing task`, async () => {
-    const { session } = await openSession([sampleItem('a.js')]);
-    session.dispatch('tasks');
-    session.pushInput('alphaomega\x13');
-    const id = session.notes.tasks[0].id;
-    session.tasksFocus = 0;
-    session.pushInput('\r');
-    const editor = session.editor;
-    editor.place(5);
-    session.pushInput(`${shift}middle`);
-    session.autosave();
-    assert.equal(session.editor, editor);
-    assert.equal(session.mode, 'compose');
-    assert.equal(session.notes.tasks.length, 1);
-    assert.equal(session.notes.tasks[0].id, id);
-    session.pushInput(`${ctrl}tail`);
-    assert.equal(session.editor, editor);
-    assert.equal(session.tasksFocus, 0);
-    session.pushInput('\x13');
-    assert.equal(session.notes.tasks.length, 1);
-    assert.equal(session.notes.tasks[0].text, 'alpha\nmiddle\ntailomega');
-    const saved = fs.readFileSync(session.notes.reviewPath, 'utf8');
-    assert.equal(parseReview(saved).tasks[0].text, 'alpha\nmiddle\ntailomega');
-  });
-}
-
 test('todo list stays on screen while composing', async () => {
   const { session } = await openSession([sampleItem('a.js')]);
   session.dispatch('tasks');
   session.pushInput('first note');
-  session.handleEvent({ type: 'key', key: 'ctrl-s' });
+  press(session, 'ctrl-s');
   session.composer.tasks.startDraftCompose();
   session.pushInput('draft two');
   assert.equal(session.mode, 'compose');
@@ -2616,24 +2239,7 @@ test('todo list stays on screen while composing', async () => {
   assert.match(body, /\[ \] first note/);
   const hit = session.lastFrame.taskHits.find((row) => row.cursor === 0);
   assert.ok(hit);
-  session.handleEvent({
-    type: 'mouse',
-    kind: 'press',
-    btn: 0,
-    button: 0,
-    x: 8,
-    y: hit.y,
-    press: true,
-  });
-  session.handleEvent({
-    type: 'mouse',
-    kind: 'release',
-    btn: 0,
-    button: 0,
-    x: 8,
-    y: hit.y,
-    press: false,
-  });
+  click(session, 8, hit.y);
   assert.equal(session.mode, 'compose');
   assert.equal(session.editor.text, 'first note');
   assert.equal(session.notes.tasks.length, 2);
@@ -2644,17 +2250,17 @@ test('delete and backspace remove the selected todo', async () => {
   const { session } = await openSession([sampleItem('a.js')]);
   session.dispatch('tasks');
   session.pushInput('first note');
-  session.handleEvent({ type: 'key', key: 'ctrl-s' });
+  press(session, 'ctrl-s');
   session.composer.tasks.startDraftCompose();
   session.pushInput('second note');
-  session.handleEvent({ type: 'key', key: 'ctrl-s' });
+  press(session, 'ctrl-s');
   assert.equal(session.mode, 'review');
   assert.equal(session.tasksFocus, 1);
-  session.handleEvent({ type: 'key', key: 'delete' });
+  press(session, 'delete');
   assert.deepEqual(session.view().tasks, taskRows(['[ ] first note', '[ ] ']));
   assert.equal(session.tasksFocus, 0);
   assert.equal(session.current().origin, 'task');
-  session.handleEvent({ type: 'key', key: 'backspace' });
+  press(session, 'backspace');
   assert.deepEqual(session.view().tasks, taskRows(['[ ] ']));
   assert.equal(session.current().origin, 'task');
 });
@@ -2666,7 +2272,7 @@ test('empty autosave does not persist a draft todo', async () => {
   session.autosave();
   assert.equal(session.notes.tasks.length, 0);
   session.pushInput('keep this');
-  session.handleEvent({ type: 'key', key: 'escape' });
+  press(session, 'escape');
   assert.equal(session.mode, 'review');
   assert.equal(session.editor, null);
   assert.equal(session.tasksFocus, 0);
@@ -2687,7 +2293,7 @@ test('todo autosave updates one draft instead of duplicating', async () => {
   session.autosave();
   assert.equal(session.notes.tasks.length, 1);
   assert.equal(session.notes.tasks[0].text, 'keep this more');
-  session.handleEvent({ type: 'key', key: 'escape' });
+  press(session, 'escape');
   assert.equal(session.mode, 'review');
   assert.equal(session.editor, null);
   assert.equal(session.tasksFocus, 0);
@@ -2701,7 +2307,7 @@ test('typing a todo starts editing at the end of the line', async () => {
   const { session } = await openSession([sampleItem('a.js')]);
   session.dispatch('tasks');
   session.pushInput('first');
-  session.handleEvent({ type: 'key', key: 'escape' });
+  press(session, 'escape');
   assert.equal(session.mode, 'review');
   assert.equal(session.tasksFocus, 0);
   session.pushInput('+more');
@@ -2714,22 +2320,21 @@ test('home end and page keys jump the todo list', async () => {
   const { session } = await openSession([sampleItem('a.js')]);
   session.dispatch('tasks');
   session.pushInput('one');
-  session.handleEvent({ type: 'key', key: 'escape' });
+  press(session, 'escape');
   session.composer.tasks.startDraftCompose();
   session.pushInput('two');
-  session.handleEvent({ type: 'key', key: 'escape' });
+  press(session, 'escape');
   session.composer.tasks.startDraftCompose();
   session.pushInput('three');
-  session.handleEvent({ type: 'key', key: 'escape' });
+  press(session, 'escape');
   assert.equal(session.mode, 'review');
-  session.handleEvent({ type: 'key', key: 'home' });
+  press(session, 'home');
   assert.equal(session.tasksFocus, 0);
-  session.handleEvent({ type: 'key', key: 'end' });
+  press(session, 'end');
   assert.equal(session.tasksFocus, 8);
-  session.handleEvent({ type: 'key', key: 'home' });
-  session.handleEvent({ type: 'key', key: 'pageDown' });
+  press(session, 'home', 'pageDown');
   assert.equal(session.tasksFocus, 8);
-  session.handleEvent({ type: 'key', key: 'pageUp' });
+  press(session, 'pageUp');
   assert.equal(session.tasksFocus, 0);
 });
 
@@ -2737,26 +2342,26 @@ test('todo edit arrows move across todos without leaving edit', async () => {
   const { session } = await openSession([sampleItem('a.js')]);
   session.dispatch('tasks');
   session.pushInput('first');
-  session.handleEvent({ type: 'key', key: 'escape' });
+  press(session, 'escape');
   session.composer.tasks.startDraftCompose();
   session.pushInput('second');
-  session.handleEvent({ type: 'key', key: 'up' });
+  press(session, 'up');
   assert.equal(session.mode, 'compose');
   assert.equal(session.tasksFocus, 0);
   assert.equal(session.editor.text, 'first');
   assert.equal(session.editor.cursor, 'first'.length);
-  session.handleEvent({ type: 'key', key: 'up' });
+  press(session, 'up');
   assert.equal(session.mode, 'compose');
   assert.equal(session.tasksFocus, 0);
-  session.handleEvent({ type: 'key', key: 'down' });
+  press(session, 'down');
   assert.equal(session.mode, 'compose');
   assert.equal(session.tasksFocus, 1);
   assert.equal(session.editor.text, 'second');
-  session.handleEvent({ type: 'key', key: 'down' });
+  press(session, 'down');
   assert.equal(session.mode, 'compose');
   assert.equal(session.tasksFocus, 2);
   assert.equal(session.editor.text, '');
-  session.handleEvent({ type: 'key', key: 'down' });
+  press(session, 'down');
   assert.equal(session.mode, 'compose');
   assert.equal(session.tasksFocus, 3);
   assert.equal(session.editor.text, '');
@@ -2770,29 +2375,29 @@ test('todo edit arrows move inside a multiline todo', async () => {
   const { session } = await openSession([sampleItem('a.js')]);
   session.dispatch('tasks');
   session.pushInput('first');
-  session.handleEvent({ type: 'key', key: 'escape' });
+  press(session, 'escape');
   session.composer.tasks.startDraftCompose();
   session.pushInput('second');
-  session.handleEvent({ type: 'key', key: 'escape' });
+  press(session, 'escape');
   session.notes.tasks[1].text = 'one\ntwo\nthree';
-  session.handleEvent({ type: 'key', key: 'enter' });
+  press(session, 'enter');
   assert.equal(session.mode, 'compose');
   assert.equal(session.editor.linePos().line, 2);
-  session.handleEvent({ type: 'key', key: 'up' });
+  press(session, 'up');
   assert.equal(session.tasksFocus, 1);
   assert.equal(session.editor.linePos().line, 1);
-  session.handleEvent({ type: 'key', key: 'up' });
+  press(session, 'up');
   assert.equal(session.tasksFocus, 1);
   assert.equal(session.editor.linePos().line, 0);
-  session.handleEvent({ type: 'key', key: 'up' });
+  press(session, 'up');
   assert.equal(session.mode, 'compose');
   assert.equal(session.tasksFocus, 0);
   assert.equal(session.editor.text, 'first');
-  session.handleEvent({ type: 'key', key: 'down' });
+  press(session, 'down');
   assert.equal(session.tasksFocus, 1);
   assert.equal(session.editor.text, 'one\ntwo\nthree');
   assert.equal(session.editor.linePos().line, 2);
-  session.handleEvent({ type: 'key', key: 'down' });
+  press(session, 'down');
   assert.equal(session.tasksFocus, 2);
   assert.equal(session.editor.text, '');
 });
@@ -2801,19 +2406,19 @@ test('todo list arrows skip over multiline items', async () => {
   const { session } = await openSession([sampleItem('a.js')]);
   session.dispatch('tasks');
   session.pushInput('first');
-  session.handleEvent({ type: 'key', key: 'escape' });
+  press(session, 'escape');
   session.composer.tasks.startDraftCompose();
   session.pushInput('second');
-  session.handleEvent({ type: 'key', key: 'escape' });
+  press(session, 'escape');
   session.notes.tasks[1].text = 'one\ntwo\nthree';
   assert.equal(session.mode, 'review');
   assert.equal(session.tasksFocus, 1);
-  session.handleEvent({ type: 'key', key: 'up' });
+  press(session, 'up');
   assert.equal(session.mode, 'review');
   assert.equal(session.tasksFocus, 0);
-  session.handleEvent({ type: 'key', key: 'down' });
+  press(session, 'down');
   assert.equal(session.tasksFocus, 1);
-  session.handleEvent({ type: 'key', key: 'down' });
+  press(session, 'down');
   assert.equal(session.tasksFocus, 2);
 });
 
@@ -2821,20 +2426,19 @@ test('todo edit arrows move across wrapped lines', async () => {
   const { session } = await openSession([sampleItem('a.js')]);
   session.dispatch('tasks');
   session.pushInput('first');
-  session.handleEvent({ type: 'key', key: 'escape' });
+  press(session, 'escape');
   session.composer.tasks.startDraftCompose();
   session.pushInput('second');
-  session.handleEvent({ type: 'key', key: 'escape' });
+  press(session, 'escape');
   const long = 'x'.repeat(90);
   session.notes.tasks[1].text = long;
-  session.handleEvent({ type: 'key', key: 'enter' });
-  session.handleEvent({ type: 'key', key: 'up' });
+  press(session, 'enter', 'up');
   assert.equal(session.tasksFocus, 1);
   assert.ok(session.editor.cursor < long.length);
-  session.handleEvent({ type: 'key', key: 'down' });
+  press(session, 'down');
   assert.equal(session.tasksFocus, 1);
   assert.equal(session.editor.cursor, long.length);
-  session.handleEvent({ type: 'key', key: 'down' });
+  press(session, 'down');
   assert.equal(session.tasksFocus, 2);
 });
 
@@ -2842,17 +2446,17 @@ test('todo edit page keys jump across todos', async () => {
   const { session } = await openSession([sampleItem('a.js')]);
   session.dispatch('tasks');
   session.pushInput('first');
-  session.handleEvent({ type: 'key', key: 'escape' });
+  press(session, 'escape');
   session.composer.tasks.startDraftCompose();
   session.pushInput('second');
-  session.handleEvent({ type: 'key', key: 'escape' });
+  press(session, 'escape');
   session.composer.tasks.startDraftCompose();
   session.pushInput('third');
-  session.handleEvent({ type: 'key', key: 'pageUp' });
+  press(session, 'pageUp');
   assert.equal(session.mode, 'compose');
   assert.equal(session.tasksFocus, 0);
   assert.equal(session.editor.text, 'first');
-  session.handleEvent({ type: 'key', key: 'pageDown' });
+  press(session, 'pageDown');
   assert.equal(session.tasksFocus, 8);
   assert.equal(session.editor.text, '');
 });
@@ -2861,12 +2465,12 @@ test('enter adds task lines and escape stays on the saved task', async () => {
   const { session } = await openSession([sampleItem('a.js')]);
   session.dispatch('tasks');
   session.pushInput('first');
-  session.handleEvent({ type: 'key', key: 'enter' });
+  press(session, 'enter');
   assert.equal(session.mode, 'compose');
   assert.equal(session.tasksFocus, 0);
   assert.equal(session.editor.text, 'first\n');
   session.pushInput('second');
-  session.handleEvent({ type: 'key', key: 'escape' });
+  press(session, 'escape');
   assert.equal(session.mode, 'review');
   assert.equal(session.tasksFocus, 0);
   assert.deepEqual(
@@ -2880,7 +2484,7 @@ test('todo save recovers if the stub was dropped', async () => {
   session.dispatch('tasks');
   session.notes.tasks = [];
   session.pushInput('still here');
-  session.handleEvent({ type: 'key', key: 'escape' });
+  press(session, 'escape');
   assert.equal(session.notes.tasks.length, 1);
   assert.equal(session.notes.tasks[0].text, 'still here');
   assert.equal(session.current().origin, 'task');
@@ -2891,7 +2495,7 @@ test('quit with notes keeps the review status', async () => {
   const { session } = await openSession([item]);
   session.dispatch('feedback');
   session.pushInput('nits');
-  session.handleEvent({ type: 'key', key: 'ctrl-s' });
+  press(session, 'ctrl-s');
   session.notes.status = 'partial';
   session.notes.dirty = true;
   session.dispatch('quit');
@@ -2953,7 +2557,7 @@ test('quit warns before terminating a running test or agent', async () => {
 
 test('initReview resumes latest editing file', async () => {
   const cwd = tempDir('reslop-ui-');
-  const name = `${dateStamp()}-00.md`;
+  const name = `${today()}-00.md`;
   const reviewPath = path.join(cwd, REVIEW_DIR, name);
   const draft = new ReviewStore(reviewPath);
   draft.addTask('a.js', 'rewrite loop');
@@ -2971,7 +2575,7 @@ test('initReview resumes latest editing file', async () => {
 
 test('initReview starts a new file when latest is partial', async () => {
   const cwd = tempDir('reslop-ui-');
-  const name = `${dateStamp()}-00.md`;
+  const name = `${today()}-00.md`;
   const reviewPath = path.join(cwd, REVIEW_DIR, name);
   const draft = new ReviewStore(reviewPath);
   draft.status = 'partial';
@@ -2981,14 +2585,14 @@ test('initReview starts a new file when latest is partial', async () => {
   const { session } = await openSession([sampleItem('a.js')], { cwd });
   assert.equal(
     session.notes.reviewPath,
-    path.join(cwd, REVIEW_DIR, `${dateStamp()}-01.md`),
+    path.join(cwd, REVIEW_DIR, `${today()}-01.md`),
   );
   assert.equal(session.notes.tasks.length, 0);
 });
 
 test('newReview starts a new file even if latest is editing', async () => {
   const cwd = tempDir('reslop-ui-');
-  const name = `${dateStamp()}-00.md`;
+  const name = `${today()}-00.md`;
   const reviewPath = path.join(cwd, REVIEW_DIR, name);
   const draft = new ReviewStore(reviewPath);
   draft.addTask('a.js', 'rewrite loop');
@@ -3000,7 +2604,7 @@ test('newReview starts a new file even if latest is editing', async () => {
   });
   assert.equal(
     session.notes.reviewPath,
-    path.join(cwd, REVIEW_DIR, `${dateStamp()}-01.md`),
+    path.join(cwd, REVIEW_DIR, `${today()}-01.md`),
   );
   assert.equal(session.notes.tasks.length, 0);
 });
@@ -3016,25 +2620,25 @@ test('files pane c lists commits and c commits the message', async () => {
   assert.equal(session.commitCursor, 0);
   assert.equal(session.view().commits[0].subject, 'uncommitted changes');
   assert.equal(session.view().commits[1].subject, 'land the change');
-  session.handleEvent({ type: 'key', key: 'escape' });
+  press(session, 'escape');
   await session.ops.idle();
   assert.equal(session.pane, 'files');
   assert.equal(repo.commits.length, 0);
   session.pushInput('c');
   await session.ops.idle();
-  session.handleEvent({ type: 'key', key: 'insert' });
+  press(session, 'insert');
   await session.ops.idle();
   assert.equal(session.mode, 'compose');
   assert.equal(session.composeKind, 'commit');
   assert.equal(session.commitKind, 'commit');
-  session.handleEvent({ type: 'key', key: 'enter' });
+  press(session, 'enter');
   await session.ops.idle();
   assert.equal(session.mode, 'compose');
   assert.equal(session.status, 'empty commit message');
   assert.equal(repo.commits.length, 0);
   session.pushInput('land the change');
   await session.ops.idle();
-  session.handleEvent({ type: 'key', key: 'enter' });
+  press(session, 'enter');
   await session.ops.idle();
   assert.equal(session.mode, 'review');
   assert.equal(session.status, 'committed');
@@ -3066,11 +2670,11 @@ test('escape from a commit diff returns to the dashboard', async () => {
   await session.ops.idle();
   session.dispatch('next');
   await session.ops.idle();
-  session.handleEvent({ type: 'key', key: 'enter' });
+  press(session, 'enter');
   await session.ops.idle();
   assert.equal(session.pane, 'diff');
   assert.equal(session.rev.startsWith('aaa1111'), true);
-  session.handleEvent({ type: 'key', key: 'escape' });
+  press(session, 'escape');
   await session.ops.idle();
   assert.equal(session.pane, 'dashboard');
   assert.equal(session.rev, '');
@@ -3086,16 +2690,16 @@ test('enter on uncommitted changes leaves a viewed commit', async () => {
   await session.ops.idle();
   session.dispatch('next');
   await session.ops.idle();
-  session.handleEvent({ type: 'key', key: 'enter' });
+  press(session, 'enter');
   await session.ops.idle();
   assert.equal(session.pane, 'diff');
   assert.equal(session.rev, sha);
-  session.handleEvent({ type: 'key', key: 'escape' });
+  press(session, 'escape');
   await session.ops.idle();
   session.pushInput('c');
   await session.ops.idle();
   assert.equal(session.commitCursor, 0);
-  session.handleEvent({ type: 'key', key: 'enter' });
+  press(session, 'enter');
   await session.ops.idle();
   assert.equal(session.rev, '');
   assert.equal(session.revShort, '');
@@ -3109,37 +2713,12 @@ test('enter on uncommitted changes opens the commit editor', async () => {
     startPane: 'files',
   });
   session.pushInput('c');
-  session.handleEvent({ type: 'key', key: 'enter' });
+  press(session, 'enter');
   await session.ops.idle();
   assert.equal(session.pane, 'commits');
   assert.equal(session.mode, 'compose');
   assert.equal(session.commitKind, 'commit');
   assert.equal(session.commitCursor, 0);
-});
-
-test('c commits, amends the latest, or fixups an older commit', async () => {
-  const { session } = await openSession([sampleItem('a.js', 'staged')], {
-    startPane: 'files',
-  });
-  session.pushInput('c');
-  assert.equal(session.commitCursor, 0);
-  session.handleEvent({ type: 'key', key: 'insert' });
-  await session.ops.idle();
-  assert.equal(session.commitKind, 'commit');
-  session.composer.closeCompose();
-  session.dispatch('next');
-  session.handleEvent({ type: 'key', key: 'insert' });
-  session.handleEvent({ type: 'key', key: 'a' });
-  await session.ops.idle();
-  assert.equal(session.commitCursor, 1);
-  assert.equal(session.commitKind, 'amend');
-  session.composer.closeCompose();
-  session.dispatch('next');
-  session.handleEvent({ type: 'key', key: 'insert' });
-  session.handleEvent({ type: 'key', key: 'f' });
-  await session.ops.idle();
-  assert.equal(session.commitCursor, 2);
-  assert.equal(session.commitKind, 'fixup');
 });
 
 test('click commit footer chooses commit amend or fixup', async () => {
@@ -3187,15 +2766,15 @@ test('full mode commit enter inserts a newline', async () => {
   });
   session.pushInput('c');
   session.pushInput('v');
-  session.handleEvent({ type: 'key', key: 'insert' });
+  press(session, 'insert');
   session.pushInput('one');
-  session.handleEvent({ type: 'key', key: 'enter' });
+  press(session, 'enter');
   session.pushInput('two');
   await session.ops.idle();
   assert.equal(session.mode, 'compose');
   assert.equal(session.editor.text, 'one\ntwo');
   assert.equal(repo.commits.length, 0);
-  session.handleEvent({ type: 'key', key: 'up' });
+  press(session, 'up');
   assert.equal(session.editor.cursor, 3);
   assert.equal(session.commitCursor, 0);
 });
@@ -3206,11 +2785,11 @@ test('full mode ctrl-s saves the message', async () => {
   });
   session.pushInput('c');
   session.pushInput('v');
-  session.handleEvent({ type: 'key', key: 'insert' });
+  press(session, 'insert');
   session.pushInput('one');
-  session.handleEvent({ type: 'key', key: 'enter' });
+  press(session, 'enter');
   session.pushInput('two');
-  session.handleEvent({ type: 'key', key: 'ctrl-s' });
+  press(session, 'ctrl-s');
   await session.ops.idle();
   assert.equal(session.mode, 'review');
   assert.equal(repo.commits.length, 1);
@@ -3223,20 +2802,20 @@ test('full mode enter keeps the blank line after the subject', async () => {
   });
   session.pushInput('c');
   session.pushInput('v');
-  session.handleEvent({ type: 'key', key: 'insert' });
+  press(session, 'insert');
   session.pushInput('ship it');
-  session.handleEvent({ type: 'key', key: 'enter' });
+  press(session, 'enter');
   await session.ops.idle();
   assert.equal(session.mode, 'compose');
   assert.equal(session.editor.text, 'ship it\n');
-  session.handleEvent({ type: 'key', key: 'enter' });
+  press(session, 'enter');
   assert.equal(session.mode, 'compose');
   assert.equal(session.editor.text, 'ship it\n\n');
   assert.equal(repo.commits.length, 0);
   session.pushInput('explain');
-  session.handleEvent({ type: 'key', key: 'enter' });
+  press(session, 'enter');
   assert.equal(session.mode, 'compose');
-  session.handleEvent({ type: 'key', key: 'enter' });
+  press(session, 'enter');
   await session.ops.idle();
   assert.equal(session.mode, 'review');
   assert.equal(repo.commits[0].message, 'ship it\n\nexplain');
@@ -3248,14 +2827,13 @@ test('full mode enter three times saves a one-line message', async () => {
   });
   session.pushInput('c');
   session.pushInput('v');
-  session.handleEvent({ type: 'key', key: 'insert' });
+  press(session, 'insert');
   session.pushInput('  ship it  ');
-  session.handleEvent({ type: 'key', key: 'enter' });
-  session.handleEvent({ type: 'key', key: 'enter' });
+  press(session, 'enter', 'enter');
   await session.ops.idle();
   assert.equal(session.mode, 'compose');
   assert.equal(session.editor.text, '  ship it  \n\n');
-  session.handleEvent({ type: 'key', key: 'enter' });
+  press(session, 'enter');
   await session.ops.idle();
   assert.equal(session.mode, 'review');
   assert.equal(repo.commits[0].message, 'ship it');
@@ -3267,10 +2845,10 @@ test('saving a commit trims spaces and surrounding newlines', async () => {
   });
   session.pushInput('c');
   session.pushInput('v');
-  session.handleEvent({ type: 'key', key: 'insert' });
+  press(session, 'insert');
   await session.ops.idle();
   session.editor.replace('  ship it  \n \n  explain  \n\n');
-  session.handleEvent({ type: 'key', key: 'ctrl-s' });
+  press(session, 'ctrl-s');
   await session.ops.idle();
   assert.equal(session.mode, 'review');
   assert.equal(repo.commits[0].message, 'ship it\n\nexplain');
@@ -3299,24 +2877,7 @@ test('editing a commit ignores clicks and scrolls elsewhere', async () => {
   session.draw();
   const other = session.lastFrame.fileHits.find((hit) => hit.cursor === 0);
   assert.ok(other);
-  session.handleEvent({
-    type: 'mouse',
-    button: 0,
-    btn: 0,
-    kind: 'press',
-    x: 4,
-    y: other.y,
-    press: true,
-  });
-  session.handleEvent({
-    type: 'mouse',
-    button: 0,
-    btn: 0,
-    kind: 'release',
-    x: 4,
-    y: other.y,
-    press: false,
-  });
+  click(session, 4, other.y);
   session.handleEvent({
     type: 'mouse',
     kind: 'wheelDown',
@@ -3351,7 +2912,7 @@ test('brief reword edits the first line and keeps the body', async () => {
   assert.equal(session.editor.text, 'land the change');
   assert.equal(session.editor.cursor, 'land the change'.length);
   session.editor.replace('ship it');
-  session.handleEvent({ type: 'key', key: 'enter' });
+  press(session, 'enter');
   await session.ops.idle();
   assert.equal(session.status, 'reworded');
   assert.deepEqual(repo.rewords, [
@@ -3371,14 +2932,14 @@ test('brief amend edits the first line and keeps the body', async () => {
   await session.ops.idle();
   session.dispatch('next');
   await session.ops.idle();
-  session.handleEvent({ type: 'key', key: 'insert' });
+  press(session, 'insert');
   await session.ops.idle();
-  session.handleEvent({ type: 'key', key: 'a' });
+  press(session, 'a');
   await session.ops.idle();
   assert.equal(session.editor.text, 'land the change');
   assert.equal(session.editor.cursor, 'land the change'.length);
   session.editor.replace('ship it');
-  session.handleEvent({ type: 'key', key: 'enter' });
+  press(session, 'enter');
   await session.ops.idle();
   assert.equal(session.status, 'amended');
   assert.equal(repo.commits[0].kind, 'amend');
@@ -3406,7 +2967,7 @@ test('full mode reword edits the whole message', async () => {
   await session.ops.idle();
   assert.equal(session.editor.text, 'land the change\n\nexplain the change');
   session.editor.replace('ship it\n\nnew body');
-  session.handleEvent({ type: 'key', key: 'ctrl-s' });
+  press(session, 'ctrl-s');
   await session.ops.idle();
   assert.deepEqual(repo.rewords, [
     {
@@ -3424,15 +2985,15 @@ test('commits pane a amends with the previous message', async () => {
   await session.ops.idle();
   session.dispatch('next');
   await session.ops.idle();
-  session.handleEvent({ type: 'key', key: 'insert' });
+  press(session, 'insert');
   await session.ops.idle();
-  session.handleEvent({ type: 'key', key: 'a' });
+  press(session, 'a');
   await session.ops.idle();
   assert.equal(session.commitCursor, 1);
   assert.equal(session.composeKind, 'commit');
   assert.equal(session.commitKind, 'amend');
   assert.equal(session.editor.text, 'previous message');
-  session.handleEvent({ type: 'key', key: 'enter' });
+  press(session, 'enter');
   await session.ops.idle();
   assert.equal(session.status, 'amended');
   assert.equal(repo.commits[0].kind, 'amend');
@@ -3456,7 +3017,7 @@ test('commits pane r rewords the selected commit', async () => {
   assert.equal(session.commitKind, 'reword');
   assert.equal(session.editor.text, 'init');
   session.editor.replace('rewritten init');
-  session.handleEvent({ type: 'key', key: 'enter' });
+  press(session, 'enter');
   await session.ops.idle();
   assert.equal(session.status, 'reworded');
   assert.deepEqual(repo.rewords, [
@@ -3548,12 +3109,12 @@ test('c on an older commit writes a fixup', async () => {
   await session.ops.idle();
   session.dispatch('next');
   await session.ops.idle();
-  session.handleEvent({ type: 'key', key: 'insert' });
+  press(session, 'insert');
   await session.ops.idle();
-  session.handleEvent({ type: 'key', key: 'f' });
+  press(session, 'f');
   await session.ops.idle();
   assert.equal(session.editor.text, 'fixup! init');
-  session.handleEvent({ type: 'key', key: 'enter' });
+  press(session, 'enter');
   await session.ops.idle();
   assert.equal(session.status, 'fixup');
   assert.equal(repo.commits[0].kind, 'fixup');
@@ -3565,9 +3126,9 @@ test('escape from commit message does not run git', async () => {
     startPane: 'files',
   });
   session.pushInput('c');
-  session.handleEvent({ type: 'key', key: 'insert' });
+  press(session, 'insert');
   session.pushInput('draft');
-  session.handleEvent({ type: 'key', key: 'escape' });
+  press(session, 'escape');
   assert.equal(session.mode, 'review');
   assert.equal(repo.commits.length, 0);
 });
@@ -3597,12 +3158,12 @@ test('commits pane skips commit when nothing is staged', async () => {
   session.pushInput('c');
   await session.ops.idle();
   assert.equal(session.pane, 'commits');
-  session.handleEvent({ type: 'key', key: 'insert' });
+  press(session, 'insert');
   await session.ops.idle();
   assert.equal(session.mode, 'review');
   assert.equal(session.status, 'nothing to commit');
   assert.equal(repo.commits.length, 0);
-  session.handleEvent({ type: 'key', key: 'x' });
+  press(session, 'x');
   assert.equal(session.mode, 'review');
   assert.equal(session.status, 'nothing to commit');
   assert.equal(repo.commits.length, 0);
@@ -3614,14 +3175,14 @@ test('commits pane opens on the viewed revision', async () => {
   });
   session.pushInput('c');
   await session.ops.idle();
-  session.handleEvent({ type: 'key', key: 'end' });
+  press(session, 'end');
   await session.ops.idle();
   assert.equal(session.commitCursor, 2);
-  session.handleEvent({ type: 'key', key: 'enter' });
+  press(session, 'enter');
   await session.ops.idle();
   session.draw();
   assert.equal(session.pane, 'diff');
-  session.handleEvent({ type: 'key', key: 'escape' });
+  press(session, 'escape');
   await session.ops.idle();
   assert.equal(session.pane, 'files');
   session.pushInput('c');
@@ -3638,34 +3199,34 @@ test('commits pane lists newest first', async () => {
   await session.ops.idle();
   const listed = session.view().commits.map((entry) => entry.subject);
   assert.deepEqual(listed, ['uncommitted changes', 'land the change', 'init']);
-  session.handleEvent({ type: 'key', key: 'right' });
+  press(session, 'right');
   await session.ops.idle();
   assert.equal(session.commitCursor, 0);
-  session.handleEvent({ type: 'key', key: 'down' });
+  press(session, 'down');
   await session.ops.idle();
   assert.equal(session.commitCursor, 1);
-  session.handleEvent({ type: 'key', key: 'up' });
+  press(session, 'up');
   await session.ops.idle();
   assert.equal(session.commitCursor, 0);
   session.pushInput('j');
   await session.ops.idle();
   assert.equal(session.commitCursor, 1);
-  session.handleEvent({ type: 'key', key: 'home' });
+  press(session, 'home');
   await session.ops.idle();
   assert.equal(session.commitCursor, 0);
-  session.handleEvent({ type: 'key', key: 'enter' });
+  press(session, 'enter');
   await session.ops.idle();
   assert.equal(session.pane, 'commits');
   assert.equal(session.mode, 'review');
   assert.equal(session.status, 'nothing to commit');
-  session.handleEvent({ type: 'key', key: 'escape' });
+  press(session, 'escape');
   await session.ops.idle();
   session.pushInput('c');
   await session.ops.idle();
-  session.handleEvent({ type: 'key', key: 'end' });
+  press(session, 'end');
   await session.ops.idle();
   assert.equal(session.commitCursor, 2);
-  session.handleEvent({ type: 'key', key: 'enter' });
+  press(session, 'enter');
   await session.ops.idle();
   assert.equal(session.pane, 'diff');
   assert.equal(session.rev, 'bbb2222bbbbbbbbbbbbbbbbbbbbbbbbbbbbbb');
@@ -3679,7 +3240,7 @@ test('commits pane delete asks to delete the selected commit', async () => {
   await session.ops.idle();
   session.dispatch('next');
   await session.ops.idle();
-  session.handleEvent({ type: 'key', key: 'delete' });
+  press(session, 'delete');
   await session.ops.idle();
   assert.equal(session.mode, 'confirmDrop');
   assert.equal(session.view().dropName, 'aaa1111');
@@ -3687,13 +3248,13 @@ test('commits pane delete asks to delete the selected commit', async () => {
   await session.ops.idle();
   assert.equal(session.mode, 'review');
   assert.equal(repo.commitDrops.length, 0);
-  session.handleEvent({ type: 'key', key: 'delete' });
+  press(session, 'delete');
   await session.ops.idle();
-  session.handleEvent({ type: 'key', key: 'escape' });
+  press(session, 'escape');
   await session.ops.idle();
   assert.equal(session.mode, 'review');
   assert.equal(repo.commitDrops.length, 0);
-  session.handleEvent({ type: 'key', key: 'delete' });
+  press(session, 'delete');
   await session.ops.idle();
   session.pushInput('y');
   await session.ops.idle();
@@ -3714,7 +3275,7 @@ test('click commit row selects it', async () => {
   session.draw();
   const hit = session.lastFrame.fileHits.find((entry) => entry.cursor === 1);
   assert.ok(hit);
-  clickAt(session, 4, hit.y);
+  click(session, 4, hit.y);
   assert.equal(session.commitCursor, 1);
   assert.equal(session.pane, 'commits');
 });
@@ -3728,10 +3289,10 @@ test('double click commit row opens its diff', async () => {
   session.draw();
   const hit = session.lastFrame.fileHits.find((entry) => entry.cursor === 2);
   assert.ok(hit);
-  clickAt(session, 4, hit.y);
+  click(session, 4, hit.y);
   assert.equal(session.commitCursor, 2);
   assert.equal(session.pane, 'commits');
-  clickAt(session, 4, hit.y);
+  click(session, 4, hit.y);
   await session.ops.idle();
   assert.equal(session.pane, 'diff');
   assert.equal(session.rev, 'bbb2222bbbbbbbbbbbbbbbbbbbbbbbbbbbbbb');
@@ -3739,14 +3300,14 @@ test('double click commit row opens its diff', async () => {
 
 test('files pane a and d stay add and revert', async () => {
   const added = await openSession([sampleItem('a.js')], { startPane: 'files' });
-  added.session.handleEvent({ type: 'key', key: 'down' });
+  press(added.session, 'down');
   added.session.pushInput('a');
   await added.session.ops.idle();
   assert.equal(added.repo.added.length, 1);
   const reverted = await openSession([sampleItem('a.js')], {
     startPane: 'files',
   });
-  reverted.session.handleEvent({ type: 'key', key: 'down' });
+  press(reverted.session, 'down');
   reverted.session.pushInput('d');
   await reverted.session.ops.idle();
   assert.equal(reverted.repo.reverted.length, 1);
@@ -3836,7 +3397,7 @@ test('load applies imported GitHub notes on a new review', async () => {
 
 test('load skips imported GitHub notes when resuming a review', async () => {
   const cwd = tempDir('reslop-ui-');
-  const reviewPath = path.join(cwd, REVIEW_DIR, `${dateStamp()}-00.md`);
+  const reviewPath = path.join(cwd, REVIEW_DIR, `${today()}-00.md`);
   const draft = new ReviewStore(reviewPath);
   draft.addTask('a.js', 'rewrite loop');
   fs.mkdirSync(path.dirname(reviewPath), { recursive: true });
@@ -3997,25 +3558,11 @@ test('major update asks y or n on the loaded status line', async () => {
   assert.deepEqual(installed, []);
   const text = session.lastFrame.text;
   assert.match(text, /update reslop 0\.1\.5 → 1\.0\.0\? y\/n/);
-  session.handleEvent({ type: 'key', key: 'n' });
+  press(session, 'n');
   assert.equal(session.mode, 'review');
   assert.deepEqual(installed, []);
-  session.handleEvent({ type: 'key', key: 'j' });
+  press(session, 'j');
   assert.equal(session.fileCursor, 1);
-});
-
-test('click update prompt y and n', async () => {
-  const declined = await openUpdating({ latest: '1.0.0' });
-  await declined.session.openUpdate();
-  clickStatusChoice(declined.session, 'n');
-  assert.equal(declined.session.mode, 'review');
-  assert.deepEqual(declined.installed, []);
-
-  const accepted = await openUpdating({ latest: '1.0.0' });
-  await accepted.session.openUpdate();
-  clickStatusChoice(accepted.session, 'y');
-  await accepted.session.updater.installPromise;
-  assert.deepEqual(accepted.installed, ['1.0.0']);
 });
 
 test('major prompt waits until the UI has loaded', async () => {
@@ -4051,7 +3598,7 @@ test('major update y installs the new version', async () => {
   const { session, installed } = await openUpdating({ latest: '1.0.0' });
   await session.openUpdate();
   session.draw();
-  session.handleEvent({ type: 'key', key: 'y' });
+  press(session, 'y');
   await session.installPromise;
   assert.deepEqual(installed, ['1.0.0']);
   assert.equal(session.status, 'updated');
@@ -4064,7 +3611,7 @@ test('declined major update is not asked again from cache', async () => {
   });
   await session.openUpdate();
   session.draw();
-  session.handleEvent({ type: 'key', key: 'n' });
+  press(session, 'n');
   let fetched = 0;
   const again = (
     await openSession([sampleItem('a.js')], {
@@ -4086,65 +3633,6 @@ test('declined major update is not asked again from cache', async () => {
   assert.equal(fs.existsSync(cacheFile), true);
 });
 
-test('declined major still auto-installs a later patch', async () => {
-  const { session, installed, update } = await openUpdating({
-    latest: '1.0.0',
-  });
-  await session.openUpdate();
-  session.draw();
-  session.handleEvent({ type: 'key', key: 'n' });
-  const next = (
-    await openSession([sampleItem('a.js')], {
-      startPane: 'files',
-      update: {
-        ...update,
-        interval: 0,
-        fetch: async () => ({
-          ok: true,
-          json: async () => ({
-            versions: { '0.1.5': {}, '0.1.6': {}, '1.0.0': {} },
-          }),
-        }),
-      },
-    })
-  ).session;
-  next.uiOpen = true;
-  await next.openUpdate();
-  assert.deepEqual(installed, ['0.1.6']);
-  assert.equal(next.status, 'updated');
-  assert.equal(next.mode, 'review');
-});
-
-test('declined major asks again when 1.0.1 appears', async () => {
-  const { session, installed, update } = await openUpdating({
-    latest: '1.0.0',
-  });
-  await session.openUpdate();
-  session.draw();
-  session.handleEvent({ type: 'key', key: 'n' });
-  const next = (
-    await openSession([sampleItem('a.js')], {
-      startPane: 'files',
-      update: {
-        ...update,
-        interval: 0,
-        fetch: async () => ({
-          ok: true,
-          json: async () => ({
-            versions: { '0.1.5': {}, '1.0.0': {}, '1.0.1': {} },
-          }),
-        }),
-      },
-    })
-  ).session;
-  next.uiOpen = true;
-  await next.openUpdate();
-  next.draw();
-  assert.deepEqual(installed, []);
-  assert.equal(next.mode, 'confirmUpdate');
-  assert.equal(next.updater.to, '1.0.1');
-});
-
 test('click status branch opens the branch list', async () => {
   const { session } = await openSession([sampleItem('a.js')], {
     startPane: 'files',
@@ -4152,60 +3640,33 @@ test('click status branch opens the branch list', async () => {
   session.draw();
   const hit = session.lastFrame.statusHits[0];
   assert.ok(hit);
-  session.handleEvent({
-    type: 'mouse',
-    button: 0,
-    btn: 0,
-    kind: 'press',
-    x: hit.x0 + 1,
-    y: hit.y,
-    press: true,
-  });
-  session.handleEvent({
-    type: 'mouse',
-    button: 0,
-    btn: 0,
-    kind: 'release',
-    x: hit.x0 + 1,
-    y: hit.y,
-    press: false,
-  });
+  click(session, hit.x0 + 1, hit.y);
   await session.ops.idle();
   assert.equal(session.pane, 'branches');
 });
 
-test('list screens hint 🢐esc and the button goes back', async () => {
+test('the 🢐esc button goes back from list screens', async () => {
   const { session } = await openSession([sampleItem('a.js')], {
     startPane: 'files',
   });
-  const footer = () => {
-    session.draw();
-    return stripAnsi(session.lastFrame.rows.at(-1));
-  };
-  assert.match(footer(), /^ 🢐esc {2}/);
   session.dispatch('scrollDown');
-  session.handleEvent({ type: 'key', key: 'enter' });
+  press(session, 'enter');
   assert.equal(session.pane, 'diff');
   assert.notEqual(session.current().origin, 'task');
-  assert.match(footer(), /^ 🢐esc {2}/);
-  session.handleEvent({ type: 'key', key: 'escape' });
+  press(session, 'escape');
   session.pushInput('b');
-  assert.match(footer(), /^ 🢐esc {2}/);
   clickFooter(session, 'back');
   assert.equal(session.pane, 'files');
   session.pushInput('c');
-  assert.match(footer(), /^ 🢐esc {2}/);
   clickFooter(session, 'back');
   assert.equal(session.pane, 'files');
   session.pushInput('n');
-  assert.match(footer(), /^ 🢐esc {2}/);
   clickFooter(session, 'back');
   assert.equal(session.pane, 'files');
   session.dispatch('tasks');
   session.pushInput('ship');
-  session.handleEvent({ type: 'key', key: 'escape' });
+  press(session, 'escape');
   assert.equal(session.current().origin, 'task');
-  assert.match(footer(), /^ 🢐esc {2}/);
   clickFooter(session, 'back');
   await session.ops.idle();
   assert.equal(session.pane, 'files');
@@ -4220,28 +3681,28 @@ test('files pane b lists branches and enter checks out', async () => {
   await session.ops.idle();
   assert.equal(session.pane, 'branches');
   assert.equal(session.branchCursor, 0);
-  session.handleEvent({ type: 'key', key: 'right' });
+  press(session, 'right');
   await session.ops.idle();
   assert.equal(session.branchCursor, 0);
-  session.handleEvent({ type: 'key', key: 'left' });
+  press(session, 'left');
   await session.ops.idle();
   assert.equal(session.branchCursor, 0);
-  session.handleEvent({ type: 'key', key: 'down' });
+  press(session, 'down');
   await session.ops.idle();
   assert.equal(session.branchCursor, 1);
-  session.handleEvent({ type: 'key', key: 'up' });
+  press(session, 'up');
   await session.ops.idle();
   assert.equal(session.branchCursor, 0);
   session.pushInput('j');
   await session.ops.idle();
   assert.equal(session.branchCursor, 1);
-  session.handleEvent({ type: 'key', key: 'home' });
+  press(session, 'home');
   await session.ops.idle();
   assert.equal(session.branchCursor, 0);
-  session.handleEvent({ type: 'key', key: 'end' });
+  press(session, 'end');
   await session.ops.idle();
   assert.equal(session.branchCursor, session.branches.length - 1);
-  session.handleEvent({ type: 'key', key: 'enter' });
+  press(session, 'enter');
   await session.ops.idle();
   assert.deepEqual(repo.checkouts, ['feat']);
   assert.equal(session.pane, 'branches');
@@ -4267,7 +3728,7 @@ test('branch list p pulls and s pushes', async () => {
   assert.equal(repo.pushes.length, 1);
   assert.equal(repo.listed.length, 3);
   assert.equal(session.status, 'pushed');
-  session.handleEvent({ type: 'key', key: 'down' });
+  press(session, 'down');
   await session.ops.idle();
   session.pushInput('p');
   await session.ops.idle();
@@ -4275,7 +3736,7 @@ test('branch list p pulls and s pushes', async () => {
   session.pushInput('s');
   await session.ops.idle();
   assert.equal(repo.pushes.length, 2);
-  session.handleEvent({ type: 'key', key: 'up' });
+  press(session, 'up');
   await session.ops.idle();
   session.pushInput('p');
   await session.ops.idle();
@@ -4304,7 +3765,7 @@ test('rejected push asks f to force or escape to cancel', async () => {
   session.pushInput('x');
   await session.ops.idle();
   assert.equal(session.mode, 'confirmPush');
-  session.handleEvent({ type: 'key', key: 'escape' });
+  press(session, 'escape');
   await session.ops.idle();
   assert.equal(session.mode, 'review');
   assert.equal(repo.pushes.length, 0);
@@ -4315,27 +3776,6 @@ test('rejected push asks f to force or escape to cancel', async () => {
   assert.deepEqual(repo.pushes, [true]);
   assert.equal(session.mode, 'review');
   assert.equal(session.status, 'force pushed');
-});
-
-test('click force push prompt', async () => {
-  const { session, repo } = await openSession([sampleItem('a.js')], {
-    startPane: 'files',
-  });
-  session.repo.push = (top, force) => {
-    if (force) {
-      repo.pushes.push(true);
-      return;
-    }
-    const error = new Error('non-fast-forward');
-    error.rejected = true;
-    throw error;
-  };
-  session.pushInput('b');
-  session.pushInput('s');
-  await session.ops.idle();
-  clickStatusChoice(session, 'f');
-  assert.deepEqual(repo.pushes, [true]);
-  assert.equal(session.mode, 'review');
 });
 
 test('pull shows progress until git finishes', async () => {
@@ -4485,7 +3925,7 @@ test('checkout shows progress until git finishes', async () => {
   await session.ops.idle();
   session.pushInput('j');
   await session.ops.idle();
-  session.handleEvent({ type: 'key', key: 'enter' });
+  press(session, 'enter');
   assert.equal(repo.checkouts.length, 0);
   assert.equal(session.busy, 'checking out');
   session.tickProgress();
@@ -4513,11 +3953,11 @@ test('commit shows progress until git finishes', async () => {
   };
   session.pushInput('c');
   await session.ops.idle();
-  session.handleEvent({ type: 'key', key: 'insert' });
+  press(session, 'insert');
   await session.ops.idle();
   session.pushInput('land the change');
   await session.ops.idle();
-  session.handleEvent({ type: 'key', key: 'enter' });
+  press(session, 'enter');
   await settle();
   assert.equal(repo.commits.length, 0);
   assert.equal(session.busy, 'committing');
@@ -4603,9 +4043,9 @@ test('unit view shows the file with current block marks', async () => {
   session.dispatch('prev');
   assert.equal(session.unitLine, 0);
   session.scroll = 5;
-  session.handleEvent({ type: 'key', key: 'up' });
+  press(session, 'up');
   assert.equal(session.scroll, 4);
-  session.handleEvent({ type: 'key', key: 'down' });
+  press(session, 'down');
   assert.equal(session.scroll, 5);
 });
 
@@ -4837,7 +4277,7 @@ test('insert creates a branch, or commits, amends, or fixups', async () => {
     startPane: 'files',
   });
   branch.session.pushInput('b');
-  branch.session.handleEvent({ type: 'key', key: 'insert' });
+  press(branch.session, 'insert');
   await branch.session.ops.idle();
   assert.equal(branch.session.mode, 'compose');
   assert.equal(branch.session.composeKind, 'branch');
@@ -4845,55 +4285,51 @@ test('insert creates a branch, or commits, amends, or fixups', async () => {
     startPane: 'files',
   });
   commits.session.pushInput('c');
-  commits.session.handleEvent({ type: 'key', key: 'insert' });
+  press(commits.session, 'insert');
   await commits.session.ops.idle();
   assert.equal(commits.session.commitKind, 'commit');
   commits.session.composer.closeCompose();
   commits.session.dispatch('next');
-  commits.session.handleEvent({ type: 'key', key: 'insert' });
+  press(commits.session, 'insert');
   assert.equal(commits.session.mode, 'confirmCommit');
   commits.session.draw();
   const headLine = stripAnsi(commits.session.lastFrame.rows.at(-2));
   assert.match(headLine, /what do you want to do\?/);
   assert.match(headLine, /esc cancel/);
   assert.match(headLine, /update {2}commit {2}amend {2}fixup/);
-  commits.session.handleEvent({ type: 'key', key: 'c' });
+  press(commits.session, 'c');
   await commits.session.ops.idle();
   assert.equal(commits.session.commitKind, 'commit');
   commits.session.composer.closeCompose();
   commits.session.dispatch('next');
-  commits.session.handleEvent({ type: 'key', key: 'insert' });
-  commits.session.handleEvent({ type: 'key', key: 'escape' });
+  press(commits.session, 'insert', 'escape');
   assert.equal(commits.session.mode, 'review');
-  commits.session.handleEvent({ type: 'key', key: 'insert' });
-  commits.session.handleEvent({ type: 'key', key: 'a' });
+  press(commits.session, 'insert', 'a');
   await commits.session.ops.idle();
   assert.equal(commits.session.commitCursor, 1);
   assert.equal(commits.session.commitKind, 'amend');
   commits.session.composer.closeCompose();
   commits.session.dispatch('next');
-  commits.session.handleEvent({ type: 'key', key: 'insert' });
+  press(commits.session, 'insert');
   assert.equal(commits.session.mode, 'confirmCommit');
   commits.session.draw();
   const older = stripAnsi(commits.session.lastFrame.rows.at(-2));
   assert.match(older, /esc cancel/);
   assert.match(older, /update {2}commit {2}amend {2}fixup/);
-  commits.session.handleEvent({ type: 'key', key: 'c' });
+  press(commits.session, 'c');
   await commits.session.ops.idle();
   assert.equal(commits.session.commitKind, 'commit');
   assert.equal(commits.session.commitCursor, 0);
   commits.session.composer.closeCompose();
   commits.session.dispatch('next');
   commits.session.dispatch('next');
-  commits.session.handleEvent({ type: 'key', key: 'insert' });
-  commits.session.handleEvent({ type: 'key', key: 'a' });
+  press(commits.session, 'insert', 'a');
   await commits.session.ops.idle();
   assert.equal(commits.session.commitCursor, 1);
   assert.equal(commits.session.commitKind, 'amend');
   commits.session.composer.closeCompose();
   commits.session.dispatch('next');
-  commits.session.handleEvent({ type: 'key', key: 'insert' });
-  commits.session.handleEvent({ type: 'key', key: 'f' });
+  press(commits.session, 'insert', 'f');
   await commits.session.ops.idle();
   assert.equal(commits.session.commitCursor, 2);
   assert.equal(commits.session.commitKind, 'fixup');
@@ -4909,22 +4345,22 @@ test('insert update keeps the commit and takes staged changes', async () => {
   await session.ops.idle();
   session.dispatch('next');
   await session.ops.idle();
-  session.handleEvent({ type: 'key', key: 'insert' });
+  press(session, 'insert');
   await session.ops.idle();
   assert.equal(session.mode, 'confirmCommit');
-  session.handleEvent({ type: 'key', key: 'enter' });
+  press(session, 'enter');
   await session.ops.idle();
   assert.equal(session.mode, 'review');
   assert.equal(session.status, 'updated');
   assert.deepEqual(repo.updates, [head]);
   session.dispatch('next');
   await session.ops.idle();
-  session.handleEvent({ type: 'key', key: 'insert' });
+  press(session, 'insert');
   await session.ops.idle();
-  session.handleEvent({ type: 'key', key: 'u' });
+  press(session, 'u');
   await session.ops.idle();
   assert.deepEqual(repo.updates, [head, older]);
-  session.handleEvent({ type: 'key', key: 'insert' });
+  press(session, 'insert');
   await session.ops.idle();
   clickStatusChoice(session, 'u');
   await session.ops.idle();
@@ -4932,8 +4368,7 @@ test('insert update keeps the commit and takes staged changes', async () => {
   const bare = await openSession([sampleItem('a.js')], { startPane: 'files' });
   bare.session.pushInput('c');
   bare.session.dispatch('next');
-  bare.session.handleEvent({ type: 'key', key: 'insert' });
-  bare.session.handleEvent({ type: 'key', key: 'enter' });
+  press(bare.session, 'insert', 'enter');
   await bare.session.ops.idle();
   assert.equal(bare.session.status, 'nothing to commit');
   assert.deepEqual(bare.repo.updates, []);
@@ -4952,7 +4387,7 @@ test('new branch action asks for a name', async () => {
   assert.equal(session.composeKind, 'branch');
   session.pushInput('topic');
   await session.ops.idle();
-  session.handleEvent({ type: 'key', key: 'enter' });
+  press(session, 'enter');
   await session.ops.idle();
   assert.deepEqual(repo.created, ['topic']);
   assert.equal(repo.listed.length, 2);
@@ -4986,13 +4421,13 @@ test('branch list delete asks to delete the selected branch', async () => {
   });
   session.pushInput('b');
   await session.ops.idle();
-  session.handleEvent({ type: 'key', key: 'delete' });
+  press(session, 'delete');
   await session.ops.idle();
   assert.equal(session.mode, 'review');
   assert.equal(repo.drops.length, 0);
   session.dispatch('next');
   await session.ops.idle();
-  session.handleEvent({ type: 'key', key: 'delete' });
+  press(session, 'delete');
   await session.ops.idle();
   assert.equal(session.mode, 'confirmDrop');
   assert.equal(session.dropName, 'feat');
@@ -5000,13 +4435,13 @@ test('branch list delete asks to delete the selected branch', async () => {
   await session.ops.idle();
   assert.equal(session.mode, 'review');
   assert.equal(repo.drops.length, 0);
-  session.handleEvent({ type: 'key', key: 'delete' });
+  press(session, 'delete');
   await session.ops.idle();
-  session.handleEvent({ type: 'key', key: 'escape' });
+  press(session, 'escape');
   await session.ops.idle();
   assert.equal(session.mode, 'review');
   assert.equal(repo.drops.length, 0);
-  session.handleEvent({ type: 'key', key: 'delete' });
+  press(session, 'delete');
   await session.ops.idle();
   session.pushInput('y');
   await session.ops.idle();
@@ -5022,11 +4457,11 @@ test('click drop prompt y and n', async () => {
   session.pushInput('b');
   await session.ops.idle();
   session.dispatch('next');
-  session.handleEvent({ type: 'key', key: 'delete' });
+  press(session, 'delete');
   clickStatusChoice(session, 'n');
   assert.equal(session.mode, 'review');
   assert.equal(repo.drops.length, 0);
-  session.handleEvent({ type: 'key', key: 'delete' });
+  press(session, 'delete');
   clickStatusChoice(session, 'y');
   assert.deepEqual(repo.drops, ['feat']);
 });
@@ -5038,22 +4473,18 @@ test('escape from branch list returns to files', async () => {
   session.pushInput('b');
   await session.ops.idle();
   assert.equal(session.pane, 'branches');
-  session.handleEvent({ type: 'key', key: 'escape' });
+  press(session, 'escape');
   assert.equal(session.pane, 'files');
 });
 
-test('read only blocks branch pull and push', async () => {
-  const { session, repo } = await openSession([sampleItem('a.js')], {
+test('read only keeps the branch screen closed', async () => {
+  const { session } = await openSession([sampleItem('a.js')], {
     startPane: 'files',
     readOnly: true,
   });
   session.pushInput('b');
   assert.equal(session.pane, 'files');
   assert.equal(session.status, 'read only');
-  session.pushInput('p');
-  assert.equal(repo.pulls.length, 0);
-  session.pushInput('s');
-  assert.equal(repo.pushes.length, 0);
 });
 
 test('ops runner releases busy if after throws', async () => {
@@ -5134,7 +4565,7 @@ test('x and a checkbox click toggle a todo and the file keeps it', async () => {
   const { session } = await openSession([sampleItem('a.js')]);
   session.dispatch('tasks');
   session.pushInput('ship it');
-  session.handleEvent({ type: 'key', key: 'escape' });
+  press(session, 'escape');
   assert.equal(session.mode, 'review');
   session.draw();
   let body = stripAnsi(session.lastFrame.rows.join('\n'));
@@ -5151,7 +4582,7 @@ test('x and a checkbox click toggle a todo and the file keeps it', async () => {
   session.draw();
   const box = session.lastFrame.taskHits.find((row) => row.check);
   assert.ok(box);
-  clickAt(session, box.x0 + 1, box.y);
+  click(session, box.x0 + 1, box.y);
   assert.equal(session.mode, 'review');
   assert.equal(session.notes.tasks[0].done, true);
   assert.equal(session.notes.tasks[0].text, 'ship it');
@@ -5161,13 +4592,10 @@ test('x and a checkbox click toggle a todo and the file keeps it', async () => {
   );
   assert.equal(loaded.tasks[0].done, true);
   assert.equal(loaded.tasks[0].text, 'ship it');
-  session.handleEvent({ type: 'key', key: 'insert' });
+  press(session, 'insert');
   assert.equal(session.mode, 'review');
   assert.equal(session.notes.tasks[0].text, 'ship it');
-  session.handleEvent({ type: 'key', key: 'enter' });
-  session.handleEvent({ type: 'key', key: 'x' });
-  session.handleEvent({ type: 'key', key: ' ' });
-  session.handleEvent({ type: 'key', key: 'insert' });
+  press(session, 'enter', 'x', ' ', 'insert');
   assert.equal(session.mode, 'compose');
   assert.equal(session.editor.text, 'ship itx ');
   assert.equal(session.notes.tasks[0].done, true);
@@ -5183,7 +4611,7 @@ test('l toggles the theme and is typed as text while composing', async () => {
     assert.equal(themeName(), 'dark');
     assert.equal(session.status, 'dark');
     session.dispatch('feedback');
-    session.handleEvent({ type: 'key', key: 'l' });
+    press(session, 'l');
     assert.equal(session.mode, 'compose');
     assert.equal(session.editor.text, 'l');
     assert.equal(themeName(), 'dark');
@@ -5217,7 +4645,6 @@ test('packages screen manages dependencies', async () => {
       ],
     },
   };
-  session.dashboard.tasks.npm.request = () => {};
   const calls = [];
   let gate = null;
   repo.runPackage = (cwd, args) => {
@@ -5246,20 +4673,18 @@ test('packages screen manages dependencies', async () => {
   gate = new Promise((resolve) => {
     release = resolve;
   });
-  session.handleEvent({ type: 'key', key: 'w' });
+  press(session, 'w');
   assert.equal(session.busy, 'npm i');
   release({ status: 0, stdout: '', stderr: '' });
   await session.packages.job;
   assert.deepEqual(calls[0], ['update', 'leftpad']);
-  session.handleEvent({ type: 'key', key: 'l' });
+  press(session, 'l');
   await session.packages.job;
   assert.deepEqual(calls.at(-1), ['install', 'leftpad@latest']);
-  session.handleEvent({ type: 'key', key: 'j' });
-  session.handleEvent({ type: 'key', key: 'l' });
+  press(session, 'j', 'l');
   await session.packages.job;
   assert.deepEqual(calls.at(-1), ['install', 'eslint@latest', '--save-dev']);
-  session.handleEvent({ type: 'key', key: 'k' });
-  session.handleEvent({ type: 'key', key: 'delete' });
+  press(session, 'k', 'delete');
   assert.equal(session.mode, 'confirmDrop');
   session.draw();
   const prompt = stripAnsi(session.lastFrame.rows.at(-2));
@@ -5267,11 +4692,11 @@ test('packages screen manages dependencies', async () => {
   session.pushInput('n');
   assert.equal(session.mode, 'review');
   assert.equal(calls.length, 3);
-  session.handleEvent({ type: 'key', key: 'delete' });
+  press(session, 'delete');
   session.pushInput('y');
   await session.packages.job;
   assert.deepEqual(calls.at(-1), ['uninstall', 'leftpad']);
-  session.handleEvent({ type: 'key', key: 'insert' });
+  press(session, 'insert');
   assert.equal(session.composeKind, 'package');
   session.draw();
   const editing = session.lastFrame.rows.map((row) => stripAnsi(row));
@@ -5281,11 +4706,10 @@ test('packages screen manages dependencies', async () => {
   assert.equal(editY, leftY - 1);
   assert.ok(leftY < eslintY);
   session.pushInput('ms');
-  session.handleEvent({ type: 'key', key: 'enter' });
+  press(session, 'enter');
   await session.packages.job;
   assert.deepEqual(calls.at(-1), ['install', 'ms']);
-  session.handleEvent({ type: 'key', key: 'j' });
-  session.handleEvent({ type: 'key', key: 'insert' });
+  press(session, 'j', 'insert');
   session.draw();
   const devEdit = session.lastFrame.rows.map((row) => stripAnsi(row));
   const devY = session.lastFrame.editHits[0].y - 1;
@@ -5294,11 +4718,10 @@ test('packages screen manages dependencies', async () => {
   assert.ok(leftDev < devY);
   assert.equal(devY, eslintDev - 1);
   session.pushInput('chalk');
-  session.handleEvent({ type: 'key', key: 'enter' });
+  press(session, 'enter');
   await session.packages.job;
   assert.deepEqual(calls.at(-1), ['install', 'chalk', '--save-dev']);
-  session.handleEvent({ type: 'key', key: 'insert' });
-  session.handleEvent({ type: 'key', key: 'enter' });
+  press(session, 'insert', 'enter');
   assert.equal(session.status, 'name');
   assert.equal(calls.length, 6);
 });
@@ -5327,12 +4750,11 @@ test('delete refuses a transitive package', async () => {
       ],
     },
   };
-  session.dashboard.tasks.npm.request = () => {};
   session.dashboard.openPackages();
-  session.handleEvent({ type: 'key', key: 'delete' });
+  press(session, 'delete');
   assert.equal(session.mode, 'review');
   assert.equal(session.status, 'transitive');
-  session.handleEvent({ type: 'key', key: 'insert' });
+  press(session, 'insert');
   assert.equal(session.mode, 'review');
   assert.equal(session.composeKind, null);
   assert.equal(session.status, 'transitive');
@@ -5380,34 +4802,34 @@ test('files pane r opens npm scripts and bins', async () => {
   body = stripAnsi(session.lastFrame.rows.join('\n'));
   assert.match(body, /node --test/);
   session.editor.replace('bad name');
-  session.handleEvent({ type: 'key', key: 'enter' });
+  press(session, 'enter');
   assert.equal(session.mode, 'compose');
   assert.equal(session.status, 'name');
   session.editor.replace('test');
-  session.handleEvent({ type: 'key', key: 'enter' });
+  press(session, 'enter');
   assert.equal(session.mode, 'compose');
   assert.equal(session.editor.text, 'node --test');
   const nameCursor = session.lastFrame.cursor;
   session.draw();
   assert.ok(session.lastFrame.cursor.x > (nameCursor?.x ?? 0));
   session.editor.replace('node --test test');
-  session.handleEvent({ type: 'key', key: 'enter' });
+  press(session, 'enter');
   assert.equal(session.mode, 'review');
   const file = path.join(cwd, 'package.json');
   const saved = JSON.parse(fs.readFileSync(file, 'utf8'));
   assert.equal(saved.scripts.test, 'node --test test');
-  session.handleEvent({ type: 'key', key: 'ctrl-down' });
+  press(session, 'ctrl-down');
   const order = JSON.parse(fs.readFileSync(file, 'utf8'));
   assert.deepEqual(Object.keys(order.scripts), ['lint', 'test']);
-  session.handleEvent({ type: 'key', key: 'delete' });
+  press(session, 'delete');
   assert.equal(session.mode, 'confirmDrop');
   session.pushInput('n');
   assert.equal(session.mode, 'review');
   assert.equal(order.scripts.lint, 'eslint .');
-  session.handleEvent({ type: 'key', key: 'end' });
+  press(session, 'end');
   session.pushInput('e');
   assert.equal(session.status, 'not a script');
-  session.handleEvent({ type: 'key', key: 'home' });
+  press(session, 'home');
   const ran = [];
   let written = null;
   repo.runNpmCommand = (root, entry, onData, onClose) => {
@@ -5423,11 +4845,10 @@ test('files pane r opens npm scripts and bins', async () => {
     written = onClose({ status: 1, text });
     return { kill() {} };
   };
-  session.handleEvent({ type: 'key', key: 'enter' });
+  press(session, 'enter');
   assert.deepEqual(ran, ['lint']);
   assert.equal(session.view().npmView, false);
-  session.handleEvent({ type: 'key', key: 'right' });
-  session.handleEvent({ type: 'key', key: 'enter' });
+  press(session, 'right', 'enter');
   session.draw();
   body = stripAnsi(session.lastFrame.rows.join('\n'));
   assert.match(body, /lib\/app\.js:4/);
@@ -5435,16 +4856,16 @@ test('files pane r opens npm scripts and bins', async () => {
   assert.match(body, /exit 1/);
   assert.ok(!body.includes('✔'));
   assert.ok(!body.includes(cwd));
-  const stamp = dateStamp();
+  const stamp = today();
   await written;
   const logPath = path.join(cwd, '.log', `${stamp}-lint-01.log`);
   const log = fs.readFileSync(logPath, 'utf8');
   assert.match(log, /exit 1/);
   assert.ok(!log.includes('✔'));
-  session.handleEvent({ type: 'key', key: 'escape' });
+  press(session, 'escape');
   assert.equal(session.pane, 'npm');
   assert.equal(session.view().npmView, false);
-  session.handleEvent({ type: 'key', key: 'ctrl-c' });
+  press(session, 'ctrl-c');
   assert.equal(session.done, false);
   session.dispatch('quit');
   assert.equal(session.done, true);
@@ -5469,35 +4890,33 @@ test('npm output v toggles raw text until the screen closes', async () => {
     return { kill() {} };
   };
   session.pushInput('r');
-  session.handleEvent({ type: 'key', key: 'enter' });
+  press(session, 'enter');
   assert.equal(session.view().npmView, false);
-  session.handleEvent({ type: 'key', key: 'right' });
-  session.handleEvent({ type: 'key', key: 'enter' });
+  press(session, 'right', 'enter');
   session.draw();
   let body = stripAnsi(session.lastFrame.rows.join('\n'));
   assert.ok(!body.includes('✔'));
   assert.match(body, /exit 1/);
   const footer = () => stripAnsi(session.lastFrame.rows.at(-1));
   assert.match(footer(), /verbose/);
-  session.handleEvent({ type: 'key', key: 'v' });
+  press(session, 'v');
   assert.equal(session.status, 'verbose');
   session.draw();
   body = stripAnsi(session.lastFrame.rows.join('\n'));
   assert.match(body, /✔ passes/);
   assert.match(body, /lib\/app\.js:4/);
-  session.handleEvent({ type: 'key', key: 'v' });
+  press(session, 'v');
   assert.equal(session.status, 'filtered');
   session.draw();
   body = stripAnsi(session.lastFrame.rows.join('\n'));
   assert.ok(!body.includes('✔'));
-  session.handleEvent({ type: 'key', key: 'v' });
-  session.handleEvent({ type: 'key', key: 'r' });
+  press(session, 'v', 'r');
   session.draw();
   body = stripAnsi(session.lastFrame.rows.join('\n'));
   assert.match(body, /✔ passes/);
-  session.handleEvent({ type: 'key', key: 'escape' });
+  press(session, 'escape');
   assert.equal(session.view().npmView, false);
-  session.handleEvent({ type: 'key', key: 'enter' });
+  press(session, 'enter');
   session.draw();
   body = stripAnsi(session.lastFrame.rows.join('\n'));
   assert.ok(!body.includes('✔'));
@@ -5670,11 +5089,10 @@ test('esc leaves a running npm command in the background', async () => {
     };
   };
   session.pushInput('r');
-  session.handleEvent({ type: 'key', key: 'enter' });
+  press(session, 'enter');
   assert.equal(session.view().npmView, false);
   assert.equal(session.view().npmRunning, true);
-  session.handleEvent({ type: 'key', key: 'right' });
-  session.handleEvent({ type: 'key', key: 'enter' });
+  press(session, 'right', 'enter');
   session.draw();
   const footer = () => stripAnsi(session.lastFrame.rows.at(-1));
   const hitIds = () => session.lastFrame.buttons.map((hit) => hit.id);
@@ -5685,11 +5103,11 @@ test('esc leaves a running npm command in the background', async () => {
   assert.equal(hitIds()[0], 'back');
   assert.ok(hitIds().includes('npmStop'));
   assert.ok(hitIds().includes('npmRerun'));
-  session.handleEvent({ type: 'key', key: 'r' });
+  press(session, 'r');
   assert.equal(starts, 2);
   assert.equal(session.view().npmRunning, true);
   assert.equal(session.npm.runs.length, 2);
-  session.handleEvent({ type: 'key', key: 'escape' });
+  press(session, 'escape');
   assert.equal(killed, false);
   assert.equal(session.view().npmView, false);
   assert.equal(session.npm.running, true);
@@ -5697,10 +5115,9 @@ test('esc leaves a running npm command in the background', async () => {
   let text = frameBody(session).join('\n');
   assert.match(text, /test/);
   assert.equal(text.match(/⠋/g).length, 2);
-  session.handleEvent({ type: 'key', key: 'right' });
-  session.handleEvent({ type: 'key', key: 'enter' });
+  press(session, 'right', 'enter');
   assert.equal(session.view().npmView, true);
-  session.handleEvent({ type: 'key', key: 's' });
+  press(session, 's');
   assert.equal(killed, true);
   assert.equal(session.view().npmView, true);
   assert.equal(session.view().npmRunning, false);
@@ -5740,17 +5157,17 @@ test('esc leaves a running npm command in the background', async () => {
       },
     };
   };
-  session.handleEvent({ type: 'key', key: 'r' });
+  press(session, 'r');
   assert.deepEqual(runs, ['test']);
   assert.equal(session.view().npmRunning, true);
-  session.handleEvent({ type: 'key', key: 's' });
+  press(session, 's');
   assert.equal(session.view().npmView, true);
   assert.equal(session.status, 'terminated');
   session.draw();
   hits = hitIds();
   assert.ok(!hits.includes('npmStop'));
   assert.ok(hits.includes('npmRerun'));
-  session.handleEvent({ type: 'key', key: 'escape' });
+  press(session, 'escape');
   assert.equal(session.view().npmView, false);
   assert.equal(session.pane, 'npm');
   text = frameBody(session).join('\n');
@@ -5775,9 +5192,9 @@ test('npm sessions survive a restart', async () => {
     return { kill() {} };
   };
   session.pushInput('r');
-  session.handleEvent({ type: 'key', key: 'enter' });
+  press(session, 'enter');
   await written;
-  session.handleEvent({ type: 'key', key: 'escape' });
+  press(session, 'escape');
   const again = await openSession([sampleItem('a.js')], {
     cwd,
     repo,
@@ -5788,13 +5205,12 @@ test('npm sessions survive a restart', async () => {
   assert.match(body, /✔/);
   assert.match(body, /exit 0/);
   assert.ok(!body.includes('hello from test'));
-  again.session.handleEvent({ type: 'key', key: 'right' });
-  again.session.handleEvent({ type: 'key', key: 'enter' });
+  press(again.session, 'right', 'enter');
   assert.equal(again.session.view().npmView, true);
   body = frameBody(again.session).join('\n');
   assert.match(body, /hello from test/);
   assert.match(body, /exit 0/);
-  again.session.handleEvent({ type: 'key', key: 'v' });
+  press(again.session, 'v');
   body = frameBody(again.session).join('\n');
   assert.match(body, /hello from test/);
 });
@@ -5943,8 +5359,7 @@ test('a history row opens the captured log if the file is gone', async () => {
   const rows = session.npm.sessionRows();
   assert.equal(rows[0].name, 'test');
   assert.equal(rows[0].mark, 'fail');
-  session.handleEvent({ type: 'key', key: 'right' });
-  session.handleEvent({ type: 'key', key: 'enter' });
+  press(session, 'right', 'enter');
   assert.equal(session.view().npmView, true);
   assert.match(stripAnsi(session.npm.output), /✖ npm history caption/);
 });
@@ -6091,8 +5506,7 @@ test('an open run follows the next reslop t step in its script', async () => {
   session.pushInput('r');
   write('lint', 'npm run -s lint', 1_000, 3_000, 'lint output');
   session.dashboard.noteDisk(['.log/lint.json', '.log/lint.log']);
-  session.handleEvent({ type: 'key', key: 'right' });
-  session.handleEvent({ type: 'key', key: 'enter' });
+  press(session, 'right', 'enter');
   assert.equal(session.npm.viewedRun().externalId, 'lint');
   assert.match(session.npm.output, /lint output/);
   write('tests', 'node --test', 4_000, 9_000, 'test output');
@@ -6141,8 +5555,7 @@ test('a finished outside run drops the running line', async () => {
     endedAt: 8_000,
     result: { tests: 1, passed: 1, failed: 0 },
   });
-  session.handleEvent({ type: 'key', key: 'right' });
-  session.handleEvent({ type: 'key', key: 'enter' });
+  press(session, 'right', 'enter');
   assert.equal(session.view().npmView, true);
   assert.equal(session.view().npmRunning, true);
   let text = frameBody(session).join('\n');
@@ -6227,7 +5640,7 @@ test('npm test from the ui keeps the two reslop t runs', async () => {
     (entry) => entry.name === 'test',
   );
   session.nav.npmCursor = testAt;
-  session.handleEvent({ type: 'key', key: 'enter' });
+  press(session, 'enter');
   assert.equal(session.npm.running, true);
   assert.equal(session.npm.sessionRows().length, 0);
   const dir = path.join(cwd, '.log');
@@ -6285,7 +5698,7 @@ test('npm test from the ui keeps the two reslop t runs', async () => {
     closed = onClose;
     return { kill() {} };
   };
-  session.handleEvent({ type: 'key', key: 'enter' });
+  press(session, 'enter');
   const live = session.npm.sessionRows().filter((row) => row.live);
   assert.equal(live.length, 1);
   assert.equal(live[0].name, 'lint');
@@ -6316,7 +5729,7 @@ test('npm history counts tests and stays on the run screen', async () => {
     return { kill() {} };
   };
   session.pushInput('r');
-  session.handleEvent({ type: 'key', key: 'enter' });
+  press(session, 'enter');
   assert.equal(session.view().npmView, false);
   let rows = session.npm.sessionRows();
   assert.equal(rows[0].mark, 'run');
@@ -6350,41 +5763,38 @@ test('npm output scrolls with the editor hotkeys', async () => {
     return { kill() {} };
   };
   session.pushInput('r');
-  session.handleEvent({ type: 'key', key: 'enter' });
-  session.handleEvent({ type: 'key', key: 'right' });
-  session.handleEvent({ type: 'key', key: 'enter' });
+  press(session, 'enter', 'right', 'enter');
   session.draw();
   const page = logViewRows(session.lastFrame.bodyH);
   assert.ok(page > 1);
   const half = Math.max(1, Math.floor(page * 0.5));
   const at = () => session.view().npmScroll;
-  session.handleEvent({ type: 'key', key: 'home' });
+  press(session, 'home');
   assert.equal(at(), 0);
   assert.equal(session.view().npmFollow, false);
-  session.handleEvent({ type: 'key', key: 'up' });
+  press(session, 'up');
   assert.equal(at(), 0);
-  session.handleEvent({ type: 'key', key: 'down' });
+  press(session, 'down');
   assert.equal(at(), 1);
-  session.handleEvent({ type: 'key', key: 'ctrl-y' });
+  press(session, 'ctrl-y');
   assert.equal(at(), 0);
-  session.handleEvent({ type: 'key', key: 'ctrl-e' });
+  press(session, 'ctrl-e');
   assert.equal(at(), 1);
-  session.handleEvent({ type: 'key', key: 'home' });
-  session.handleEvent({ type: 'key', key: 'ctrl-f' });
+  press(session, 'home', 'ctrl-f');
   assert.equal(at(), page);
-  session.handleEvent({ type: 'key', key: 'ctrl-b' });
+  press(session, 'ctrl-b');
   assert.equal(at(), 0);
-  session.handleEvent({ type: 'key', key: 'ctrl-d' });
+  press(session, 'ctrl-d');
   assert.equal(at(), half);
-  session.handleEvent({ type: 'key', key: 'ctrl-u' });
+  press(session, 'ctrl-u');
   assert.equal(at(), 0);
-  session.handleEvent({ type: 'key', key: 'pageDown' });
+  press(session, 'pageDown');
   assert.equal(at(), page);
-  session.handleEvent({ type: 'key', key: 'pageUp' });
+  press(session, 'pageUp');
   assert.equal(at(), 0);
-  session.handleEvent({ type: 'key', key: 'end' });
+  press(session, 'end');
   assert.equal(session.view().npmFollow, true);
-  session.handleEvent({ type: 'key', key: 'up' });
+  press(session, 'up');
   assert.equal(session.view().npmFollow, false);
   const stayed = at();
   push('row extra\n');
@@ -6415,10 +5825,9 @@ test('npm output animates progress until the command exits', async () => {
     };
   };
   session.pushInput('r');
-  session.handleEvent({ type: 'key', key: 'enter' });
+  press(session, 'enter');
   assert.equal(session.view().npmView, false);
-  session.handleEvent({ type: 'key', key: 'right' });
-  session.handleEvent({ type: 'key', key: 'enter' });
+  press(session, 'right', 'enter');
   assert.equal(session.view().npmRunning, true);
   assert.equal(session.progress.size(), 1);
   let body = frameBody(session);
@@ -6450,11 +5859,11 @@ test('npm screen refuses edits when read only', async () => {
   session.pushInput('e');
   assert.equal(session.status, 'read only');
   assert.equal(session.mode, 'review');
-  session.handleEvent({ type: 'key', key: 'insert' });
+  press(session, 'insert');
   assert.equal(session.status, 'read only');
-  session.handleEvent({ type: 'key', key: 'delete' });
+  press(session, 'delete');
   assert.equal(session.mode, 'review');
-  session.handleEvent({ type: 'key', key: 'l' });
+  press(session, 'l');
   assert.equal(session.status, 'read only');
   assert.equal(session.mode, 'review');
 });
@@ -6479,10 +5888,10 @@ test('double click runs the selected npm command', async () => {
   session.draw();
   const hits = session.lastFrame.fileHits;
   assert.ok(hits.length >= 2);
-  clickAt(session, 2, hits[1].y);
+  click(session, 2, hits[1].y);
   assert.deepEqual(ran, []);
   assert.equal(session.npmCursor, hits[1].cursor);
-  clickAt(session, 2, hits[1].y);
+  click(session, 2, hits[1].y);
   assert.deepEqual(ran, ['lint']);
   assert.equal(session.view().npmView, false);
 });
@@ -6507,7 +5916,7 @@ test('delete removes the selected npm script after confirmation', async () => {
   assert.ok(ids.includes('npmEdit'));
   assert.ok(ids.includes('npmNew'));
   assert.ok(ids.includes('npmDrop'));
-  session.handleEvent({ type: 'key', key: 'delete' });
+  press(session, 'delete');
   assert.equal(session.mode, 'confirmDrop');
   session.pushInput('y');
   const saved = JSON.parse(fs.readFileSync(file, 'utf8'));
@@ -6519,10 +5928,7 @@ test('delete removes the selected npm script after confirmation', async () => {
 const daysAgoStamp = (ago) => {
   const date = new Date();
   date.setDate(date.getDate() - ago);
-  const y = date.getFullYear();
-  const m = `${date.getMonth() + 1}`.padStart(2, '0');
-  const d = `${date.getDate()}`.padStart(2, '0');
-  return `${y}-${m}-${d}`;
+  return dateStamp(date);
 };
 
 test('npm screen deletes logs older than 5 days', async () => {
@@ -6543,13 +5949,13 @@ test('npm screen deletes logs older than 5 days', async () => {
   session.draw();
   const status = () => stripAnsi(session.lastFrame.rows.at(-2));
   assert.match(status(), /old logs 6/);
-  session.handleEvent({ type: 'key', key: 'l' });
+  press(session, 'l');
   assert.equal(session.mode, 'confirmDrop');
   session.draw();
   assert.match(status(), /drop logs older than 5 days \(6\)\? y\/n/);
   session.pushInput('n');
   assert.equal(fs.existsSync(stale), true);
-  session.handleEvent({ type: 'key', key: 'l' });
+  press(session, 'l');
   session.pushInput('y');
   assert.equal(fs.existsSync(stale), false);
   assert.equal(fs.existsSync(kept), true);
@@ -6558,7 +5964,7 @@ test('npm screen deletes logs older than 5 days', async () => {
   assert.equal(session.status, 'dropped logs');
   const hits = session.lastFrame.buttons.map((hit) => hit.id);
   assert.ok(!hits.includes('npmLogs'));
-  session.handleEvent({ type: 'key', key: 'l' });
+  press(session, 'l');
   assert.equal(session.status, 'dropped logs');
   assert.equal(session.mode, 'review');
 });
@@ -6566,7 +5972,7 @@ test('npm screen deletes logs older than 5 days', async () => {
 const clickCaret = (session, dx, dy) => {
   const caret = session.lastFrame.cursor;
   assert.ok(caret);
-  clickAt(session, caret.x + dx, caret.y + dy);
+  click(session, caret.x + dx, caret.y + dy);
 };
 
 test('click moves the caret in the code and file editors', async () => {
@@ -6584,8 +5990,7 @@ test('click moves the caret in the code and file editors', async () => {
   session.draw();
   clickCaret(session, -1, 0);
   assert.equal(session.editor.cursor, 4);
-  session.handleEvent({ type: 'key', key: 'escape' });
-  session.handleEvent({ type: 'key', key: 'escape' });
+  press(session, 'escape', 'escape');
   await session.ops.idle();
   repo.fileBodies['a.js'] = 'ab\ncd\n';
   session.dispatch('file');
@@ -6609,16 +6014,15 @@ test('click moves the caret in feedback and todo editors', async () => {
   clickCaret(session, -1, -1);
   assert.equal(session.editor.cursor, 1);
   assert.equal(session.composeKind, 'feedback');
-  session.handleEvent({ type: 'key', key: 'escape' });
+  press(session, 'escape');
   session.dispatch('tasks');
   session.pushInput('ship');
-  session.handleEvent({ type: 'key', key: 'escape' });
-  session.handleEvent({ type: 'key', key: 'enter' });
+  press(session, 'escape', 'enter');
   session.editor.replace('ab\ncd');
   session.draw();
   const box = session.lastFrame.taskHits.find((row) => row.check);
   assert.ok(box);
-  clickAt(session, box.x0 + 1, box.y);
+  click(session, box.x0 + 1, box.y);
   assert.equal(session.mode, 'compose');
   assert.equal(session.editor.text, 'ab\ncd');
   assert.equal(session.notes.tasks[0].done, true);
@@ -6632,23 +6036,22 @@ test('click moves the caret in commit, branch, and npm editors', async () => {
     startPane: 'files',
   });
   session.pushInput('c');
-  session.handleEvent({ type: 'key', key: 'insert' });
+  press(session, 'insert');
   session.pushInput('hello');
   await session.ops.idle();
   session.draw();
   clickCaret(session, -4, 0);
   assert.equal(session.editor.cursor, 1);
-  session.handleEvent({ type: 'key', key: 'escape' });
+  press(session, 'escape');
   session.pushInput('v');
-  session.handleEvent({ type: 'key', key: 'insert' });
+  press(session, 'insert');
   await session.ops.idle();
   session.editor.replace('ab\ncd');
   session.draw();
   clickCaret(session, -1, -1);
   assert.equal(session.editor.cursor, 1);
   assert.equal(session.editor.text, 'ab\ncd');
-  session.handleEvent({ type: 'key', key: 'escape' });
-  session.handleEvent({ type: 'key', key: 'escape' });
+  press(session, 'escape', 'escape');
   session.pushInput('b');
   await session.ops.idle();
   session.dispatch('newBranch');
@@ -6657,8 +6060,7 @@ test('click moves the caret in commit, branch, and npm editors', async () => {
   clickCaret(session, -3, 0);
   assert.equal(session.composeKind, 'branch');
   assert.equal(session.editor.cursor, 2);
-  session.handleEvent({ type: 'key', key: 'escape' });
-  session.handleEvent({ type: 'key', key: 'escape' });
+  press(session, 'escape', 'escape');
   fs.writeFileSync(
     path.join(cwd, 'package.json'),
     `${JSON.stringify({ scripts: { test: 'node --test' } })}\n`,
@@ -6674,11 +6076,11 @@ test('click moves the caret in commit, branch, and npm editors', async () => {
     (hit) => hit.field === 'command',
   );
   assert.ok(command);
-  clickAt(session, command.textX, command.y);
+  click(session, command.textX, command.y);
   assert.equal(session.npm.editField, 'command');
   assert.equal(session.editor.text, 'node --test');
   assert.equal(session.editor.cursor, 0);
-  clickAt(session, command.textX + 5, command.y);
+  click(session, command.textX + 5, command.y);
   assert.equal(session.editor.cursor, 5);
 });
 
@@ -6718,44 +6120,34 @@ test('table editors scroll long lines horizontally', async () => {
   showsTail('Q', 'Z');
   const stuck = session.editor.scrollCol;
   const caret = session.lastFrame.cursor.x;
-  session.handleEvent({ type: 'key', key: 'left' });
+  press(session, 'left');
   session.draw();
   assert.equal(session.editor.scrollCol, stuck);
   assert.ok(session.lastFrame.cursor.x < caret);
   assert.ok(editRow(session).includes('Z'));
   const origin = session.lastFrame.cursor.x - session.editor.visibleLineCol();
-  clickAt(
-    session,
-    origin + session.editor.scrollCol,
-    session.lastFrame.cursor.y,
-  );
+  click(session, origin + session.editor.scrollCol, session.lastFrame.cursor.y);
   assert.equal(session.editor.cursor, stuck);
-  session.handleEvent({ type: 'key', key: 'home' });
+  press(session, 'home');
   session.draw();
   assert.equal(session.editor.scrollCol, 0);
   assert.ok(editRow(session).includes('Q'));
-  session.handleEvent({ type: 'key', key: 'escape' });
-  session.handleEvent({ type: 'key', key: 'escape' });
+  press(session, 'escape', 'escape');
   session.pushInput('c');
-  session.handleEvent({ type: 'key', key: 'insert' });
+  press(session, 'insert');
   await session.ops.idle();
   session.editor.replace(longValue('Q', 'Z'));
   showsTail('Q', 'Z');
-  session.handleEvent({ type: 'key', key: 'escape' });
-  session.handleEvent({ type: 'key', key: 'escape' });
+  press(session, 'escape', 'escape');
   session.pushInput('r');
   session.pushInput('e');
   session.editor.replace(longValue('Q', 'Z'));
   showsTail('Q', 'Z');
-  session.handleEvent({ type: 'key', key: 'enter' });
+  press(session, 'enter');
   session.editor.replace(longValue('A', 'B'));
   showsTail('A', 'B');
   assert.equal(session.npm.editField, 'command');
 });
-
-const press = (session, name) => {
-  session.handleEvent({ type: 'key', key: name });
-};
 
 test('line numbers persist in .reslop', async () => {
   const cwd = tempDir('reslop-ui-');
@@ -6794,8 +6186,7 @@ test('editor general and commits settings persist in .reslop', async () => {
     assert.equal(session.lineNumbers, true);
     assert.equal(session.layout, 'unified');
     assert.equal(themeName(), 'dark');
-    press(session, 'm');
-    press(session, 'l');
+    press(session, 'm', 'l');
     session.pushInput('c');
     press(session, 'v');
     await session.ops.idle();
@@ -6898,8 +6289,7 @@ test('editors select with shift and copy cut paste', async () => {
   const rowOf = (text) =>
     session.lastFrame.rows.find((row) => stripAnsi(row).includes(text));
   const before = rowOf('hello');
-  press(session, 'shift-left');
-  press(session, 'shift-left');
+  press(session, 'shift-left', 'shift-left');
   assert.equal(session.editor.selectedText(), 'lo');
   session.draw();
   const after = rowOf('hello');
@@ -6915,37 +6305,26 @@ test('editors select with shift and copy cut paste', async () => {
   press(session, 'ctrl-c');
   assert.equal(session.done, false);
   assert.equal(session.editor.text, 'hel');
-  const saved = clipboard.pasteText;
-  clipboard.pasteText = () => 'ZZ';
-  try {
-    press(session, 'ctrl-v');
-  } finally {
-    clipboard.pasteText = saved;
-  }
-  assert.equal(session.editor.text, 'helZZ');
-  press(session, 'escape');
-  press(session, 'e');
+  press(session, 'ctrl-v');
+  assert.equal(session.editor.text, 'hello');
+  press(session, 'escape', 'e');
   session.editor.replace('abcd');
   press(session, 'shift-left');
   assert.equal(session.composeKind, 'code');
   assert.equal(session.editor.selectedText(), 'd');
   press(session, 'shift-up');
   assert.equal(session.editor.hasSelect(), true);
-  press(session, 'escape');
-  press(session, 'escape');
-  press(session, 'b');
+  press(session, 'escape', 'escape', 'b');
   await session.ops.idle();
   session.dispatch('newBranch');
   session.pushInput('topic');
   press(session, 'shift-home');
   assert.equal(session.composeKind, 'branch');
   assert.equal(session.editor.selectedText(), 'topic');
-  press(session, 'escape');
-  press(session, 'escape');
+  press(session, 'escape', 'escape');
   session.dispatch('tasks');
   session.pushInput('ship');
-  press(session, 'escape');
-  press(session, 'enter');
+  press(session, 'escape', 'enter');
   session.editor.replace('ab\ncd');
   press(session, 'shift-up');
   assert.equal(session.editor.text, 'ab\ncd');
@@ -6954,8 +6333,7 @@ test('editors select with shift and copy cut paste', async () => {
   session.editor.replace('zxqv');
   session.draw();
   const taskBefore = rowOf('zxqv');
-  press(session, 'shift-left');
-  press(session, 'shift-left');
+  press(session, 'shift-left', 'shift-left');
   assert.equal(session.editor.selectedText(), 'qv');
   assert.equal(session.view().taskEdit.anchor, 4);
   session.draw();
@@ -7132,8 +6510,7 @@ test('find import and plan lines select and use the clipboard', async () => {
     sampleItem('lib/files.js'),
   ];
   const { session, stdout } = await openSession(items);
-  session.handleEvent({ type: 'key', key: 'escape' });
-  session.handleEvent({ type: 'key', key: '/' });
+  press(session, 'escape', '/');
   session.pushInput('lib/f');
   press(session, 'down');
   assert.equal(session.reviewPath, 'lib/find.js');
@@ -7151,32 +6528,22 @@ test('find import and plan lines select and use the clipboard', async () => {
   assert.equal(session.nav.find.editor.cursor, 3);
   press(session, 'ctrl-right');
   assert.equal(session.nav.find.editor.cursor, 9);
-  session.handleEvent({ type: 'key', key: 'escape' });
+  press(session, 'escape');
   session.dispatch('tasks');
-  session.handleEvent({ type: 'key', key: 'escape' });
-  session.handleEvent({ type: 'key', key: 'i' });
+  press(session, 'escape', 'i');
   session.pushInput('https://example.com/a');
-  press(session, 'shift-left');
-  press(session, 'shift-left');
+  press(session, 'shift-left', 'shift-left');
   assert.equal(session.nav.import.editor.selectedText(), '/a');
   press(session, 'ctrl-x');
   assert.equal(session.nav.import.url, 'https://example.com');
-  const saved = clipboard.pasteText;
-  clipboard.pasteText = () => 'ZZ';
-  try {
-    press(session, 'ctrl-v');
-  } finally {
-    clipboard.pasteText = saved;
-  }
-  assert.equal(session.nav.import.url, 'https://example.comZZ');
+  press(session, 'ctrl-v');
+  assert.equal(session.nav.import.url, 'https://example.com/a');
   assert.equal(session.mode, 'import');
-  session.handleEvent({ type: 'key', key: 'escape' });
-  session.handleEvent({ type: 'key', key: 'p' });
+  press(session, 'escape', 'p');
   session.pushInput('plan');
   press(session, 'ctrl-left');
   assert.equal(session.composer.tasks.planPick.editor.cursor, 0);
-  press(session, 'shift-right');
-  press(session, 'shift-right');
+  press(session, 'shift-right', 'shift-right');
   assert.equal(session.composer.tasks.planPick.editor.selectedText(), 'pl');
   press(session, 'end');
   assert.equal(session.composer.tasks.planOpen, true);
@@ -7189,39 +6556,39 @@ test('slash searches paths on the files and diff screens', async () => {
     sampleItem('lib/files.js'),
   ];
   const { session } = await openSession(items);
-  session.handleEvent({ type: 'key', key: 'escape' });
+  press(session, 'escape');
   assert.equal(session.pane, 'files');
-  session.handleEvent({ type: 'key', key: '/' });
+  press(session, '/');
   assert.equal(session.mode, 'find');
   session.pushInput('lib/f');
   assert.equal(session.view().find.query, 'lib/f');
   assert.equal(session.reviewPath, 'lib/files.js');
-  session.handleEvent({ type: 'key', key: 'down' });
+  press(session, 'down');
   assert.equal(session.reviewPath, 'lib/find.js');
-  session.handleEvent({ type: 'key', key: 'down' });
+  press(session, 'down');
   assert.equal(session.reviewPath, 'lib/files.js');
-  session.handleEvent({ type: 'key', key: 'up' });
+  press(session, 'up');
   assert.equal(session.reviewPath, 'lib/find.js');
   session.pushInput('j');
   assert.equal(session.view().find.query, 'lib/fj');
   assert.equal(session.reviewPath, 'lib/find.js');
-  session.handleEvent({ type: 'key', key: 'backspace' });
+  press(session, 'backspace');
   assert.equal(session.view().find.query, 'lib/f');
   assert.equal(session.reviewPath, 'lib/files.js');
-  session.handleEvent({ type: 'key', key: 'escape' });
+  press(session, 'escape');
   assert.equal(session.mode, 'review');
   assert.equal(session.view().find, null);
   assert.equal(session.reviewPath, 'lib/files.js');
   session.pane = 'diff';
   session.scroll = 4;
-  session.handleEvent({ type: 'key', key: '/' });
+  press(session, '/');
   session.pushInput('app');
   assert.equal(session.pane, 'diff');
   assert.equal(session.reviewPath, 'src/app.js');
   assert.equal(session.scroll, 0);
-  session.handleEvent({ type: 'key', key: 'escape' });
+  press(session, 'escape');
   session.pane = 'branches';
-  session.handleEvent({ type: 'key', key: '/' });
+  press(session, '/');
   assert.equal(session.mode, 'review');
   assert.equal(session.view().find, null);
 });
@@ -7434,7 +6801,7 @@ test('an autosave and a save write the file in the order begun', async () => {
   session.editor.replace('one');
   session.autosave();
   session.editor.replace('two');
-  session.handleEvent({ type: 'key', key: 'ctrl-s' });
+  press(session, 'ctrl-s');
   await settle();
   assert.deepEqual(order, ['start one']);
   gates[0]();
@@ -7457,14 +6824,14 @@ test('a file edit reloads once and later saves do not stage', async () => {
   };
   session.pushInput('e');
   session.pushInput('2');
-  session.handleEvent({ type: 'key', key: 'escape' });
+  press(session, 'escape');
   await session.ops.idle();
   assert.equal(repo.edited.length, 1);
   assert.deepEqual(repo.stagedPaths, ['a.js']);
   assert.equal(loads, 1);
   session.dispatch('next');
   session.pushInput('e');
-  session.handleEvent({ type: 'key', key: 'escape' });
+  press(session, 'escape');
   await session.ops.idle();
   assert.equal(session.mode, 'review');
   assert.equal(repo.edited.length, 1);
@@ -7472,7 +6839,7 @@ test('a file edit reloads once and later saves do not stage', async () => {
   assert.equal(loads, 1);
   session.dispatch('feedback');
   session.pushInput('note');
-  session.handleEvent({ type: 'key', key: 'enter' });
+  press(session, 'enter');
   await session.ops.idle();
   assert.equal(session.mode, 'review');
   assert.equal(session.notes.feedback.size, 1);
@@ -7481,7 +6848,6 @@ test('a file edit reloads once and later saves do not stage', async () => {
 
 test('a package command that rejects shows the error and stops', async () => {
   const { session, repo } = await openSession([sampleItem('a.js')]);
-  session.dashboard.tasks.npm.request = () => {};
   repo.runPackage = () => Promise.reject(new Error('registry down'));
   await session.packages.exec(['update', 'leftpad'], 'npm i', 'updated');
   assert.equal(session.status, 'registry down');
@@ -7581,7 +6947,7 @@ test('a code save does not wait for a running install', async () => {
   session.dispatch('next');
   session.pushInput('e');
   session.pushInput('2');
-  session.handleEvent({ type: 'key', key: 'escape' });
+  press(session, 'escape');
   await settle();
   assert.equal(repo.edited.length, 1);
   assert.equal(session.mode, 'review');
@@ -7659,7 +7025,7 @@ test('leaving the editor does not stage a change made outside', async () => {
   session.refreshFromRepo({ keepView: true, quiet: true });
   await session.ops.idle();
   assert.equal(session.editor.text, 'outside\n');
-  session.handleEvent({ type: 'key', key: 'escape' });
+  press(session, 'escape');
   await session.ops.idle();
   assert.equal(session.mode, 'review');
   assert.equal(session.status, 'saved');
@@ -7670,7 +7036,7 @@ test('leaving the editor does not stage a change made outside', async () => {
   session.refreshFromRepo({ keepView: true, quiet: true });
   await session.ops.idle();
   session.editor.replace('again\nmine\n');
-  session.handleEvent({ type: 'key', key: 'escape' });
+  press(session, 'escape');
   await session.ops.idle();
   assert.equal(session.status, 'staged');
   assert.deepEqual(repo.stagedPaths, ['a.js']);

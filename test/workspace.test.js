@@ -4,7 +4,6 @@ const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
-const { spawnSync } = require('node:child_process');
 
 const workspace = require('../lib/dashboard/workspace.js');
 const { workspaceAt, sumNumstat, readDiffStat } = workspace;
@@ -23,43 +22,9 @@ const { onEscape } = require('../lib/session/files-pane.js');
 const { run, loadSession, parseArgv } = require('../lib/cli.js');
 const { ReviewStore, flushReview } = require('../lib/review/review.js');
 const { RunRecorder } = require('../lib/runs/runs.js');
-const { sink, tempDir, removeTree, seedRepo } = require('./helpers.js');
-
-const gitEnv = {
-  ...process.env,
-  GIT_AUTHOR_NAME: 'Test',
-  GIT_AUTHOR_EMAIL: 'test@example.com',
-  GIT_COMMITTER_NAME: 'Test',
-  GIT_COMMITTER_EMAIL: 'test@example.com',
-};
-
-const wait = (ms) =>
-  new Promise((resolve) => {
-    setTimeout(resolve, ms);
-  });
-
-const waitUntil = async (check, ms = 4000) => {
-  const start = Date.now();
-  while (Date.now() - start < ms) {
-    if (check()) return true;
-    await wait(25);
-  }
-  return false;
-};
-
-const git = (dir, args) => {
-  const result = spawnSync('git', args, {
-    cwd: dir,
-    encoding: 'utf8',
-    env: gitEnv,
-    windowsHide: true,
-  });
-  if (result.status !== 0) {
-    const msg = result.stderr || result.stdout || 'git failed';
-    throw new Error(msg.trim());
-  }
-  return result.stdout;
-};
+const helpers = require('./helpers.js');
+const { tempDir, removeTree, seedRepo, gitIn: git } = helpers;
+const { waitUntil, fakeProc, stopSession, click } = helpers;
 
 const initRepo = (dir) => {
   seedRepo(dir);
@@ -68,30 +33,6 @@ const initRepo = (dir) => {
   fs.writeFileSync(path.join(dir, 'data.json'), '{}\n');
   git(dir, ['add', '.']);
   git(dir, ['commit', '-m', 'init']);
-};
-
-const fakeProc = (cwd, argv = ['node', 'reslop']) => {
-  const stdout = sink();
-  const stderr = sink();
-  return {
-    argv,
-    cwd: () => cwd,
-    stdin: { isTTY: false },
-    stdout,
-    stderr,
-    env: {},
-    stdoutText: () => stdout.dump(),
-    stderrText: () => stderr.dump(),
-  };
-};
-
-const stopSession = (session) => {
-  session.loader.abort();
-  session.lifecycle.stopWatch();
-  session.dashboard.stop();
-  session.workspace.stop();
-  session.progress.clear();
-  session.term.clearTimers();
 };
 
 test('sumNumstat adds and skips binary rows', () => {
@@ -316,7 +257,7 @@ test('opening a folder of repositories starts on repo tiles', async () => {
     flushReview(store, true);
     const recorded = new RunRecorder(alpha, 'npm test');
     recorded.finish(0, { tests: 2, failed: 0 });
-    const proc = fakeProc(root, ['node', 'reslop', root]);
+    const proc = fakeProc(root, { argv: ['node', 'reslop', root] });
     session = await loadSession(proc, {}, parseArgv([root]));
     assert.equal(session.pane, 'repos');
     assert.equal(session.workspaceRoot, path.resolve(root));
@@ -368,14 +309,7 @@ test('opening a folder of repositories starts on repo tiles', async () => {
       (entry) => entry.cursor === 'beta',
     );
     assert.ok(hit);
-    const at = { x: hit.x0 + 2, y: hit.y, btn: 0, button: 0 };
-    session.handleEvent({ type: 'mouse', kind: 'press', press: true, ...at });
-    session.handleEvent({
-      type: 'mouse',
-      kind: 'release',
-      press: false,
-      ...at,
-    });
+    click(session, hit.x0 + 2, hit.y);
     assert.equal(session.pane, 'dashboard');
     assert.equal(session.cwd, beta);
     session.loader.abort();
@@ -393,7 +327,7 @@ test('opening a folder of repositories starts on repo tiles', async () => {
     const again = stripAnsi(back.text);
     assert.match(again, /tasks: 0\/2/);
     assert.match(again, /diff: \+0\//);
-    const quiet = fakeProc(root, ['node', 'reslop', root]);
+    const quiet = fakeProc(root, { argv: ['node', 'reslop', root] });
     const code = await run(quiet);
     assert.equal(code, 1);
     assert.match(quiet.stderrText(), /interactive terminal required/);
@@ -413,7 +347,7 @@ test('a deleted repository is removed from the workspace tiles', async () => {
     initRepo(alpha);
     initRepo(beta);
     session = await loadSession(
-      fakeProc(root, ['node', 'reslop', root]),
+      fakeProc(root, { argv: ['node', 'reslop', root] }),
       {},
       parseArgv([root]),
     );

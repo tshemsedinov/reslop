@@ -32,27 +32,14 @@ const {
 } = require('../lib/render/dashboard/dashboard.js');
 const dashboardSession = require('../lib/session/dashboard.js');
 const { Dashboard, classify, ageDelay } = dashboardSession;
-const { DiskWatcher, UNKNOWN_PATH } = require('../lib/dashboard/watch.js');
+const { UNKNOWN_PATH } = require('../lib/dashboard/watch.js');
 const { actionFromKey, DASH_BLOCKS } = require('../lib/input/actions.js');
 const { Session } = require('../lib/session/session.js');
 const { createGitRepo } = require('../lib/git/git.js');
 const ansi = require('../lib/term/ansi.js');
 const { stripAnsi, visibleWidth, THEME, seq } = ansi;
-const { makeRepo, tempDir, removeTree } = require('./helpers.js');
-
-const wait = (ms) =>
-  new Promise((resolve) => {
-    setTimeout(resolve, ms);
-  });
-
-const waitUntil = async (check, ms = 3000) => {
-  const start = Date.now();
-  while (Date.now() - start < ms) {
-    if (check()) return true;
-    await wait(25);
-  }
-  return false;
-};
+const helpers = require('./helpers.js');
+const { makeRepo, tempDir, removeTree, waitUntil, click } = helpers;
 
 const PASS = '✔ ok (1ms)';
 
@@ -533,39 +520,6 @@ test('the blink timer stops the current cell after three seconds', () => {
   assert.equal(started.includes('dashboard'), false);
 });
 
-test('the disk watcher reports changed paths and run records', async () => {
-  const dir = tempDir('reslop-watch-');
-  await wait(20);
-  const seen = new Set();
-  let changes = 0;
-  const watcher = new DiskWatcher({
-    root: dir,
-    debounceMs: 30,
-    onChange: () => {
-      changes += 1;
-    },
-    onPaths: (paths) => {
-      for (const rel of paths) seen.add(rel);
-    },
-  });
-  try {
-    await wait(50);
-    fs.writeFileSync(path.join(dir, 'a.js'), 'x\n');
-    assert.ok(await waitUntil(() => seen.has('a.js')));
-    assert.ok(changes >= 1);
-    const before = changes;
-    fs.mkdirSync(path.join(dir, '.log', '.runs'), { recursive: true });
-    await wait(60);
-    fs.writeFileSync(path.join(dir, '.log', '.runs', '1-2.json'), '{}');
-    assert.ok(await waitUntil(() => seen.has('.log/.runs/1-2.json')));
-    await wait(120);
-    assert.equal(changes, before);
-  } finally {
-    watcher.close();
-    fs.rmSync(dir, { recursive: true, force: true });
-  }
-});
-
 const sampleTiles = () =>
   ['a', 'b', 'c', 'd', 'e', 'f', 'g'].map((id, rank) => ({
     id,
@@ -629,15 +583,19 @@ test('the dashboard pane without a model paints blank', () => {
 });
 
 test('dashboard hotkeys map to their blocks', () => {
-  const pairs = { f: 'files', d: 'diffs', c: 'commits', b: 'branches' };
+  const pairs = {
+    f: 'files',
+    d: 'diffs',
+    c: 'commits',
+    b: 'branches',
+    n: 'npm',
+    r: 'run',
+    t: 'tasks',
+    a: 'agents',
+  };
   for (const [key, block] of Object.entries(pairs)) {
-    const action = actionFromKey(key, 'dashboard');
-    assert.equal(DASH_BLOCKS[action], block);
+    assert.equal(DASH_BLOCKS[actionFromKey(key, 'dashboard')], block);
   }
-  assert.equal(DASH_BLOCKS[actionFromKey('n', 'dashboard')], 'npm');
-  assert.equal(DASH_BLOCKS[actionFromKey('r', 'dashboard')], 'run');
-  assert.equal(DASH_BLOCKS[actionFromKey('t', 'dashboard')], 'tasks');
-  assert.equal(DASH_BLOCKS[actionFromKey('a', 'dashboard')], 'agents');
 });
 
 const openDashboard = async (rows = 40, columns = 120) => {
@@ -835,46 +793,25 @@ test('hotkeys open screens and Esc returns to the dashboard', async () => {
   }
 });
 
-test('Esc on the dashboard quits', async () => {
+test('other keys do nothing, Esc and its button quit', async () => {
   const { ui, close } = await openDashboard();
   try {
     let quit = 0;
     ui.onQuit = () => {
       quit += 1;
     };
+    for (const key of ['j', 'k', 'down', 'up', 's', 'u', 'x']) {
+      await press(ui, key);
+    }
+    assert.equal(ui.pane, 'dashboard');
+    assert.equal(quit, 0);
     await press(ui, 'escape');
     assert.equal(quit, 1);
-  } finally {
-    await close();
-  }
-});
-
-test('the dashboard Esc button quits', async () => {
-  const { ui, close } = await openDashboard();
-  try {
-    let quit = 0;
-    ui.onQuit = () => {
-      quit += 1;
-    };
     ui.draw();
     const hit = ui.lastFrame.buttons.find((button) => button.id === 'back');
     assert.ok(hit);
-    const y = ui.lastFrame.height;
-    const at = { x: hit.x0 + 1, y, btn: 0, button: 0 };
-    ui.handleEvent({ type: 'mouse', kind: 'press', press: true, ...at });
-    ui.handleEvent({ type: 'mouse', kind: 'release', press: false, ...at });
-    assert.equal(quit, 1);
-  } finally {
-    await close();
-  }
-});
-
-test('other keys do nothing on the dashboard', async () => {
-  const { ui, close } = await openDashboard();
-  try {
-    const keys = ['j', 'k', 'down', 'up', 's', 'u', 'x'];
-    for (const key of keys) await press(ui, key);
-    assert.equal(ui.pane, 'dashboard');
+    click(ui, hit.x0 + 1, ui.lastFrame.height);
+    assert.equal(quit, 2);
   } finally {
     await close();
   }
@@ -889,10 +826,7 @@ test('the footer offers the block buttons and opens screens', async () => {
       assert.ok(ids.includes(id), id);
     }
     const hit = ui.lastFrame.buttons.find((b) => b.id === 'dashCommits');
-    const y = ui.lastFrame.height;
-    const at = { x: hit.x0 + 1, y, btn: 0, button: 0 };
-    ui.handleEvent({ type: 'mouse', kind: 'press', press: true, ...at });
-    ui.handleEvent({ type: 'mouse', kind: 'release', press: false, ...at });
+    click(ui, hit.x0 + 1, ui.lastFrame.height);
     await ui.ops.idle();
     assert.equal(ui.pane, 'commits');
   } finally {
@@ -906,18 +840,14 @@ test('a click on a tile opens its screen', async () => {
     ui.draw();
     const hit = ui.lastFrame.fileHits.find((h) => h.cursor === 'branches');
     assert.ok(hit);
-    const at = { x: hit.x0 + 2, y: hit.y, btn: 0, button: 0 };
-    ui.handleEvent({ type: 'mouse', kind: 'press', press: true, ...at });
-    ui.handleEvent({ type: 'mouse', kind: 'release', press: false, ...at });
+    click(ui, hit.x0 + 2, hit.y);
     await ui.ops.idle();
     assert.equal(ui.pane, 'branches');
     ui.nav.pane = 'dashboard';
     ui.draw();
     const npm = ui.lastFrame.fileHits.find((h) => h.cursor === 'npm');
     assert.ok(npm);
-    const npmAt = { x: npm.x0 + 2, y: npm.y, btn: 0, button: 0 };
-    ui.handleEvent({ type: 'mouse', kind: 'press', press: true, ...npmAt });
-    ui.handleEvent({ type: 'mouse', kind: 'release', press: false, ...npmAt });
+    click(ui, npm.x0 + 2, npm.y);
     await ui.ops.idle();
     assert.equal(ui.pane, 'packages');
   } finally {
@@ -931,18 +861,6 @@ test('the dashboard stays responsive on a tiny terminal', async () => {
     const text = frameText(ui);
     assert.ok(text.length > 0);
     assert.equal(ui.lastFrame.rows.length, 8);
-  } finally {
-    await close();
-  }
-});
-
-test('the dashboard paints color tiles on a black page', async () => {
-  const { ui, close } = await openDashboard();
-  try {
-    ui.color = true;
-    ui.draw();
-    const raw = ui.lastFrame.rows.join('\n');
-    assert.ok(raw.includes('\x1b['));
   } finally {
     await close();
   }

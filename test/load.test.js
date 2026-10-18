@@ -36,7 +36,6 @@ test('stale generation is not accepted after bump', () => {
   const second = loader.bump();
   assert.equal(loader.isCurrent(first), false);
   assert.equal(loader.isCurrent(second), true);
-  assert.equal(loader.isCurrent(first), false);
 });
 
 test('abort replaces the signal and marks the old one aborted', () => {

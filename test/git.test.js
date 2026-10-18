@@ -3,7 +3,6 @@
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
-const os = require('node:os');
 const path = require('node:path');
 const { spawnSync } = require('node:child_process');
 
@@ -17,20 +16,17 @@ const { pushChanges, editItem } = git;
 const { runProc } = require('../lib/common/process.js');
 const { Session } = require('../lib/session/session.js');
 const { blockAddText } = require('../lib/diff/diff.js');
-const { makeRepo, sink, configureRepo, seedRepo } = require('./helpers.js');
+const {
+  makeRepo,
+  sink,
+  configureRepo,
+  seedRepo,
+  tempDir,
+  openRepoSession,
+} = require('./helpers.js');
 
-const sessionFor = async (dir) => {
-  const stdout = sink();
-  const session = new Session({
-    repo: createGitRepo(),
-    cwd: dir,
-    stdout,
-    color: false,
-    startPane: 'diff',
-  });
-  await session.load();
-  return session;
-};
+const sessionFor = (dir) =>
+  openRepoSession(dir, { stdout: sink(), startPane: 'diff' });
 
 test('AC4 add stages an unstaged block', async () => {
   const repo = makeRepo();
@@ -605,43 +601,41 @@ test('hasStaged is false until files are added', async () => {
 });
 
 test('updateCommit folds staged changes into the selected commit', async () => {
-  for (const method of ['updateCommit']) {
-    const repo = makeRepo();
-    try {
-      repo.write('a.txt', 'one\n');
-      repo.git(['add', 'a.txt']);
-      repo.git(['commit', '-m', 'one']);
-      repo.write('b.txt', 'two\n');
-      repo.git(['add', 'b.txt']);
-      repo.git(['commit', '-m', 'two\n\nbody']);
-      const head = (await listCommits(repo.dir))[0].sha;
-      repo.write('b.txt', 'two-more\n');
-      repo.git(['add', 'b.txt']);
-      await git[method](repo.dir, head);
-      const after = await listCommits(repo.dir);
-      assert.deepEqual(
-        after.map((entry) => entry.subject),
-        ['two', 'one'],
-      );
-      assert.equal(repo.read('b.txt'), 'two-more\n');
-      assert.equal(
-        await git.commitMessage(repo.dir, after[0].sha),
-        'two\n\nbody',
-      );
-      repo.write('a.txt', 'one-more\n');
-      repo.git(['add', 'a.txt']);
-      await git[method](repo.dir, after[1].sha);
-      const folded = await listCommits(repo.dir);
-      assert.deepEqual(
-        folded.map((entry) => entry.subject),
-        ['two', 'one'],
-      );
-      assert.equal(repo.read('a.txt'), 'one-more\n');
-      assert.equal(repo.read('b.txt'), 'two-more\n');
-      assert.equal(await git.commitMessage(repo.dir, folded[1].sha), 'one');
-    } finally {
-      repo.cleanup();
-    }
+  const repo = makeRepo();
+  try {
+    repo.write('a.txt', 'one\n');
+    repo.git(['add', 'a.txt']);
+    repo.git(['commit', '-m', 'one']);
+    repo.write('b.txt', 'two\n');
+    repo.git(['add', 'b.txt']);
+    repo.git(['commit', '-m', 'two\n\nbody']);
+    const head = (await listCommits(repo.dir))[0].sha;
+    repo.write('b.txt', 'two-more\n');
+    repo.git(['add', 'b.txt']);
+    await git.updateCommit(repo.dir, head);
+    const after = await listCommits(repo.dir);
+    assert.deepEqual(
+      after.map((entry) => entry.subject),
+      ['two', 'one'],
+    );
+    assert.equal(repo.read('b.txt'), 'two-more\n');
+    assert.equal(
+      await git.commitMessage(repo.dir, after[0].sha),
+      'two\n\nbody',
+    );
+    repo.write('a.txt', 'one-more\n');
+    repo.git(['add', 'a.txt']);
+    await git.updateCommit(repo.dir, after[1].sha);
+    const folded = await listCommits(repo.dir);
+    assert.deepEqual(
+      folded.map((entry) => entry.subject),
+      ['two', 'one'],
+    );
+    assert.equal(repo.read('a.txt'), 'one-more\n');
+    assert.equal(repo.read('b.txt'), 'two-more\n');
+    assert.equal(await git.commitMessage(repo.dir, folded[1].sha), 'one');
+  } finally {
+    repo.cleanup();
   }
 });
 
@@ -662,7 +656,7 @@ test('commitChanges fixup writes the given message', async () => {
 });
 
 const makeBare = () => {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'reslop-bare-'));
+  const dir = tempDir('reslop-bare-');
   const result = spawnSync('git', ['init', '--bare', '-b', 'main'], {
     cwd: dir,
     encoding: 'utf8',
@@ -734,83 +728,32 @@ test('listBranches createBranch and checkoutBranch', async () => {
   }
 });
 
-for (const method of ['rebaseBranch']) {
-  test(`${method} replays onto the selected branch`, async () => {
-    const repo = makeRepo();
-    try {
-      repo.write('f.txt', 'base\n');
-      repo.git(['add', 'f.txt']);
-      repo.git(['commit', '-m', 'init']);
-      await createBranch(repo.dir, 'feat');
-      repo.write('f.txt', 'feat\n');
-      repo.git(['add', 'f.txt']);
-      repo.git(['commit', '-m', 'feat']);
-      await checkoutBranch(repo.dir, 'main');
-      repo.write('g.txt', 'main\n');
-      repo.git(['add', 'g.txt']);
-      repo.git(['commit', '-m', 'on-main']);
-      await checkoutBranch(repo.dir, 'feat');
-      await git[method](repo.dir, 'main');
-      assert.equal(await currentBranch(repo.dir), 'feat');
-      assert.equal(repo.read('g.txt'), 'main\n');
-      assert.equal(repo.read('f.txt'), 'feat\n');
-      const log = repo.git(['log', '--oneline']);
-      assert.match(log, /on-main/);
-      assert.match(log, /feat/);
-    } finally {
-      repo.cleanup();
-    }
-  });
-}
-
-for (const method of ['rebaseBranch']) {
-  test(`${method} merges a conflicting rebase`, async () => {
-    const repo = makeRepo();
-    try {
-      repo.write('f.txt', 'base\n');
-      repo.git(['add', 'f.txt']);
-      repo.git(['commit', '-m', 'init']);
-      await createBranch(repo.dir, 'feat');
-      repo.write('f.txt', 'feat\n');
-      repo.git(['add', 'f.txt']);
-      repo.git(['commit', '-m', 'feat']);
-      await checkoutBranch(repo.dir, 'main');
-      repo.write('f.txt', 'main\n');
-      repo.git(['add', 'f.txt']);
-      repo.git(['commit', '-m', 'on-main']);
-      await checkoutBranch(repo.dir, 'feat');
-      await git[method](repo.dir, 'main');
-      assert.equal(await currentBranch(repo.dir), 'feat');
-      assert.equal(repo.read('f.txt'), 'main\nfeat\n');
-    } finally {
-      repo.cleanup();
-    }
-  });
-}
-
-for (const method of ['rebaseBranch']) {
-  test(`${method} aborts when a conflict has no merge markers`, async () => {
-    const repo = makeRepo();
-    try {
-      repo.write('f.txt', 'base\n');
-      repo.git(['add', 'f.txt']);
-      repo.git(['commit', '-m', 'init']);
-      await createBranch(repo.dir, 'feat');
-      repo.write('f.txt', 'feat\n');
-      repo.git(['add', 'f.txt']);
-      repo.git(['commit', '-m', 'feat']);
-      await checkoutBranch(repo.dir, 'main');
-      repo.git(['rm', 'f.txt']);
-      repo.git(['commit', '-m', 'remove']);
-      await checkoutBranch(repo.dir, 'feat');
-      await assert.rejects(async () => git[method](repo.dir, 'main'));
-      assert.equal(await currentBranch(repo.dir), 'feat');
-      assert.equal(repo.read('f.txt'), 'feat\n');
-    } finally {
-      repo.cleanup();
-    }
-  });
-}
+test('rebaseBranch replays onto the selected branch', async () => {
+  const repo = makeRepo();
+  try {
+    repo.write('f.txt', 'base\n');
+    repo.git(['add', 'f.txt']);
+    repo.git(['commit', '-m', 'init']);
+    await createBranch(repo.dir, 'feat');
+    repo.write('f.txt', 'feat\n');
+    repo.git(['add', 'f.txt']);
+    repo.git(['commit', '-m', 'feat']);
+    await checkoutBranch(repo.dir, 'main');
+    repo.write('g.txt', 'main\n');
+    repo.git(['add', 'g.txt']);
+    repo.git(['commit', '-m', 'on-main']);
+    await checkoutBranch(repo.dir, 'feat');
+    await git.rebaseBranch(repo.dir, 'main');
+    assert.equal(await currentBranch(repo.dir), 'feat');
+    assert.equal(repo.read('g.txt'), 'main\n');
+    assert.equal(repo.read('f.txt'), 'feat\n');
+    const log = repo.git(['log', '--oneline']);
+    assert.match(log, /on-main/);
+    assert.match(log, /feat/);
+  } finally {
+    repo.cleanup();
+  }
+});
 
 const conflictingRepo = async () => {
   const repo = makeRepo();
@@ -828,6 +771,39 @@ const conflictingRepo = async () => {
   await checkoutBranch(repo.dir, 'feat');
   return repo;
 };
+
+test('rebaseBranch merges a conflicting rebase', async () => {
+  const repo = await conflictingRepo();
+  try {
+    await git.rebaseBranch(repo.dir, 'main');
+    assert.equal(await currentBranch(repo.dir), 'feat');
+    assert.equal(repo.read('f.txt'), 'main\nfeat\n');
+  } finally {
+    repo.cleanup();
+  }
+});
+
+test('rebaseBranch aborts when a conflict has no merge markers', async () => {
+  const repo = makeRepo();
+  try {
+    repo.write('f.txt', 'base\n');
+    repo.git(['add', 'f.txt']);
+    repo.git(['commit', '-m', 'init']);
+    await createBranch(repo.dir, 'feat');
+    repo.write('f.txt', 'feat\n');
+    repo.git(['add', 'f.txt']);
+    repo.git(['commit', '-m', 'feat']);
+    await checkoutBranch(repo.dir, 'main');
+    repo.git(['rm', 'f.txt']);
+    repo.git(['commit', '-m', 'remove']);
+    await checkoutBranch(repo.dir, 'feat');
+    await assert.rejects(async () => git.rebaseBranch(repo.dir, 'main'));
+    assert.equal(await currentBranch(repo.dir), 'feat');
+    assert.equal(repo.read('f.txt'), 'feat\n');
+  } finally {
+    repo.cleanup();
+  }
+});
 
 test('rebaseBranch rolls back when writing a resolution fails', async (t) => {
   const repo = await conflictingRepo();
@@ -981,56 +957,52 @@ test('listCommits shows branch tips and the full message', async () => {
   }
 });
 
-for (const method of ['dropCommit']) {
-  test(`dropCommit soft-resets HEAD (${method})`, async () => {
-    const repo = makeRepo();
-    try {
-      repo.write('f.txt', 'a\n');
-      repo.git(['add', 'f.txt']);
-      repo.git(['commit', '-m', 'one']);
-      repo.write('f.txt', 'b\n');
-      repo.git(['add', 'f.txt']);
-      repo.git(['commit', '-m', 'two']);
-      const listed = await listCommits(repo.dir);
-      await git[method](repo.dir, listed[0].sha);
-      const subjects = (await listCommits(repo.dir)).map(
-        (entry) => entry.subject,
-      );
-      assert.deepEqual(subjects, ['one']);
-      assert.equal(repo.read('f.txt'), 'b\n');
-    } finally {
-      repo.cleanup();
-    }
-  });
-}
+test('dropCommit soft-resets HEAD', async () => {
+  const repo = makeRepo();
+  try {
+    repo.write('f.txt', 'a\n');
+    repo.git(['add', 'f.txt']);
+    repo.git(['commit', '-m', 'one']);
+    repo.write('f.txt', 'b\n');
+    repo.git(['add', 'f.txt']);
+    repo.git(['commit', '-m', 'two']);
+    const listed = await listCommits(repo.dir);
+    await git.dropCommit(repo.dir, listed[0].sha);
+    const subjects = (await listCommits(repo.dir)).map(
+      (entry) => entry.subject,
+    );
+    assert.deepEqual(subjects, ['one']);
+    assert.equal(repo.read('f.txt'), 'b\n');
+  } finally {
+    repo.cleanup();
+  }
+});
 
-for (const method of ['dropCommit']) {
-  test(`dropCommit rebases out an older commit (${method})`, async () => {
-    const repo = makeRepo();
-    try {
-      repo.write('a.txt', 'a\n');
-      repo.git(['add', 'a.txt']);
-      repo.git(['commit', '-m', 'one']);
-      repo.write('b.txt', 'b\n');
-      repo.git(['add', 'b.txt']);
-      repo.git(['commit', '-m', 'two']);
-      repo.write('c.txt', 'c\n');
-      repo.git(['add', 'c.txt']);
-      repo.git(['commit', '-m', 'three']);
-      const older = (await listCommits(repo.dir))[1].sha;
-      await git[method](repo.dir, older);
-      const subjects = (await listCommits(repo.dir)).map(
-        (entry) => entry.subject,
-      );
-      assert.deepEqual(subjects, ['three', 'one']);
-      assert.equal(repo.read('a.txt'), 'a\n');
-      assert.equal(repo.read('c.txt'), 'c\n');
-      assert.equal(repo.exists('b.txt'), false);
-    } finally {
-      repo.cleanup();
-    }
-  });
-}
+test('dropCommit rebases out an older commit', async () => {
+  const repo = makeRepo();
+  try {
+    repo.write('a.txt', 'a\n');
+    repo.git(['add', 'a.txt']);
+    repo.git(['commit', '-m', 'one']);
+    repo.write('b.txt', 'b\n');
+    repo.git(['add', 'b.txt']);
+    repo.git(['commit', '-m', 'two']);
+    repo.write('c.txt', 'c\n');
+    repo.git(['add', 'c.txt']);
+    repo.git(['commit', '-m', 'three']);
+    const older = (await listCommits(repo.dir))[1].sha;
+    await git.dropCommit(repo.dir, older);
+    const subjects = (await listCommits(repo.dir)).map(
+      (entry) => entry.subject,
+    );
+    assert.deepEqual(subjects, ['three', 'one']);
+    assert.equal(repo.read('a.txt'), 'a\n');
+    assert.equal(repo.read('c.txt'), 'c\n');
+    assert.equal(repo.exists('b.txt'), false);
+  } finally {
+    repo.cleanup();
+  }
+});
 
 test('dropCommit refuses the root commit', async () => {
   const repo = makeRepo();
@@ -1046,33 +1018,31 @@ test('dropCommit refuses the root commit', async () => {
   }
 });
 
-for (const method of ['applyFixup']) {
-  test(`applyFixup squashes a fixup into its target (${method})`, async () => {
-    const repo = makeRepo();
-    try {
-      repo.write('a.txt', 'one\n');
-      repo.git(['add', 'a.txt']);
-      repo.git(['commit', '-m', 'one']);
-      repo.write('b.txt', 'two\n');
-      repo.git(['add', 'b.txt']);
-      repo.git(['commit', '-m', 'two']);
-      repo.write('b.txt', 'two-fix\n');
-      repo.git(['add', 'b.txt']);
-      repo.git(['commit', '-m', 'fixup! two']);
-      const listed = await listCommits(repo.dir);
-      assert.deepEqual(
-        listed.map((entry) => entry.subject),
-        ['fixup! two', 'two', 'one'],
-      );
-      await git[method](repo.dir, listed[0].sha);
-      const after = (await listCommits(repo.dir)).map((entry) => entry.subject);
-      assert.deepEqual(after, ['two', 'one']);
-      assert.equal(repo.read('b.txt'), 'two-fix\n');
-    } finally {
-      repo.cleanup();
-    }
-  });
-}
+test('applyFixup squashes a fixup into its target', async () => {
+  const repo = makeRepo();
+  try {
+    repo.write('a.txt', 'one\n');
+    repo.git(['add', 'a.txt']);
+    repo.git(['commit', '-m', 'one']);
+    repo.write('b.txt', 'two\n');
+    repo.git(['add', 'b.txt']);
+    repo.git(['commit', '-m', 'two']);
+    repo.write('b.txt', 'two-fix\n');
+    repo.git(['add', 'b.txt']);
+    repo.git(['commit', '-m', 'fixup! two']);
+    const listed = await listCommits(repo.dir);
+    assert.deepEqual(
+      listed.map((entry) => entry.subject),
+      ['fixup! two', 'two', 'one'],
+    );
+    await git.applyFixup(repo.dir, listed[0].sha);
+    const after = (await listCommits(repo.dir)).map((entry) => entry.subject);
+    assert.deepEqual(after, ['two', 'one']);
+    assert.equal(repo.read('b.txt'), 'two-fix\n');
+  } finally {
+    repo.cleanup();
+  }
+});
 
 test('applyFixup refuses a non-fixup commit', async () => {
   const repo = makeRepo();
@@ -1087,61 +1057,53 @@ test('applyFixup refuses a non-fixup commit', async () => {
   }
 });
 
-for (const method of ['rewordCommit']) {
-  test(`${method} changes HEAD message and preserves the index`, async () => {
-    const repo = makeRepo();
-    try {
-      repo.write('a.txt', 'a\n');
-      repo.git(['add', 'a.txt']);
-      repo.git(['commit', '-m', 'one']);
-      repo.write('b.txt', 'b\n');
-      repo.git(['add', 'b.txt']);
-      repo.git(['commit', '-m', 'two']);
-      repo.write('s.txt', 'staged\n');
-      repo.git(['add', 's.txt']);
-      const head = (await listCommits(repo.dir))[0].sha;
-      await git[method](repo.dir, head, 'TWO');
-      const listed = (await listCommits(repo.dir)).map(
-        (entry) => entry.subject,
-      );
-      assert.deepEqual(listed, ['TWO', 'one']);
-      assert.equal(await hasStaged(repo.dir), true);
-      assert.equal(repo.exists('s.txt'), true);
-      const cached = repo.git(['diff', '--cached', '--', 's.txt']);
-      assert.match(cached, /staged/);
-    } finally {
-      repo.cleanup();
-    }
-  });
-}
+test('rewordCommit changes HEAD message and preserves the index', async () => {
+  const repo = makeRepo();
+  try {
+    repo.write('a.txt', 'a\n');
+    repo.git(['add', 'a.txt']);
+    repo.git(['commit', '-m', 'one']);
+    repo.write('b.txt', 'b\n');
+    repo.git(['add', 'b.txt']);
+    repo.git(['commit', '-m', 'two']);
+    repo.write('s.txt', 'staged\n');
+    repo.git(['add', 's.txt']);
+    const head = (await listCommits(repo.dir))[0].sha;
+    await git.rewordCommit(repo.dir, head, 'TWO');
+    const listed = (await listCommits(repo.dir)).map((entry) => entry.subject);
+    assert.deepEqual(listed, ['TWO', 'one']);
+    assert.equal(await hasStaged(repo.dir), true);
+    assert.equal(repo.exists('s.txt'), true);
+    const cached = repo.git(['diff', '--cached', '--', 's.txt']);
+    assert.match(cached, /staged/);
+  } finally {
+    repo.cleanup();
+  }
+});
 
-for (const method of ['rewordCommit']) {
-  test(`${method} rewrites an older message`, async () => {
-    const repo = makeRepo();
-    try {
-      repo.write('a.txt', 'a\n');
-      repo.git(['add', 'a.txt']);
-      repo.git(['commit', '-m', 'one']);
-      repo.write('b.txt', 'b\n');
-      repo.git(['add', 'b.txt']);
-      repo.git(['commit', '-m', 'two']);
-      repo.write('c.txt', 'c\n');
-      repo.git(['add', 'c.txt']);
-      repo.git(['commit', '-m', 'three']);
-      const older = (await listCommits(repo.dir))[1].sha;
-      await git[method](repo.dir, older, 'TWO');
-      const listed = (await listCommits(repo.dir)).map(
-        (entry) => entry.subject,
-      );
-      assert.deepEqual(listed, ['three', 'TWO', 'one']);
-      assert.equal(repo.read('a.txt'), 'a\n');
-      assert.equal(repo.read('b.txt'), 'b\n');
-      assert.equal(repo.read('c.txt'), 'c\n');
-    } finally {
-      repo.cleanup();
-    }
-  });
-}
+test('rewordCommit rewrites an older message', async () => {
+  const repo = makeRepo();
+  try {
+    repo.write('a.txt', 'a\n');
+    repo.git(['add', 'a.txt']);
+    repo.git(['commit', '-m', 'one']);
+    repo.write('b.txt', 'b\n');
+    repo.git(['add', 'b.txt']);
+    repo.git(['commit', '-m', 'two']);
+    repo.write('c.txt', 'c\n');
+    repo.git(['add', 'c.txt']);
+    repo.git(['commit', '-m', 'three']);
+    const older = (await listCommits(repo.dir))[1].sha;
+    await git.rewordCommit(repo.dir, older, 'TWO');
+    const listed = (await listCommits(repo.dir)).map((entry) => entry.subject);
+    assert.deepEqual(listed, ['three', 'TWO', 'one']);
+    assert.equal(repo.read('a.txt'), 'a\n');
+    assert.equal(repo.read('b.txt'), 'b\n');
+    assert.equal(repo.read('c.txt'), 'c\n');
+  } finally {
+    repo.cleanup();
+  }
+});
 
 test('dropBranch deletes a branch that is not current', async () => {
   const repo = makeRepo();
@@ -1274,7 +1236,7 @@ test('pushChanges sets upstream then push and pull update', async () => {
       windowsHide: true,
     });
     assert.equal(remoteLog.stdout.trim(), 'init');
-    cloneDir = fs.mkdtempSync(path.join(os.tmpdir(), 'reslop-cl-'));
+    cloneDir = tempDir('reslop-cl-');
     const cloned = spawnSync('git', ['clone', bare.dir, cloneDir], {
       encoding: 'utf8',
       windowsHide: true,
@@ -1395,23 +1357,6 @@ test('runProc finish removes abort listener on timeout', async () => {
   );
   assert.equal(result.error.code, 'ETIMEDOUT');
   assert.equal(signal.listeners.size, 0);
-});
-
-test('load matches load for a dirty worktree', async () => {
-  const repo = makeRepo();
-  try {
-    repo.write('f.txt', 'a\n');
-    repo.git(['add', 'f.txt']);
-    repo.git(['commit', '-m', 'init']);
-    repo.write('f.txt', 'b\n');
-    const sync = await load(repo.dir, [], { deferExtras: false });
-    const asyncLoaded = await git.load(repo.dir);
-    assert.equal(asyncLoaded.items.length, sync.items.length);
-    assert.equal(asyncLoaded.items[0].origin, 'unstaged');
-    assert.equal(asyncLoaded.branch, sync.branch);
-  } finally {
-    repo.cleanup();
-  }
 });
 
 test('editItem writes added lines into the reviewed file', async () => {

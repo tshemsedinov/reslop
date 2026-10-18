@@ -3,11 +3,11 @@
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
-const os = require('node:os');
 const path = require('node:path');
 
 const review = require('../lib/review/review.js');
 const { ReviewController } = require('../lib/session/review.js');
+const { tempDir } = require('./helpers.js');
 const { allocateReviewPath, rankedTemplates } = review;
 const { prefixTemplates, upsertTemplate, ReviewStore } = review;
 const { hasNotes, noteCounts } = review;
@@ -39,7 +39,7 @@ test('latestReviewName picks the newest date then index', () => {
 });
 
 test('resolveReviewPath resumes editing and starts new otherwise', () => {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'reslop-review-'));
+  const dir = tempDir('reslop-review-');
   try {
     const date = new Date(2026, 8, 7);
     const folder = path.join(dir, '.plan');
@@ -398,7 +398,7 @@ test('setTaskText deletes empty todos without template history', () => {
 });
 
 test('flushReview writes markdown and templates when notes exist', () => {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'reslop-review-'));
+  const dir = tempDir('reslop-review-');
   try {
     const reviewPath = path.join(dir, '.plan', '2026-09-07-00.md');
     const store = new ReviewStore(reviewPath);
@@ -427,7 +427,7 @@ test('flushReview writes markdown and templates when notes exist', () => {
 });
 
 test('loadTemplates prefers .templates and reads templates.json', () => {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'reslop-review-'));
+  const dir = tempDir('reslop-review-');
   try {
     const folder = path.join(dir, '.plan');
     fs.mkdirSync(folder);
@@ -451,7 +451,7 @@ test('loadTemplates prefers .templates and reads templates.json', () => {
 });
 
 test('flushReview merges disk todos instead of overwriting', () => {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'reslop-review-'));
+  const dir = tempDir('reslop-review-');
   try {
     const reviewPath = path.join(dir, '.plan', '2026-09-07-00.md');
     const store = new ReviewStore(reviewPath);
@@ -489,7 +489,7 @@ test('flushReview merges disk todos instead of overwriting', () => {
 });
 
 test('flushReview skips write when there are no notes', () => {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'reslop-review-'));
+  const dir = tempDir('reslop-review-');
   try {
     const reviewPath = path.join(dir, '.plan', '2026-09-07-00.md');
     const store = new ReviewStore(reviewPath);

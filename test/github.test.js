@@ -6,30 +6,13 @@ const assert = require('node:assert/strict');
 const github = require('../lib/source/github.js');
 const { filterChangeFiles } = require('../lib/source/remote.js');
 const { parseDiff, itemsFromFiles } = require('../lib/diff/diff.js');
+const { jsonResponse, CHANGE_DIFF: PR_DIFF } = require('./helpers.js');
 const { parseGithubPrUrl, parseGithubIssueUrl, githubToken } = github;
 const { parseGithubIssueListUrl } = github;
 const { loadPullRequest, loadGithubIssue } = github;
 const { prApiUrl, discussionToNotes } = github;
 
 const PR = { owner: 'acme', repo: 'app', number: 123 };
-
-const PR_DIFF = `diff --git a/lib/parser.js b/lib/parser.js
-index 1111111..2222222 100644
---- a/lib/parser.js
-+++ b/lib/parser.js
-@@ -1,3 +1,4 @@
- keep
--old
-+new
- keep
-diff --git a/README.md b/README.md
-index 1111111..2222222 100644
---- a/README.md
-+++ b/README.md
-@@ -1,1 +1,1 @@
--hello
-+Hello
-`;
 
 const PR_JSON = JSON.parse(`{
   "number": 123,
@@ -56,13 +39,6 @@ const EMPTY_THREADS = {
     },
   },
 };
-
-const jsonResponse = (status, body, extraHeaders = {}) => ({
-  ok: status >= 200 && status < 300,
-  status,
-  headers: extraHeaders,
-  text: async () => (typeof body === 'string' ? body : JSON.stringify(body)),
-});
 
 const mockFetch = (json, diff, status = 200, routes = {}) => {
   const calls = [];
@@ -240,21 +216,17 @@ test('filterChangeFiles keeps matching paths', () => {
   assert.equal(kept[0].newPath, 'lib/a.js');
 });
 
-test('loadPullRequest maps 404 to a not found error', async () => {
-  const fetchImpl = mockFetch({ message: 'Not Found' }, '', 404);
-  await assert.rejects(
-    () => loadPullRequest(PR, { fetch: fetchImpl, token: '' }),
-    /GitHub pull request not found/,
-  );
-});
-
-test('loadPullRequest maps rate limit errors', async () => {
-  const fetchImpl = mockFetch({ message: 'API rate limit exceeded' }, '', 403);
-  await assert.rejects(
-    () => loadPullRequest(PR, { fetch: fetchImpl, token: 'tok' }),
-    /rate limit exceeded/,
-  );
-});
+for (const [status, message, error] of [
+  [404, 'Not Found', /GitHub pull request not found/],
+  [403, 'API rate limit exceeded', /rate limit exceeded/],
+  [401, 'Bad credentials', /GitHub authentication failed/],
+]) {
+  test(`loadPullRequest maps ${status} to its error`, async () => {
+    const fetchImpl = mockFetch({ message }, '', status);
+    const options = { fetch: fetchImpl, token: 'tok', retry: { attempts: 1 } };
+    await assert.rejects(() => loadPullRequest(PR, options), error);
+  });
+}
 
 test('loadPullRequest maps network failures', async () => {
   const fetchImpl = async () => {
@@ -304,14 +276,6 @@ test('loadPullRequest rejects invalid pull request JSON', async () => {
   await assert.rejects(
     () => loadPullRequest(PR, { fetch: fetchImpl, token: '' }),
     /invalid pull request payload/,
-  );
-});
-
-test('loadPullRequest maps 401 to an auth error', async () => {
-  const fetchImpl = mockFetch({ message: 'Bad credentials' }, '', 401);
-  await assert.rejects(
-    () => loadPullRequest(PR, { fetch: fetchImpl, token: 'tok' }),
-    /GitHub authentication failed/,
   );
 });
 
