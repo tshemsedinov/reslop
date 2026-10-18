@@ -2557,6 +2557,37 @@ for (const [name, shift, ctrl] of [
   });
 }
 
+for (const [name, shift, ctrl] of [
+  ['kitty', '\x1b[13;2u', '\x1b[13;5u'],
+  ['xterm', '\x1b[27;2;13~', '\x1b[27;5;13~'],
+  ['line feed', '\n', '\n'],
+]) {
+  test(`${name} adds lines inside an existing task`, async () => {
+    const { session } = await openSession([sampleItem('a.js')]);
+    session.dispatch('tasks');
+    session.pushInput('alphaomega\x13');
+    const id = session.notes.tasks[0].id;
+    session.tasksFocus = 0;
+    session.pushInput('\r');
+    const editor = session.editor;
+    editor.place(5);
+    session.pushInput(`${shift}middle`);
+    session.autosave();
+    assert.equal(session.editor, editor);
+    assert.equal(session.mode, 'compose');
+    assert.equal(session.notes.tasks.length, 1);
+    assert.equal(session.notes.tasks[0].id, id);
+    session.pushInput(`${ctrl}tail`);
+    assert.equal(session.editor, editor);
+    assert.equal(session.tasksFocus, 0);
+    session.pushInput('\x13');
+    assert.equal(session.notes.tasks.length, 1);
+    assert.equal(session.notes.tasks[0].text, 'alpha\nmiddle\ntailomega');
+    const saved = fs.readFileSync(session.notes.reviewPath, 'utf8');
+    assert.equal(parseReview(saved).tasks[0].text, 'alpha\nmiddle\ntailomega');
+  });
+}
+
 test('todo list stays on screen while composing', async () => {
   const { session } = await openSession([sampleItem('a.js')]);
   session.dispatch('tasks');
