@@ -2,6 +2,7 @@
 
 ## [Unreleased][unreleased]
 
+- Restore the last selected agent from `.reslop` when reopening reslop
 - Put plan items with the same `F<number>` into one commit
 - Rework the agents screen: a table of agent, model, effort, fast, context, and plan beside the sessions, with the hotkeys marked in the table and an install button
 - Start an agent on a task typed in the text box of the agents screen
