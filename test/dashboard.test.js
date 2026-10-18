@@ -1907,11 +1907,43 @@ test('the tasks header shows done against the total', () => {
   assert.equal(dash.tone, 'add');
   assert.equal(dash.bg ?? null, null);
   assert.equal(row[at - 1].text, ' ');
-  assert.equal(row[at + 1].text.endsWith(' '), true);
+  const track = row[at + 1];
+  assert.equal(track.tone, 'track');
+  assert.match(track.text, /^─+$/);
+  assert.equal(row[at + 2].text, ' ');
+  const black = seq([0, 0, 0], THEME.dashTileBg);
+  const paintedRow = painted.find((line) => line.includes('Feature requests'));
+  assert.ok(paintedRow.includes(`${black}${track.text}`));
   const ratio = row.find((part) => part.text === '1/4');
   let gapAt = row.indexOf(ratio) - 1;
   while (gapAt > 0 && row[gapAt].text === '') gapAt -= 1;
   assert.equal(row[gapAt].text, ' ');
+});
+
+test('task tracks show zero, partial, and full completion', () => {
+  const tile = { key: 't', title: 'tasks' };
+  const kinds = [
+    { title: 'Zero', done: 0, total: 4 },
+    { title: 'Half', done: 2, total: 4 },
+    { title: 'Full', done: 4, total: 4 },
+  ];
+  const model = { tasks: { done: 6, total: 12, kinds, plan: '' } };
+  for (const width of [13, 14, 24, 48, 96]) {
+    const block = tasksBlock(model, width, 4, {}, tile);
+    for (const [index, kind] of kinds.entries()) {
+      const line = block.lines[index];
+      const text = line.map((part) => part.text).join('');
+      assert.equal(visibleWidth(text), width);
+      assert.match(text, new RegExp(`${kind.title} +─+ +${kind.done}/4$`));
+      const bars = line.filter((part) => /─/.test(part.text));
+      const total = bars.reduce((sum, part) => sum + part.text.length, 0);
+      const green = bars.find((part) => part.tone === 'add');
+      const black = bars.find((part) => part.tone === 'track');
+      const completed = Math.round((kind.done / kind.total) * total);
+      assert.equal(green?.text.length ?? 0, completed);
+      assert.equal(black?.text.length ?? 0, total - completed);
+    }
+  }
 });
 
 test('dashboard tasks use short captions', () => {
