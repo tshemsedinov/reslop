@@ -2069,6 +2069,19 @@ test('tasks import asks for a url and applies the pull request', async () => {
   assert.match(session.notes.tasks[0].text, /add tests/);
 });
 
+test('an empty import url stays focused after backspace', async () => {
+  const { session } = await openSession([sampleItem('a.js')]);
+  session.dispatch('tasks');
+  session.handleEvent({ type: 'key', key: 'escape' });
+  session.handleEvent({ type: 'key', key: 'i' });
+  session.pushInput('x');
+  session.handleEvent({ type: 'key', key: 'backspace' });
+  assert.equal(session.nav.import.url, '');
+  session.handleEvent({ type: 'key', key: 'backspace' });
+  assert.equal(session.mode, 'import');
+  assert.equal(session.nav.import.url, '');
+});
+
 test('tasks import prefills an editable repository url', async () => {
   const item = sampleItem('a.js');
   const cwd = tempDir('reslop-ui-');
