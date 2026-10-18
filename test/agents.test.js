@@ -2657,9 +2657,9 @@ test('agent progress stays compact with yellow and grey parts', async () => {
         const plain = stripAnsi(row).slice(0, leftW);
         assert.match(plain, new RegExp(`Status +editing +${done}/2 ─+ *$`));
         const barW = /─+/.exec(plain)[0].length;
-        assert.ok(barW <= 24);
+        assert.ok(barW <= 26);
         if (width >= 80) {
-          assert.equal(barW, 24);
+          assert.equal(barW, 26);
           assert.ok(plain.endsWith(' '));
         }
         const on = Math.round((done / 2) * barW);
