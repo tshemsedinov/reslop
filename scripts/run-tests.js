@@ -22,7 +22,6 @@ const PROCESS_TESTS = [
   'git.test.js',
   'report-node.test.js',
   'report.test.js',
-  'session.test.js',
   'workspace.test.js',
   'worktrees-npm.test.js',
   'worktrees-runs.test.js',

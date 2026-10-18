@@ -3,33 +3,17 @@
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
-const os = require('node:os');
 const path = require('node:path');
 
-const { Session } = require('../lib/session/session.js');
-const { createGitRepo } = require('../lib/git/git.js');
 const { dirKey } = require('../lib/git/linked.js');
-const { makeRepo, uiSink } = require('./helpers.js');
+const { makeRepo, tempDir, openRepoSession } = require('./helpers.js');
 
 const fakeBin = (name) => {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'reslop-bins-'));
+  const dir = tempDir('reslop-bins-');
   const file = path.join(dir, name);
   fs.writeFileSync(file, '#!/bin/sh\n');
   fs.chmodSync(file, 0o755);
   return { dir, env: { PATH: dir } };
-};
-
-const openAt = async (cwd) => {
-  const ui = new Session({
-    cwd,
-    stdout: uiSink(),
-    repo: createGitRepo(),
-    color: false,
-    startPane: 'dashboard',
-  });
-  await ui.ensureRepo();
-  await ui.load();
-  return ui;
 };
 
 const jsonLogs = (dir) => {
@@ -52,7 +36,7 @@ test('agents of two worktrees run side by side and save apart', async () => {
   repo.git(['commit', '-m', 'init']);
   const other = `${repo.dir}-other`;
   repo.git(['worktree', 'add', '-b', 'other', other]);
-  const ui = await openAt(repo.dir);
+  const ui = await openRepoSession(repo.dir);
   const calls = [];
   try {
     ui.agents.spawn = (cwd, launch, onData, onClose) => {
@@ -115,7 +99,7 @@ test('test runs stay with the worktree they were started in', async () => {
   repo.git(['commit', '-m', 'init']);
   const other = `${repo.dir}-other`;
   repo.git(['worktree', 'add', '-b', 'other', other]);
-  const ui = await openAt(repo.dir);
+  const ui = await openRepoSession(repo.dir);
   try {
     const run = { id: 1, status: 'running', top: ui.top, child: null };
     ui.npm.runs.push(run);
@@ -146,7 +130,7 @@ test('plans and reviews are saved in the worktree that is shown', async () => {
   const other = `${repo.dir}-other`;
   repo.git(['worktree', 'add', '-b', 'other', other]);
   fs.writeFileSync(path.join(other, 'a.js'), 'changed\n');
-  const ui = await openAt(other);
+  const ui = await openRepoSession(other);
   try {
     assert.equal(ui.items.length > 0, true);
     ui.initReview();

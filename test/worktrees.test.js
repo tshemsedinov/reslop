@@ -4,7 +4,6 @@ const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
-const { spawnSync } = require('node:child_process');
 
 const dir = require('../lib/git/dir.js');
 const linked = require('../lib/git/linked.js');
@@ -19,70 +18,15 @@ const { run, loadSession, parseArgv } = require('../lib/cli.js');
 const { renderFrame } = require('../lib/render/render.js');
 const { actionFromKey } = require('../lib/input/actions.js');
 const { stripAnsi } = require('../lib/term/ansi.js');
-const { sink, tempDir, removeTree, seedRepo } = require('./helpers.js');
-
-const gitEnv = {
-  ...process.env,
-  GIT_AUTHOR_NAME: 'Test',
-  GIT_AUTHOR_EMAIL: 'test@example.com',
-  GIT_COMMITTER_NAME: 'Test',
-  GIT_COMMITTER_EMAIL: 'test@example.com',
-};
-
-const wait = (ms) =>
-  new Promise((resolve) => {
-    setTimeout(resolve, ms);
-  });
-
-const waitUntil = async (check, ms = 4000) => {
-  const start = Date.now();
-  while (Date.now() - start < ms) {
-    if (check()) return true;
-    await wait(25);
-  }
-  return false;
-};
-
-const git = (cwd, args) => {
-  const result = spawnSync('git', args, {
-    cwd,
-    encoding: 'utf8',
-    env: gitEnv,
-    windowsHide: true,
-  });
-  if (result.status !== 0) {
-    throw new Error((result.stderr || result.stdout || 'git failed').trim());
-  }
-  return result.stdout;
-};
+const helpers = require('./helpers.js');
+const { tempDir, removeTree, seedRepo, gitIn: git } = helpers;
+const { wait, waitUntil, fakeProc, stopSession, click } = helpers;
 
 const initRepo = (where) => {
   seedRepo(where);
   fs.writeFileSync(path.join(where, 'app.js'), 'const n = 1;\n');
   git(where, ['add', '.']);
   git(where, ['commit', '-m', 'init']);
-};
-
-const fakeProc = (cwd, argv) => {
-  const stdout = sink();
-  const stderr = sink();
-  return {
-    argv,
-    cwd: () => cwd,
-    stdin: { isTTY: false },
-    stdout,
-    stderr,
-    env: {},
-  };
-};
-
-const stopSession = (session) => {
-  session.loader.abort();
-  session.lifecycle.stopWatch();
-  session.dashboard.stop();
-  session.workspace.stop();
-  session.progress.clear();
-  session.term.clearTimers();
 };
 
 const same = (left, right) => assert.equal(dirKey(left), dirKey(right));
@@ -389,7 +333,7 @@ test('worktrees are created and removed on the repos screen', async () => {
     const app = path.join(root, 'app');
     initRepo(app);
     initRepo(path.join(root, 'beta'));
-    const proc = fakeProc(root, ['node', 'reslop', root]);
+    const proc = fakeProc(root, { argv: ['node', 'reslop', root] });
     session = await loadSession(proc, {}, parseArgv([root]));
     assert.equal(session.pane, 'repos');
     session.workspace.start();
@@ -472,7 +416,7 @@ test('a linked worktree opens like a repository of its own', async () => {
     fs.writeFileSync(path.join(one, 'app.js'), 'const n = 2;\n');
     fs.mkdirSync(path.join(one, '.plan'));
     fs.writeFileSync(path.join(one, '.plan', '2026-10-14-00.md'), '# one\n');
-    const proc = fakeProc(root, ['node', 'reslop', root]);
+    const proc = fakeProc(root, { argv: ['node', 'reslop', root] });
     session = await loadSession(proc, {}, parseArgv([root]));
     session.workspace.start();
     assert.equal(await waitUntil(() => readyRows(session)), true);
@@ -588,7 +532,11 @@ test('w confirms a sibling worktree for the selected branch', async () => {
     const target = path.join(root, 'app-topic');
     initRepo(app);
     git(app, ['branch', 'topic']);
-    session = await loadSession(fakeProc(app, ['node']), {}, parseArgv([]));
+    session = await loadSession(
+      fakeProc(app, { argv: ['node'] }),
+      {},
+      parseArgv([]),
+    );
     press(session, 'b');
     await session.ops.idle();
     assert.equal(await waitUntil(() => session.trees.rows.length === 1), true);
@@ -620,7 +568,7 @@ test('worktrees are tiles above the branches', async () => {
     const app = path.join(root, 'app');
     initRepo(app);
     const one = await addWorktree(app, path.join(root, 'one'), 'one');
-    const proc = fakeProc(one, ['node', 'reslop']);
+    const proc = fakeProc(one, { argv: ['node', 'reslop'] });
     session = await loadSession(proc, {}, parseArgv([]));
     assert.equal(session.pane, 'dashboard');
     assert.equal(session.workspaceRoot, '');
@@ -701,17 +649,18 @@ test('a click on a tile shows that worktree at once', async () => {
     const app = path.join(root, 'app');
     initRepo(app);
     const one = await addWorktree(app, path.join(root, 'one'), 'one');
-    session = await loadSession(fakeProc(app, ['node']), {}, parseArgv([]));
+    session = await loadSession(
+      fakeProc(app, { argv: ['node'] }),
+      {},
+      parseArgv([]),
+    );
     await openTiles(session);
     session.draw();
     const hit = session.lastFrame.fileHits.find(
       (it) => it.tree && it.cursor === 'one',
     );
     assert.ok(hit);
-    const at = { x: hit.x0 + 2, y: hit.y, btn: 0, button: 0 };
-    session.handleEvent({ type: 'mouse', kind: 'press', press: true, ...at });
-    const release = { type: 'mouse', kind: 'release', press: false, ...at };
-    session.handleEvent(release);
+    click(session, hit.x0 + 2, hit.y);
     await session.ops.idle();
     assert.equal(session.pane, 'branches');
     same(session.cwd, one);
@@ -730,7 +679,11 @@ test('tiles show with more than one worktree and make more', async () => {
   try {
     const app = path.join(root, 'app');
     initRepo(app);
-    session = await loadSession(fakeProc(app, ['node']), {}, parseArgv([]));
+    session = await loadSession(
+      fakeProc(app, { argv: ['node'] }),
+      {},
+      parseArgv([]),
+    );
     press(session, 'b');
     await session.ops.idle();
     assert.equal(session.pane, 'branches');
@@ -785,7 +738,11 @@ test('the worktree that is shown is not removed from its tiles', async () => {
     const app = path.join(root, 'app');
     initRepo(app);
     const one = await addWorktree(app, path.join(root, 'one'), 'one');
-    session = await loadSession(fakeProc(one, ['node']), {}, parseArgv([]));
+    session = await loadSession(
+      fakeProc(one, { argv: ['node'] }),
+      {},
+      parseArgv([]),
+    );
     await openTiles(session);
     session.dispatch('worktreeDrop');
     assert.equal(session.mode, 'review');
@@ -807,7 +764,11 @@ test('a deleted worktree is removed from the branch tiles', async () => {
     const app = path.join(root, 'app');
     initRepo(app);
     const one = await addWorktree(app, path.join(root, 'one'), 'one');
-    session = await loadSession(fakeProc(app, ['node']), {}, parseArgv([]));
+    session = await loadSession(
+      fakeProc(app, { argv: ['node'] }),
+      {},
+      parseArgv([]),
+    );
     await openTiles(session);
     await removeTree(one);
     session.trees.notePaths(['../one']);
@@ -830,7 +791,7 @@ test('a read only session does not change worktrees', async () => {
     const app = path.join(root, 'app');
     initRepo(app);
     await addWorktree(app, path.join(root, 'one'), 'one');
-    const proc = fakeProc(root, ['node', 'reslop', '-r', root]);
+    const proc = fakeProc(root, { argv: ['node', 'reslop', '-r', root] });
     session = await loadSession(proc, {}, parseArgv(['-r', root]));
     assert.equal(session.pane, 'repos');
     assert.equal(session.workspace.rows.length, 0);
@@ -853,7 +814,7 @@ test('the output of cli stays the same for a plain folder', async () => {
   const root = tempDir('reslop-wt-');
   try {
     initRepo(path.join(root, 'solo'));
-    const quiet = fakeProc(root, ['node', 'reslop', root]);
+    const quiet = fakeProc(root, { argv: ['node', 'reslop', root] });
     assert.equal(await run(quiet), 1);
     assert.match(quiet.stderr.dump(), /interactive terminal required/);
   } finally {

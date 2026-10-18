@@ -3,30 +3,15 @@
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
-const os = require('node:os');
 const path = require('node:path');
 
 const { run, parseArgv, resolveScope, loadSession } = require('../lib/cli.js');
 const { createGitRepo } = require('../lib/git/git.js');
-const { makeRepo, sink, sampleHunk } = require('./helpers.js');
-
-const fakeProc = (cwd, extra = {}) => {
-  const stdout = sink();
-  const stderr = sink();
-  return {
-    argv: extra.argv ?? ['node', 'reslop'],
-    cwd: () => cwd,
-    stdin: { isTTY: extra.tty ?? false },
-    stdout,
-    stderr,
-    env: extra.env ?? {},
-    stdoutText: () => stdout.dump(),
-    stderrText: () => stderr.dump(),
-  };
-};
+const helpers = require('./helpers.js');
+const { makeRepo, sampleHunk, fakeProc, tempDir, removeTree } = helpers;
 
 test('AC11 not a git directory exits 1', async () => {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'reslop-nogit-'));
+  const dir = tempDir('reslop-nogit-');
   try {
     const proc = fakeProc(dir);
     const code = await run(proc);
@@ -53,7 +38,7 @@ test('AC12 clean repo prints nothing to review', async () => {
 });
 
 test('an empty .git directory does not identify a repository', async () => {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'reslop-nogit-'));
+  const dir = tempDir('reslop-nogit-');
   try {
     fs.mkdirSync(path.join(dir, '.git'));
     fs.mkdirSync(path.join(dir, 'nested'));
@@ -219,25 +204,8 @@ const mockPrLoad =
     },
   });
 
-test('GitHub PR URL opens without a local git repository', async () => {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'reslop-pr-'));
-  try {
-    const url = 'https://github.com/acme/app/pull/123';
-    const proc = fakeProc(dir, {
-      argv: ['node', 'reslop', url],
-    });
-    const code = await run(proc, { loadPullRequest: mockPrLoad(dir) });
-    assert.equal(code, 1);
-    assert.match(proc.stderrText(), /interactive terminal required/);
-    assert.doesNotMatch(proc.stderrText(), /not a git repository/);
-    assert.equal(proc.stdoutText().includes('nothing to review'), false);
-  } finally {
-    fs.rmSync(dir, { recursive: true, force: true });
-  }
-});
-
 test('review is not a subcommand before a GitHub PR URL', async () => {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'reslop-pr-'));
+  const dir = tempDir('reslop-pr-');
   try {
     const url = 'https://github.com/acme/app/pull/123';
     const proc = fakeProc(dir, {
@@ -253,42 +221,6 @@ test('review is not a subcommand before a GitHub PR URL', async () => {
     assert.equal(loaded, false);
     assert.equal(code, 1);
     assert.match(proc.stderrText(), /not a git repository/);
-  } finally {
-    fs.rmSync(dir, { recursive: true, force: true });
-  }
-});
-
-test('empty GitHub PR prints nothing to review', async () => {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'reslop-pr-'));
-  try {
-    const url = 'https://github.com/acme/app/pull/123';
-    const proc = fakeProc(dir, {
-      argv: ['node', 'reslop', url],
-    });
-    const code = await run(proc, {
-      loadPullRequest: mockPrLoad(dir, { items: [] }),
-    });
-    assert.equal(code, 0);
-    assert.equal(proc.stdoutText(), 'nothing to review\n');
-  } finally {
-    fs.rmSync(dir, { recursive: true, force: true });
-  }
-});
-
-test('GitHub PR load errors exit 1', async () => {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'reslop-pr-'));
-  try {
-    const url = 'https://github.com/acme/app/pull/123';
-    const proc = fakeProc(dir, {
-      argv: ['node', 'reslop', url],
-    });
-    const code = await run(proc, {
-      loadPullRequest: async () => {
-        throw new Error('GitHub pull request not found');
-      },
-    });
-    assert.equal(code, 1);
-    assert.match(proc.stderrText(), /GitHub pull request not found/);
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
   }
@@ -312,59 +244,6 @@ const mockMrLoad =
       files: extra.files ?? ['lib/a.js'],
     },
   });
-
-test('GitLab MR URL opens without a local git repository', async () => {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'reslop-mr-'));
-  try {
-    const url = 'https://gitlab.com/acme/app/-/merge_requests/123';
-    const proc = fakeProc(dir, {
-      argv: ['node', 'reslop', url],
-    });
-    const code = await run(proc, { loadMergeRequest: mockMrLoad(dir) });
-    assert.equal(code, 1);
-    assert.match(proc.stderrText(), /interactive terminal required/);
-    assert.doesNotMatch(proc.stderrText(), /not a git repository/);
-    assert.equal(proc.stdoutText().includes('nothing to review'), false);
-  } finally {
-    fs.rmSync(dir, { recursive: true, force: true });
-  }
-});
-
-test('empty GitLab MR prints nothing to review', async () => {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'reslop-mr-'));
-  try {
-    const url = 'https://gitlab.com/acme/app/-/merge_requests/123';
-    const proc = fakeProc(dir, {
-      argv: ['node', 'reslop', url],
-    });
-    const code = await run(proc, {
-      loadMergeRequest: mockMrLoad(dir, { items: [] }),
-    });
-    assert.equal(code, 0);
-    assert.equal(proc.stdoutText(), 'nothing to review\n');
-  } finally {
-    fs.rmSync(dir, { recursive: true, force: true });
-  }
-});
-
-test('GitLab MR load errors exit 1', async () => {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'reslop-mr-'));
-  try {
-    const url = 'https://gitlab.com/acme/app/-/merge_requests/123';
-    const proc = fakeProc(dir, {
-      argv: ['node', 'reslop', url],
-    });
-    const code = await run(proc, {
-      loadMergeRequest: async () => {
-        throw new Error('GitLab merge request not found');
-      },
-    });
-    assert.equal(code, 1);
-    assert.match(proc.stderrText(), /GitLab merge request not found/);
-  } finally {
-    fs.rmSync(dir, { recursive: true, force: true });
-  }
-});
 
 const mockIssueLoad =
   (dir, extra = {}) =>
@@ -394,23 +273,8 @@ const mockIssueLoad =
     },
   });
 
-test('GitHub issue URL opens without a local git repository', async () => {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'reslop-issue-'));
-  try {
-    const url = 'https://github.com/acme/app/issues/12';
-    const proc = fakeProc(dir, { argv: ['node', 'reslop', url] });
-    const code = await run(proc, { loadGithubIssue: mockIssueLoad(dir) });
-    assert.equal(code, 1);
-    assert.match(proc.stderrText(), /interactive terminal required/);
-    assert.doesNotMatch(proc.stderrText(), /not a git repository/);
-    assert.equal(proc.stdoutText().includes('nothing to review'), false);
-  } finally {
-    fs.rmSync(dir, { recursive: true, force: true });
-  }
-});
-
 test('GitHub issue URL with notes opens the tasks screen', async () => {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'reslop-issue-'));
+  const dir = tempDir('reslop-issue-');
   try {
     const url = 'https://github.com/acme/app/issues/12';
     const proc = fakeProc(dir, { argv: ['node', 'reslop', url] });
@@ -430,74 +294,77 @@ test('GitHub issue URL with notes opens the tasks screen', async () => {
   }
 });
 
-test('empty GitHub issue prints nothing to review', async () => {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'reslop-issue-'));
-  try {
-    const url = 'https://github.com/acme/app/issues/12';
-    const proc = fakeProc(dir, { argv: ['node', 'reslop', url] });
-    const code = await run(proc, {
-      loadGithubIssue: mockIssueLoad(dir, {
-        imported: { feedback: [], tasks: [] },
-      }),
-    });
-    assert.equal(code, 0);
-    assert.equal(proc.stdoutText(), 'nothing to review\n');
-  } finally {
-    fs.rmSync(dir, { recursive: true, force: true });
-  }
-});
+const PR_URL = 'https://github.com/acme/app/pull/123';
+const MR_URL = 'https://gitlab.com/acme/app/-/merge_requests/123';
+const ISSUE_URL = 'https://github.com/acme/app/issues/12';
 
-test('GitHub repo and issue list URLs open without git', async () => {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'reslop-issue-'));
-  const urls = [
-    'https://github.com/tshemsedinov/reslop',
-    'https://github.com/tshemsedinov/reslop/issues',
-  ];
-  try {
-    for (const url of urls) {
-      const proc = fakeProc(dir, { argv: ['node', 'reslop', url] });
-      const code = await run(proc, { loadGithubIssue: mockIssueLoad(dir) });
-      assert.equal(code, 1, url);
-      assert.match(proc.stderrText(), /interactive terminal required/);
-      assert.doesNotMatch(proc.stderrText(), /not a git repository/);
-    }
-  } finally {
-    fs.rmSync(dir, { recursive: true, force: true });
-  }
-});
+const failWith = (message) => async () => {
+  throw new Error(message);
+};
 
-test('GitLab repo and issue list URLs open without git', async () => {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'reslop-issue-'));
-  const urls = [
-    'https://gitlab.com/acme/app',
-    'https://gitlab.com/acme/app/-/issues',
-  ];
-  try {
-    for (const url of urls) {
-      const proc = fakeProc(dir, { argv: ['node', 'reslop', url] });
-      const code = await run(proc, { loadGitlabIssue: mockIssueLoad(dir) });
-      assert.equal(code, 1, url);
-      assert.match(proc.stderrText(), /interactive terminal required/);
-      assert.doesNotMatch(proc.stderrText(), /not a git repository/);
-    }
-  } finally {
-    fs.rmSync(dir, { recursive: true, force: true });
-  }
-});
+// Runs reslop on a URL in a directory that is not a repository
+const runRemote = async (t, url, loaders) => {
+  const dir = tempDir('reslop-remote-');
+  t.after(() => removeTree(dir));
+  const proc = fakeProc(dir, { argv: ['node', 'reslop', url] });
+  const code = await run(proc, loaders(dir));
+  return { code, proc };
+};
 
-test('GitLab issue URL opens without a local git repository', async () => {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'reslop-issue-'));
-  try {
-    const url = 'https://gitlab.com/acme/app/-/issues/12';
-    const proc = fakeProc(dir, { argv: ['node', 'reslop', url] });
-    const code = await run(proc, { loadGitlabIssue: mockIssueLoad(dir) });
+const githubIssue = (dir) => ({ loadGithubIssue: mockIssueLoad(dir) });
+const gitlabIssue = (dir) => ({ loadGitlabIssue: mockIssueLoad(dir) });
+
+for (const [url, loaders] of [
+  [PR_URL, (dir) => ({ loadPullRequest: mockPrLoad(dir) })],
+  [MR_URL, (dir) => ({ loadMergeRequest: mockMrLoad(dir) })],
+  [ISSUE_URL, githubIssue],
+  ['https://github.com/tshemsedinov/reslop', githubIssue],
+  ['https://github.com/tshemsedinov/reslop/issues', githubIssue],
+  ['https://gitlab.com/acme/app', gitlabIssue],
+  ['https://gitlab.com/acme/app/-/issues', gitlabIssue],
+  ['https://gitlab.com/acme/app/-/issues/12', gitlabIssue],
+]) {
+  test(`${url} opens without a local git repository`, async (t) => {
+    const { code, proc } = await runRemote(t, url, loaders);
     assert.equal(code, 1);
     assert.match(proc.stderrText(), /interactive terminal required/);
     assert.doesNotMatch(proc.stderrText(), /not a git repository/);
-  } finally {
-    fs.rmSync(dir, { recursive: true, force: true });
-  }
-});
+    assert.equal(proc.stdoutText().includes('nothing to review'), false);
+  });
+}
+
+const NO_NOTES = { imported: { feedback: [], tasks: [] } };
+
+for (const [url, loaders] of [
+  [PR_URL, (dir) => ({ loadPullRequest: mockPrLoad(dir, { items: [] }) })],
+  [MR_URL, (dir) => ({ loadMergeRequest: mockMrLoad(dir, { items: [] }) })],
+  [ISSUE_URL, (dir) => ({ loadGithubIssue: mockIssueLoad(dir, NO_NOTES) })],
+]) {
+  test(`empty ${url} prints nothing to review`, async (t) => {
+    const { code, proc } = await runRemote(t, url, loaders);
+    assert.equal(code, 0);
+    assert.equal(proc.stdoutText(), 'nothing to review\n');
+  });
+}
+
+for (const [url, loaders, message] of [
+  [
+    PR_URL,
+    () => ({ loadPullRequest: failWith('GitHub pull request not found') }),
+    /GitHub pull request not found/,
+  ],
+  [
+    MR_URL,
+    () => ({ loadMergeRequest: failWith('GitLab merge request not found') }),
+    /GitLab merge request not found/,
+  ],
+]) {
+  test(`${url} load errors exit 1`, async (t) => {
+    const { code, proc } = await runRemote(t, url, loaders);
+    assert.equal(code, 1);
+    assert.match(proc.stderrText(), message);
+  });
+}
 
 test('a local session without paths opens on the dashboard', async () => {
   const repo = makeRepo();

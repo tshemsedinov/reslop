@@ -14,7 +14,7 @@ const { renderDocument, notice, NOTICE_HEAD, displayMessage } = render;
 const { run } = require('../lib/cli.js');
 const { collect, winCommand } = require('../lib/report/run.js');
 const { readRuns } = require('../lib/runs/runs.js');
-const { sink, tempDir } = require('./helpers.js');
+const { tempDir, fakeProc } = require('./helpers.js');
 
 const model = require('../lib/report/model.js');
 const { problem, groupReport } = model;
@@ -487,24 +487,12 @@ test('capture stops waiting for inherited output pipes', async () => {
   assert.equal(child.stderr.destroyed, true);
 });
 
-const fakeProc = (cwd, extra = {}) => {
-  const stdout = sink();
-  const stderr = sink();
+// The cli reads what reslop t sets for its child, so the test drops it
+const reportProc = (cwd, extra = {}) => {
   const env = { ...process.env };
   delete env.RESLOP_CAPTURE;
   delete env.RESLOP_OUTPUT;
-  const overlay = extra.env ?? {};
-  for (const key of Object.keys(overlay)) env[key] = overlay[key];
-  return {
-    argv: extra.argv ?? ['node', 'reslop'],
-    cwd: () => cwd,
-    stdin: { isTTY: extra.tty ?? false },
-    stdout,
-    stderr,
-    env,
-    stdoutText: () => stdout.dump(),
-    stderrText: () => stderr.dump(),
-  };
+  return fakeProc(cwd, { ...extra, env: { ...env, ...extra.env } });
 };
 
 const savedLogs = (dir) => {
@@ -522,7 +510,7 @@ test('a pipe prints markdown and writes a log', async () => {
     'console.log("ℹ fail 0")',
   ].join(';');
   try {
-    const proc = fakeProc(dir, {
+    const proc = reportProc(dir, {
       argv: ['node', 'reslop', 't', '--', 'node', '-e', script],
     });
     const code = await run(proc);
@@ -554,7 +542,7 @@ test('a terminal prints markdown by default', async () => {
     'console.log("ℹ fail 0")',
   ].join(';');
   try {
-    const proc = fakeProc(dir, {
+    const proc = reportProc(dir, {
       tty: true,
       argv: ['node', 'reslop', 't', '--', 'node', '-e', script],
     });
@@ -575,7 +563,7 @@ test('RESLOP_OUTPUT selects raw and rejects unknown', async () => {
   const out = path.join(dir, 'out.txt');
   const script = 'require("fs").writeFileSync(process.argv.at(-1), "✔ hidden")';
   try {
-    const raw = fakeProc(dir, {
+    const raw = reportProc(dir, {
       argv: ['node', 'reslop', 't', '--', 'node', '-e', script, out],
       env: { RESLOP_OUTPUT: 'raw' },
     });
@@ -591,14 +579,14 @@ test('RESLOP_OUTPUT selects raw and rejects unknown', async () => {
       rawLogs.some((name) => name.endsWith('.raw')),
       true,
     );
-    const pretty = fakeProc(dir, {
+    const pretty = reportProc(dir, {
       argv: ['node', 'reslop', 't', '--', 'node', '-e', 'process.exit(0)'],
       env: { RESLOP_OUTPUT: 'pretty' },
     });
     assert.equal(await run(pretty), 1);
     assert.match(pretty.stderrText(), /unknown RESLOP_OUTPUT pretty/);
     assert.equal(pretty.stdoutText(), '');
-    const bad = fakeProc(dir, {
+    const bad = reportProc(dir, {
       argv: ['node', 'reslop', 't', '--', 'node', '-e', 'process.exit(0)'],
       env: { RESLOP_OUTPUT: 'xml' },
     });
@@ -620,7 +608,7 @@ test('raw mode records test counts and passes the output through', async () => {
     'console.log("RESLOP_CAPTURE=" + (process.env.RESLOP_CAPTURE || ""))',
   ].join(';');
   try {
-    const proc = fakeProc(dir, {
+    const proc = reportProc(dir, {
       argv: ['node', 'reslop', 't', '--', 'node', '-e', script],
       env: { RESLOP_OUTPUT: 'raw' },
     });
@@ -650,19 +638,19 @@ test('capture mode and child status pass through', async () => {
     const out = path.join(dir, 'inner.txt');
     const script =
       'require("fs").writeFileSync(process.argv.at(-1), "✔ hidden")';
-    const inner = fakeProc(dir, {
+    const inner = reportProc(dir, {
       argv: ['node', 'reslop', 't', '--', 'node', '-e', script, out],
       env: { RESLOP_CAPTURE: '1' },
     });
     assert.equal(await run(inner), 0);
     assert.equal(fs.readFileSync(out, 'utf8'), '✔ hidden');
     assert.equal(inner.stdoutText(), '');
-    const failed = fakeProc(dir, {
+    const failed = reportProc(dir, {
       argv: ['node', 'reslop', 't', '--', 'node', '-e', 'process.exit(3)'],
     });
     assert.equal(await run(failed), 3);
     assert.match(failed.stdoutText(), /exit: 3/);
-    const args = fakeProc(dir, {
+    const args = reportProc(dir, {
       argv: [
         'node',
         'reslop',
@@ -675,7 +663,7 @@ test('capture mode and child status pass through', async () => {
       ],
     });
     assert.equal(await run(args), 0);
-    const missing = fakeProc(dir, { argv: ['node', 'reslop', 't'] });
+    const missing = reportProc(dir, { argv: ['node', 'reslop', 't'] });
     assert.equal(await run(missing), 1);
     assert.match(missing.stderrText(), /missing command/);
   } finally {
@@ -693,7 +681,7 @@ test('a captured run leaves a finished run record', async () => {
     'console.log("ℹ fail 0")',
   ].join(';');
   try {
-    const proc = fakeProc(dir, {
+    const proc = reportProc(dir, {
       argv: ['node', 'reslop', 't', '--', 'node', '-e', script],
     });
     assert.equal(await run(proc), 0);
@@ -710,7 +698,7 @@ test('a captured run leaves a finished run record', async () => {
 test('a failing command leaves a failed run record', async () => {
   const dir = tempDir('reslop-report-');
   try {
-    const proc = fakeProc(dir, {
+    const proc = reportProc(dir, {
       argv: ['node', 'reslop', 't', '--', 'node', '-e', 'process.exit(3)'],
     });
     assert.equal(await run(proc), 3);
@@ -725,7 +713,7 @@ test('a failing command leaves a failed run record', async () => {
 test('nested captured commands do not add run records', async () => {
   const dir = tempDir('reslop-report-');
   try {
-    const proc = fakeProc(dir, {
+    const proc = reportProc(dir, {
       argv: ['node', 'reslop', 't', '--', 'node', '-e', 'process.exit(0)'],
       env: { RESLOP_CAPTURE: '1' },
     });

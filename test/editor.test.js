@@ -220,20 +220,14 @@ test('a mouse selection copies exactly what it selects', () => {
   assert.equal(editor.copiedText(), 'hello w');
 });
 
-test('cut removes what copy takes', () => {
+test('cut removes what copy takes', (t) => {
   const editor = new Editor('hello world');
   editor.place(0);
   editor.move(5, true);
   const ui = { status: '', stdout: {} };
-  const copyText = clipboard.copyText;
-  const taken = [];
-  clipboard.copyText = (text) => taken.push(text) > 0;
-  try {
-    lineKey(editor, 'ctrl-x', ui, true);
-  } finally {
-    clipboard.copyText = copyText;
-  }
-  assert.deepEqual(taken, ['hello ']);
+  const copy = t.mock.method(clipboard, 'copyText', () => true);
+  lineKey(editor, 'ctrl-x', ui, true);
+  assert.equal(copy.mock.calls[0].arguments[0], 'hello ');
   assert.equal(editor.text, 'world');
 });
 

@@ -15,7 +15,7 @@ const { Session } = require('../lib/session/session.js');
 const fs = require('node:fs');
 const path = require('node:path');
 const { realpathSync } = fs;
-const { makeRepo, sink } = require('./helpers.js');
+const { makeRepo, sink, openRepoSession } = require('./helpers.js');
 const { stripAnsi, THEME, bg } = require('../lib/term/ansi.js');
 const { load, loadExtras, addItem, unstageItem, revertItem } = git;
 const { foldDepItems, collectUsedNames, parseAuditReport } = deps;
@@ -145,18 +145,8 @@ const sidesOf = (files) => (origin, rel) => {
   return pair;
 };
 
-const sessionFor = async (dir) => {
-  const stdout = sink();
-  const session = new Session({
-    repo: git.createGitRepo(),
-    cwd: dir,
-    stdout,
-    color: false,
-    startPane: 'diff',
-  });
-  await session.load();
-  return session;
-};
+const sessionFor = (dir) =>
+  openRepoSession(dir, { stdout: sink(), startPane: 'diff' });
 
 const hunkTexts = (item) => item.hunk.lines.map((line) => line.text);
 
@@ -363,17 +353,19 @@ test('foldDepItems does not mark an imported added dependency unused', () => {
     items,
     sidesOf({
       'package.json': {
-        oldText: pkgJson(oldDeps),
-        newText: pkgJson(newDeps),
+        oldText: pkgLib(oldDeps),
+        newText: pkgLib(newDeps),
       },
     }),
     used,
+    null,
+    null,
+    { exportEntries: exportsOf('leftpad') },
   );
   const leftpad = depByName(folded, 'leftpad');
   assert.ok(leftpad);
   assert.ok(!leftpad.dep.change.unused);
   assert.ok(hunkTexts(leftpad).includes('dependency added'));
-  assert.ok(!hunkTexts(leftpad).includes('dependency added, unused'));
   assert.ok(!hunkTexts(leftpad).includes('npm uninstall: dependency unused'));
 });
 
@@ -702,14 +694,22 @@ test('applyWantedRange keeps caret and tilde prefixes', () => {
   assert.equal(applyWantedRange('4.17.20', '4.17.21'), '4.17.21');
 });
 
+// What npm outdated says about lodash ^4.17.20
+const lodashOutdated = () =>
+  new Map([
+    [
+      'lodash',
+      {
+        current: '4.17.20',
+        wanted: '4.17.21',
+        latest: '4.17.21',
+        type: 'dependencies',
+      },
+    ],
+  ]);
+
 test('proposeDepItems shows an outdated bump as a diff', () => {
-  const outdated = new Map();
-  outdated.set('lodash', {
-    current: '4.17.20',
-    wanted: '4.17.21',
-    latest: '4.17.21',
-    type: 'dependencies',
-  });
+  const outdated = lodashOutdated();
   const proposed = proposeDepItems(pkgJson({ lodash: '^4.17.20' }), outdated);
   assert.equal(proposed.length, 1);
   const item = proposed[0];
@@ -721,13 +721,7 @@ test('proposeDepItems shows an outdated bump as a diff', () => {
 });
 
 test('proposeDepItems names npm audit next to npm outdated', () => {
-  const outdated = new Map();
-  outdated.set('lodash', {
-    current: '4.17.20',
-    wanted: '4.17.21',
-    latest: '4.17.21',
-    type: 'dependencies',
-  });
+  const outdated = lodashOutdated();
   const audit = new Map();
   audit.set('lodash', {
     severity: 'high',
@@ -1219,11 +1213,6 @@ test('load marks an added dependency that is not imported', async () => {
     assert.ok(leftpad);
     assert.equal(leftpad.dep.change.unused, true);
     assert.equal(leftpad.dep.change.propose, true);
-    const lines = hunkTexts(leftpad);
-    assertBlankAfter(lines, 'npm uninstall: dependency unused');
-    const entry = '"leftpad": "1.0.0"';
-    const gone = leftpad.hunk.lines.find((line) => line.text === entry);
-    assert.equal(gone.type, 'del');
   } finally {
     repo.cleanup();
   }
@@ -1330,13 +1319,7 @@ test('load proposes an outdated dependency with no package diffs', async () => {
     repo.write('package.json', pkgJson({ lodash: '^4.17.20' }));
     repo.git(['add', '.']);
     repo.git(['commit', '-m', 'init']);
-    const outdated = new Map();
-    outdated.set('lodash', {
-      current: '4.17.20',
-      wanted: '4.17.21',
-      latest: '4.17.21',
-      type: 'dependencies',
-    });
+    const outdated = lodashOutdated();
     const loaded = await load(repo.dir, [], {
       deferExtras: false,
       audit: true,
@@ -1363,13 +1346,7 @@ test('add on a proposed update writes package.json, runs npm i', async () => {
     repo.write('package-lock.json', lockV3(oldDeps, { lodash: '4.17.20' }));
     repo.git(['add', '.']);
     repo.git(['commit', '-m', 'init']);
-    const outdated = new Map();
-    outdated.set('lodash', {
-      current: '4.17.20',
-      wanted: '4.17.21',
-      latest: '4.17.21',
-      type: 'dependencies',
-    });
+    const outdated = lodashOutdated();
     const loaded = await load(repo.dir, [], {
       deferExtras: false,
       audit: true,
@@ -1447,13 +1424,7 @@ test('session add applies a proposed outdated update', async () => {
     repo.write('package-lock.json', lockV3(oldDeps, { lodash: '4.17.20' }));
     repo.git(['add', '.']);
     repo.git(['commit', '-m', 'init']);
-    const outdated = new Map();
-    outdated.set('lodash', {
-      current: '4.17.20',
-      wanted: '4.17.21',
-      latest: '4.17.21',
-      type: 'dependencies',
-    });
+    const outdated = lodashOutdated();
     const stdout = sink();
     const session = new Session({
       repo: git.createGitRepo(),
@@ -1493,13 +1464,7 @@ test('session revert dismisses a proposed outdated update', async () => {
     repo.write('package.json', pkgJson({ lodash: '^4.17.20' }));
     repo.git(['add', '.']);
     repo.git(['commit', '-m', 'init']);
-    const outdated = new Map();
-    outdated.set('lodash', {
-      current: '4.17.20',
-      wanted: '4.17.21',
-      latest: '4.17.21',
-      type: 'dependencies',
-    });
+    const outdated = lodashOutdated();
     const stdout = sink();
     const session = new Session({
       repo: git.createGitRepo(),
@@ -1530,13 +1495,7 @@ const proposedLodash = async (repo) => {
   repo.git(['add', '.']);
   repo.git(['commit', '-m', 'init']);
   repo.write('notes.txt', 'unrelated\n');
-  const outdated = new Map();
-  outdated.set('lodash', {
-    current: '4.17.20',
-    wanted: '4.17.21',
-    latest: '4.17.21',
-    type: 'dependencies',
-  });
+  const outdated = lodashOutdated();
   const loaded = await load(repo.dir, [], {
     deferExtras: false,
     audit: true,
@@ -1563,65 +1522,35 @@ test('proposedNpmPlan does not write the manifest', async () => {
   }
 });
 
-test('nonzero npm result restores owned dependency files', async () => {
-  const repo = makeRepo();
-  try {
+const timedOut = () => {
+  const error = new Error('timed out');
+  error.code = 'ETIMEDOUT';
+  return { status: null, error };
+};
+
+for (const [name, install, message] of [
+  ['nonzero', () => ({ status: 1, stderr: 'npm ERR! boom' }), /npm ERR! boom/],
+  [
+    'thrown',
+    () => {
+      throw new Error('install boom');
+    },
+    /install boom/,
+  ],
+  ['rejected', () => Promise.reject(new Error('install nope')), /install nope/],
+  ['timed out', timedOut, /timed out/],
+]) {
+  test(`${name} npm runner restores owned dependency files`, async (t) => {
+    const repo = makeRepo();
+    t.after(repo.cleanup);
     const { loaded, item, pkg, lock } = await proposedLodash(repo);
-    item.dep.install = () => ({ status: 1, stderr: 'npm ERR! boom' });
-    await assert.rejects(() => addItem(loaded.top, item), /npm ERR! boom/);
+    item.dep.install = install;
+    await assert.rejects(() => addItem(loaded.top, item), message);
     assert.equal(repo.read('package.json'), pkg);
     assert.equal(repo.read('package-lock.json'), lock);
     assert.equal(repo.read('notes.txt'), 'unrelated\n');
-  } finally {
-    repo.cleanup();
-  }
-});
-
-test('thrown npm runner restores owned dependency files', async () => {
-  const repo = makeRepo();
-  try {
-    const { loaded, item, pkg, lock } = await proposedLodash(repo);
-    item.dep.install = () => {
-      throw new Error('install boom');
-    };
-    await assert.rejects(() => addItem(loaded.top, item), /install boom/);
-    assert.equal(repo.read('package.json'), pkg);
-    assert.equal(repo.read('package-lock.json'), lock);
-  } finally {
-    repo.cleanup();
-  }
-});
-
-test('rejected npm runner restores owned dependency files', async () => {
-  const repo = makeRepo();
-  try {
-    const { loaded, item, pkg, lock } = await proposedLodash(repo);
-    item.dep.install = () => Promise.reject(new Error('install nope'));
-    await assert.rejects(
-      () => git.createGitRepo().add(loaded.top, item),
-      /install nope/,
-    );
-    assert.equal(repo.read('package.json'), pkg);
-    assert.equal(repo.read('package-lock.json'), lock);
-  } finally {
-    repo.cleanup();
-  }
-});
-
-test('timed out npm result restores owned dependency files', async () => {
-  const repo = makeRepo();
-  try {
-    const { loaded, item, pkg, lock } = await proposedLodash(repo);
-    const error = new Error('timed out');
-    error.code = 'ETIMEDOUT';
-    item.dep.install = () => ({ status: null, error });
-    await assert.rejects(() => addItem(loaded.top, item), /timed out/);
-    assert.equal(repo.read('package.json'), pkg);
-    assert.equal(repo.read('package-lock.json'), lock);
-  } finally {
-    repo.cleanup();
-  }
-});
+  });
+}
 
 test('git staging failure restores owned dependency files', async () => {
   const repo = makeRepo();

@@ -46,7 +46,7 @@ On Windows each of those processes is slow, and together they were most of
 the CI time. Run one of them directly:
 
 ```sh
-node --test test/session.test.js
+node --test test/git.test.js
 ```
 
 Run every process-starting file with `node scripts/run-tests.js --proc`.

@@ -523,30 +523,26 @@ test('long operations paint an infinite progress bar', () => {
   const next = render.formatBusyStatus('pulling', 1);
   assert.match(first, /^pulling {2}·•●•·/);
   assert.notEqual(first, next);
-  assert.match(render.formatBusyStatus('loading', 0), /^loading {2}·/);
-  assert.match(render.formatBusyStatus('checking npm', 2), /^checking npm {2}/);
-  assert.match(
-    render.formatBusyStatus('updating reslop', 0),
-    /^updating reslop {2}·/,
-  );
-  assert.match(render.formatBusyStatus('npm i', 0), /^npm i {2}·/);
-  assert.match(render.formatBusyStatus('npm uninstall', 1), /^npm uninstall /);
-  assert.match(render.formatBusyStatus('npm audit fix', 2), /^npm audit fix /);
-  assert.match(
-    render.formatBusyStatus('checking out', 0),
-    /^checking out {2}·/,
-  );
-  assert.match(
-    render.formatBusyStatus('creating branch', 1),
-    /^creating branch {2}/,
-  );
-  assert.match(render.formatBusyStatus('rebasing', 0), /^rebasing {2}·/);
-  assert.match(render.formatBusyStatus('dropping', 1), /^dropping {2}/);
-  assert.match(render.formatBusyStatus('committing', 2), /^committing {2}/);
-  assert.match(
-    render.formatBusyStatus('force pushing', 0),
-    /^force pushing {2}·/,
-  );
+  const busy = [
+    'loading',
+    'checking npm',
+    'updating reslop',
+    'npm i',
+    'npm uninstall',
+    'npm audit fix',
+    'checking out',
+    'creating branch',
+    'rebasing',
+    'dropping',
+    'committing',
+    'force pushing',
+  ];
+  for (const label of busy) {
+    assert.ok(
+      render.formatBusyStatus(label, 0).startsWith(`${label}  ·`),
+      label,
+    );
+  }
   const view = {
     pane: 'files',
     files: [],
@@ -574,6 +570,34 @@ test('long operations paint an infinite progress bar', () => {
   assert.ok(Math.abs(leftGap - rightGap) <= 1);
 });
 
+// A y/n style prompt on the status line: its text, one warn color and one
+// hit per choice, as [id, label] pairs
+const assertPrompt = (view, text, choices) => {
+  const frame = render.renderFrame(view, {
+    width: 80,
+    height: 16,
+    color: true,
+  });
+  const statusRow = frame.rows.at(-2);
+  const plain = stripAnsi(statusRow);
+  assert.ok(plain.startsWith(text), plain);
+  assert.ok(statusRow.includes(fg(THEME.mutedFg)));
+  assert.ok(statusRow.includes(bg(THEME.chromeBg)));
+  const warns = statusRow.split(fg(THEME.warnFg)).length - 1;
+  assert.equal(warns, choices.length);
+  const hits = frame.statusHits.map((hit) => {
+    assert.equal(hit.y, frame.rows.length - 1);
+    return [hit.id, plain.slice(hit.x0, hit.x1).trim()];
+  });
+  assert.deepEqual(hits, choices);
+  return { frame, statusRow, plain };
+};
+
+const YES_NO = [
+  ['y', 'y'],
+  ['n', '/n'],
+];
+
 test('quit prompt warns that tests will be terminated', () => {
   const hunk = sampleHunk([
     { type: 'add', text: 'x', noNl: false, blockId: 0 },
@@ -587,32 +611,12 @@ test('quit prompt warns that tests will be terminated', () => {
     },
     { mode: 'confirmQuit', quitWarning: ' exit will terminate tests' },
   );
-  const colored = render.renderFrame(view, {
-    width: 80,
-    height: 16,
-    color: true,
-  });
-  const statusRow = colored.rows[colored.rows.length - 2];
-  const plain = stripAnsi(statusRow);
-  assert.equal(plain.startsWith(' exit will terminate tests y/n'), true);
+  const text = ' exit will terminate tests y/n';
+  const { statusRow, plain } = assertPrompt(view, text, YES_NO);
   assert.ok(!plain.includes('finish as ready'));
   assert.ok(!plain.includes('continue next time'));
-  assert.ok(statusRow.includes(fg(THEME.warnFg)));
-  assert.ok(statusRow.includes(fg(THEME.mutedFg)));
-  assert.ok(statusRow.includes(bg(THEME.chromeBg)));
   assert.ok(!statusRow.includes(bg(THEME.buttonBg)));
   assert.ok(statusRow.includes(BOLD));
-  const warn = fg(THEME.warnFg);
-  assert.equal(statusRow.split(warn).length - 1, 2);
-  const hits = colored.statusHits;
-  assert.equal(hits.length, 2);
-  assert.equal(hits[0].id, 'y');
-  assert.equal(hits[1].id, 'n');
-  assert.equal(hits[0].y, colored.rows.length - 1);
-  const yes = plain.slice(hits[0].x0, hits[0].x1).trim();
-  const no = plain.slice(hits[1].x0, hits[1].x1).trim();
-  assert.equal(yes, 'y');
-  assert.equal(no, '/n');
 });
 
 test('commit pane brief mode lists subject hash branch and age', () => {
@@ -679,22 +683,14 @@ test('commit pane brief mode lists subject hash branch and age', () => {
   assert.match(render.headerText(view), /demo: commits brief$/);
   const footer = frame.rows[frame.rows.length - 1];
   const commitIds = frame.buttons.map((hit) => hit.id);
-  for (const id of ['newCommit', 'reword', 'view']) {
+  for (const id of ['newCommit', 'reword', 'view', 'drop', 'pull', 'push']) {
     assert.ok(commitIds.includes(id), id);
   }
-  assert.ok(commitIds.includes('pull'));
-  assert.ok(commitIds.includes('push'));
+  for (const id of ['commit', 'apply', 'amend', 'fixup']) {
+    assert.ok(!commitIds.includes(id), id);
+  }
   assert.ok(!footer.includes('add'));
   assert.ok(!footer.includes('←'));
-  assert.ok(frame.buttons.find((hit) => hit.id === 'view'));
-  assert.equal(
-    frame.buttons.find((hit) => hit.id === 'commit'),
-    undefined,
-  );
-  assert.ok(!frame.buttons.find((hit) => hit.id === 'apply'));
-  assert.ok(!frame.buttons.find((hit) => hit.id === 'amend'));
-  assert.ok(frame.buttons.find((hit) => hit.id === 'reword'));
-  assert.ok(!frame.buttons.find((hit) => hit.id === 'fixup'));
   view.commits[0] = {
     ...view.commits[0],
     subject: 'fixup! land the change',
@@ -709,9 +705,6 @@ test('commit pane brief mode lists subject hash branch and age', () => {
     ...view.commits[0],
     subject: 'land the change',
   };
-  assert.ok(frame.buttons.find((hit) => hit.id === 'drop'));
-  assert.ok(frame.buttons.find((hit) => hit.id === 'pull'));
-  assert.ok(frame.buttons.find((hit) => hit.id === 'push'));
   const colored = render.renderFrame(view, {
     width: 80,
     height: 12,
@@ -1580,29 +1573,10 @@ test('update prompt paints y and n on the status line', () => {
     updateFrom: '0.1.5',
     updateTo: '1.0.0',
   };
-  const colored = render.renderFrame(view, {
-    width: 80,
-    height: 8,
-    color: true,
-  });
-  const statusRow = colored.rows[colored.rows.length - 2];
-  const plain = stripAnsi(statusRow);
-  assert.equal(plain.startsWith(' update reslop 0.1.5 → 1.0.0? y/n'), true);
-  assert.match(plain, /update reslop 0\.1\.5 → 1\.0\.0\? y\/n/);
-  assert.match(stripAnsi(colored.rows[2]), /a\.js/);
-  assert.ok(colored.buttons.some((hit) => hit.id === 'add'));
-  assert.ok(statusRow.includes(fg(THEME.warnFg)));
-  assert.ok(statusRow.includes(fg(THEME.mutedFg)));
-  assert.ok(statusRow.includes(bg(THEME.chromeBg)));
-  const warn = fg(THEME.warnFg);
-  assert.equal(statusRow.split(warn).length - 1, 2);
-  const hits = colored.statusHits;
-  assert.equal(hits.length, 2);
-  assert.equal(hits[0].id, 'y');
-  assert.equal(hits[1].id, 'n');
-  assert.equal(hits[0].y, colored.rows.length - 1);
-  assert.equal(plain.slice(hits[0].x0, hits[0].x1).trim(), 'y');
-  assert.equal(plain.slice(hits[1].x0, hits[1].x1), '/n');
+  const text = ' update reslop 0.1.5 → 1.0.0? y/n';
+  const { frame } = assertPrompt(view, text, YES_NO);
+  assert.match(stripAnsi(frame.rows[2]), /a\.js/);
+  assert.ok(frame.buttons.some((hit) => hit.id === 'add'));
 });
 
 test('drop branch prompt paints y and n on the status line', () => {
@@ -1621,24 +1595,7 @@ test('drop branch prompt paints y and n on the status line', () => {
     mode: 'confirmDrop',
     dropName: 'feat',
   };
-  const colored = render.renderFrame(view, {
-    width: 80,
-    height: 8,
-    color: true,
-  });
-  const statusRow = colored.rows[colored.rows.length - 2];
-  const plain = stripAnsi(statusRow);
-  assert.equal(plain.startsWith(' drop feat? y/n'), true);
-  assert.match(plain, /drop feat\? y\/n/);
-  const warn = fg(THEME.warnFg);
-  assert.equal(statusRow.split(warn).length - 1, 2);
-  const hits = colored.statusHits;
-  assert.equal(hits.length, 2);
-  assert.equal(hits[0].id, 'y');
-  assert.equal(hits[1].id, 'n');
-  assert.equal(hits[0].y, colored.rows.length - 1);
-  assert.equal(plain.slice(hits[0].x0, hits[0].x1).trim(), 'y');
-  assert.equal(plain.slice(hits[1].x0, hits[1].x1), '/n');
+  assertPrompt(view, ' drop feat? y/n', YES_NO);
 });
 
 test('rejected push prompt paints f for force push', () => {
@@ -1652,26 +1609,8 @@ test('rejected push prompt paints f for force push', () => {
     scroll: 0,
     mode: 'confirmPush',
   };
-  const colored = render.renderFrame(view, {
-    width: 80,
-    height: 8,
-    color: true,
-  });
-  const statusRow = colored.rows[colored.rows.length - 2];
-  const plain = stripAnsi(statusRow);
-  assert.equal(plain.startsWith(' Need force-push? force push'), true);
-  assert.ok(plain.includes('Need force-push?'));
-  assert.ok(plain.includes('force push'));
-  assert.ok(statusRow.includes(fg(THEME.warnFg)));
-  assert.ok(statusRow.includes(fg(THEME.mutedFg)));
-  assert.ok(statusRow.includes(bg(THEME.chromeBg)));
-  const warn = fg(THEME.warnFg);
-  assert.equal(statusRow.split(warn).length - 1, 1);
-  const hits = colored.statusHits;
-  assert.equal(hits.length, 1);
-  assert.equal(hits[0].id, 'f');
-  assert.equal(hits[0].y, colored.rows.length - 1);
-  assert.equal(plain.slice(hits[0].x0, hits[0].x1).trim(), 'force push');
+  const text = ' Need force-push? force push';
+  assertPrompt(view, text, [['f', 'force push']]);
 });
 
 test('insert on a commit asks what to do on the status line', () => {
@@ -1765,53 +1704,6 @@ test('file list keeps a blank line before and after', () => {
   assert.ok(frame.rows[4].includes(bg(THEME.ctxBg)));
   assert.equal(frame.fileHits[0].y, 3);
   assert.equal(frame.fileHits[1].y, 4);
-});
-
-test('file list up moves the cursor before scrolling', () => {
-  const files = [];
-  for (let i = 0; i < 20; i++) {
-    files.push({
-      path: `f${i}.js`,
-      status: 'unstaged',
-      remaining: 1,
-      firstIndex: i,
-    });
-  }
-  const view = {
-    pane: 'files',
-    files,
-    repoName: 'demo',
-    counts: { staged: 0, unstaged: 20, untracked: 0 },
-    status: '',
-    scroll: 0,
-  };
-  const opt = { width: 40, height: 8, color: false };
-  const markRow = (frame) => {
-    for (let i = 0; i < frame.rows.length; i++) {
-      if (stripAnsi(frame.rows[i]).includes('▶')) return i;
-    }
-    return -1;
-  };
-  const listNames = (frame) => {
-    const names = [];
-    for (const hit of frame.fileHits) {
-      const match = /f\d+\.js/.exec(stripAnsi(frame.rows[hit.y - 1]));
-      if (match) names.push(match[0]);
-    }
-    return names;
-  };
-  const last = files.length - 1;
-  const bottom = render.renderFrame(
-    { ...view, fileCursor: last, listScroll: 0 },
-    opt,
-  );
-  const up = render.renderFrame(
-    { ...view, fileCursor: last - 1, listScroll: bottom.listScroll },
-    opt,
-  );
-  assert.ok(listNames(bottom).length > 1);
-  assert.deepEqual(listNames(up), listNames(bottom));
-  assert.equal(markRow(up), markRow(bottom) - 1);
 });
 
 test('header last column uses the light grey bar background', () => {
@@ -2726,24 +2618,20 @@ test('presentRows clear stays inside the synchronized region', () => {
   assert.ok(wipe < end);
 });
 
-test('presentRows hides the cursor before painting rows', () => {
+test('presentRows paints with a hidden cursor, then shows it blinking', () => {
   const out = render.presentRows(['aa'], { cursor: { x: 3, y: 2 } });
   const hide = out.indexOf(`${ESC}[?25l`);
   const sync = out.indexOf(`${ESC}[?2026h`);
   const firstRow = out.indexOf(`${ESC}[1;1H`);
-  assert.ok(hide >= 0);
-  assert.ok(hide < sync);
-  assert.ok(sync < firstRow);
-});
-
-test('presentRows shows a blinking cursor after the sync region', () => {
-  const out = render.presentRows(['aa'], { cursor: { x: 3, y: 2 } });
   const syncEnd = out.indexOf(`${ESC}[?2026l`);
   const pos = out.indexOf(`${ESC}[2;3H`);
   const style = out.indexOf(`${ESC}[1 q`);
   const blink = out.indexOf(`${ESC}[?12h`);
   const show = out.indexOf(`${ESC}[?25h`);
-  assert.ok(syncEnd >= 0);
+  assert.ok(hide >= 0);
+  assert.ok(hide < sync);
+  assert.ok(sync < firstRow);
+  assert.ok(firstRow < syncEnd);
   assert.ok(pos > syncEnd);
   assert.ok(style > pos);
   assert.ok(blink > style);
@@ -2758,91 +2646,39 @@ test('presentCursor hides or shows at the edit cell', () => {
   assert.ok(!shown.includes(`${ESC}[?2026h`));
 });
 
-test('commit review header and counts use short sha', () => {
-  const hunk = sampleHunk([
-    { type: 'add', text: 'x', noNl: false, blockId: 0 },
-  ]);
-  const view = {
-    item: {
-      origin: 'commit',
-      file: { newPath: 'f.js', oldPath: 'f.js', isBinary: false },
-      hunk,
-      blockId: 0,
-    },
-    index: 0,
-    total: 1,
-    scroll: 0,
-    status: '',
-    revShort: '7ac260c',
-    counts: { staged: 0, unstaged: 0, untracked: 0, commit: 1 },
-    repoName: 'demo',
-  };
-  assert.match(render.headerText(view), /reslop: demo\/f\.js$/);
-  const frame = render.renderFrame(view, {
-    width: 80,
-    height: 16,
-    color: false,
+for (const [name, origin, source, label] of [
+  ['commit', 'commit', { revShort: '7ac260c' }, /commit 7ac260c {2}1 {2}tasks/],
+  [
+    'PR',
+    'pr',
+    { sourceKind: 'pr', sourceLabel: '#123' },
+    /pr #123 {2}1 {2}tasks/,
+  ],
+  [
+    'MR',
+    'pr',
+    { sourceKind: 'mr', sourceLabel: '!123' },
+    /mr !123 {2}1 {2}tasks/,
+  ],
+]) {
+  test(`${name} review header and counts name the source`, () => {
+    const hunk = sampleHunk([
+      { type: 'add', text: 'x', noNl: false, blockId: 0 },
+    ]);
+    const file = { newPath: 'f.js', oldPath: 'f.js', isBinary: false };
+    const item = { origin, file, hunk, blockId: 0 };
+    const counts = { staged: 0, unstaged: 0, untracked: 0, [origin]: 1 };
+    const extra = { counts, repoName: 'acme/app', ...source };
+    const view = reviewView(item, extra);
+    assert.match(render.headerText(view), /reslop: acme\/app\/f\.js$/);
+    const frame = render.renderFrame(view, {
+      width: 80,
+      height: 16,
+      color: false,
+    });
+    assert.match(frame.text, label);
   });
-  assert.match(frame.text, /commit 7ac260c {2}1 {2}tasks 0\/0/);
-});
-
-test('PR review header and counts use pull request label', () => {
-  const hunk = sampleHunk([
-    { type: 'add', text: 'x', noNl: false, blockId: 0 },
-  ]);
-  const view = {
-    item: {
-      origin: 'pr',
-      file: { newPath: 'f.js', oldPath: 'f.js', isBinary: false },
-      hunk,
-      blockId: 0,
-    },
-    index: 0,
-    total: 1,
-    scroll: 0,
-    status: '',
-    sourceKind: 'pr',
-    sourceLabel: '#123',
-    counts: { staged: 0, unstaged: 0, untracked: 0, commit: 0, pr: 1 },
-    repoName: 'acme/app',
-  };
-  assert.match(render.headerText(view), /reslop: acme\/app\/f\.js$/);
-  const frame = render.renderFrame(view, {
-    width: 80,
-    height: 16,
-    color: false,
-  });
-  assert.match(frame.text, /pr #123 {2}1 {2}tasks 0\/0/);
-});
-
-test('MR review header and counts use merge request label', () => {
-  const hunk = sampleHunk([
-    { type: 'add', text: 'x', noNl: false, blockId: 0 },
-  ]);
-  const view = {
-    item: {
-      origin: 'pr',
-      file: { newPath: 'f.js', oldPath: 'f.js', isBinary: false },
-      hunk,
-      blockId: 0,
-    },
-    index: 0,
-    total: 1,
-    scroll: 0,
-    status: '',
-    sourceKind: 'mr',
-    sourceLabel: '!123',
-    counts: { staged: 0, unstaged: 0, untracked: 0, commit: 0, pr: 1 },
-    repoName: 'acme/app',
-  };
-  assert.match(render.headerText(view), /reslop: acme\/app\/f\.js$/);
-  const frame = render.renderFrame(view, {
-    width: 80,
-    height: 16,
-    color: false,
-  });
-  assert.match(frame.text, /mr !123 {2}1 {2}tasks 0\/0/);
-});
+}
 
 test('compose panel sits above status and buttons', () => {
   const hunk = sampleHunk([

@@ -3,12 +3,12 @@
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
-const os = require('node:os');
 const path = require('node:path');
 const { Readable } = require('node:stream');
 const zlib = require('node:zlib');
 
 const registry = require('../lib/agents/registry.js');
+const { tempDir } = require('./helpers.js');
 const helperName = ['localharness', 'external'].join('_');
 const installTest = [
   'registry install downloads, extracts',
@@ -119,7 +119,7 @@ test('ACP registry selects the Antigravity binary for this platform', () => {
 });
 
 test(installTest, async () => {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'reslop-registry-'));
+  const dir = tempDir('reslop-registry-');
   const archive = zipArchive(
     {
       'agy_acp_server.par': 'hello',
@@ -173,7 +173,7 @@ test(installTest, async () => {
 });
 
 test('Antigravity ACP installed by Zed is discovered', () => {
-  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'reslop-zed-'));
+  const home = tempDir('reslop-zed-');
   const dir = path.join(
     home,
     '.local',
@@ -201,7 +201,7 @@ test('Antigravity ACP installed by Zed is discovered', () => {
 });
 
 test(unsafePathTest, async () => {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'reslop-registry-'));
+  const dir = tempDir('reslop-registry-');
   const archive = path.join(dir, 'bad.zip');
   const output = path.join(dir, 'out');
   fs.writeFileSync(archive, zipArchive({ '../outside': 'hello' }));

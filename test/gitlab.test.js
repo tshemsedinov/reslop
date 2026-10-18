@@ -5,6 +5,7 @@ const assert = require('node:assert/strict');
 
 const gitlab = require('../lib/source/gitlab.js');
 const { parseDiff, itemsFromFiles } = require('../lib/diff/diff.js');
+const { jsonResponse, CHANGE_DIFF: MR_DIFF } = require('./helpers.js');
 const { parseGitlabMrUrl, parseGitlabIssueUrl, gitlabToken } = gitlab;
 const { parseGitlabIssueListUrl } = gitlab;
 const { loadMergeRequest, loadGitlabIssue } = gitlab;
@@ -17,24 +18,6 @@ const MR = {
   origin: 'https://gitlab.com',
 };
 
-const MR_DIFF = `diff --git a/lib/parser.js b/lib/parser.js
-index 1111111..2222222 100644
---- a/lib/parser.js
-+++ b/lib/parser.js
-@@ -1,3 +1,4 @@
- keep
--old
-+new
- keep
-diff --git a/README.md b/README.md
-index 1111111..2222222 100644
---- a/README.md
-+++ b/README.md
-@@ -1,1 +1,1 @@
--hello
-+Hello
-`;
-
 const MR_JSON = JSON.parse(`{
   "iid": 123,
   "title": "Fix parser",
@@ -44,13 +27,6 @@ const MR_JSON = JSON.parse(`{
   "source_branch": "fix-parser",
   "references": { "full": "acme/app!123" }
 }`);
-
-const jsonResponse = (status, body, extraHeaders = {}) => ({
-  ok: status >= 200 && status < 300,
-  status,
-  headers: extraHeaders,
-  text: async () => (typeof body === 'string' ? body : JSON.stringify(body)),
-});
 
 const mockFetch = (json, diffText, status = 200, routes = {}) => {
   const calls = [];
@@ -192,26 +168,17 @@ test('loadMergeRequest sends a private token', async () => {
   }
 });
 
-test('loadMergeRequest maps 404 to a not found error', async () => {
-  const fetchImpl = mockFetch({ message: '404 Not Found' }, '', 404);
-  await assert.rejects(
-    () => loadMergeRequest(MR, { fetch: fetchImpl, token: '' }),
-    /GitLab merge request not found/,
-  );
-});
-
-test('loadMergeRequest maps rate limit errors', async () => {
-  const fetchImpl = mockFetch({ message: 'Retry later' }, '', 429);
-  await assert.rejects(
-    () =>
-      loadMergeRequest(MR, {
-        fetch: fetchImpl,
-        token: 'tok',
-        retry: { attempts: 1 },
-      }),
-    /rate limit exceeded/,
-  );
-});
+for (const [status, message, error] of [
+  [404, '404 Not Found', /GitLab merge request not found/],
+  [429, 'Retry later', /rate limit exceeded/],
+  [401, '401 Unauthorized', /GitLab authentication failed/],
+]) {
+  test(`loadMergeRequest maps ${status} to its error`, async () => {
+    const fetchImpl = mockFetch({ message }, '', status);
+    const options = { fetch: fetchImpl, token: 'tok', retry: { attempts: 1 } };
+    await assert.rejects(() => loadMergeRequest(MR, options), error);
+  });
+}
 
 test('loadMergeRequest maps network failures', async () => {
   const fetchImpl = async () => {
@@ -261,14 +228,6 @@ test('loadMergeRequest rejects invalid merge request JSON', async () => {
   await assert.rejects(
     () => loadMergeRequest(MR, { fetch: fetchImpl, token: '' }),
     /invalid merge request payload/,
-  );
-});
-
-test('loadMergeRequest maps 401 to an auth error', async () => {
-  const fetchImpl = mockFetch({ message: '401 Unauthorized' }, '', 401);
-  await assert.rejects(
-    () => loadMergeRequest(MR, { fetch: fetchImpl, token: 'tok' }),
-    /GitLab authentication failed/,
   );
 });
 
@@ -497,69 +456,34 @@ test('loadMergeRequest imports review discussion', async () => {
   assert.equal(loaded.imported.tasks.length, 2);
 });
 
-test('loadMergeRequest paginates discussions', async () => {
-  const first = inlineDiffNote({
-    id: 1,
-    username: 'a',
-    body: 'first',
-  });
-  const second = inlineDiffNote({
-    id: 2,
-    username: 'b',
-    body: 'second',
-  });
-  const next = `${mrApiUrl(MR)}/discussions?page=2&per_page=100`;
-  let commentPages = 0;
-  const base = mockFetch(MR_JSON, MR_DIFF);
-  const fetchImpl = async (url, init) => {
-    if (`${url}`.includes('/discussions')) {
-      commentPages += 1;
-      if (commentPages === 1) {
-        return jsonResponse(200, [{ notes: [first] }], {
-          Link: `<${next}>; rel="next"`,
-        });
-      }
-      return jsonResponse(200, [{ notes: [second] }]);
-    }
-    return base(url, init);
-  };
-  const loaded = await loadMergeRequest(MR, { fetch: fetchImpl, token: '' });
-  assert.equal(commentPages, 2);
-  assert.equal(loaded.imported.feedback.length, 2);
-  assert.match(loaded.imported.feedback[0].text, /first/);
-  assert.match(loaded.imported.feedback[1].text, /second/);
-});
+const NEXT_PAGE = {
+  Link: `<${mrApiUrl(MR)}/discussions?page=2&per_page=100>; rel="next"`,
+  'x-next-page': '2',
+};
 
-test('loadMergeRequest paginates with x-next-page', async () => {
-  const first = inlineDiffNote({
-    id: 1,
-    username: 'a',
-    body: 'first',
-  });
-  const second = inlineDiffNote({
-    id: 2,
-    username: 'b',
-    body: 'second',
-  });
-  let commentPages = 0;
-  const base = mockFetch(MR_JSON, MR_DIFF);
-  const fetchImpl = async (url, init) => {
-    if (`${url}`.includes('/discussions')) {
-      commentPages += 1;
-      if (commentPages === 1) {
-        return jsonResponse(200, [{ notes: [first] }], {
-          'x-next-page': '2',
-        });
+for (const [name, value] of Object.entries(NEXT_PAGE)) {
+  test(`loadMergeRequest paginates discussions by ${name}`, async () => {
+    const first = inlineDiffNote({ id: 1, username: 'a', body: 'first' });
+    const second = inlineDiffNote({ id: 2, username: 'b', body: 'second' });
+    let commentPages = 0;
+    const base = mockFetch(MR_JSON, MR_DIFF);
+    const fetchImpl = async (url, init) => {
+      if (`${url}`.includes('/discussions')) {
+        commentPages += 1;
+        if (commentPages === 1) {
+          return jsonResponse(200, [{ notes: [first] }], { [name]: value });
+        }
+        return jsonResponse(200, [{ notes: [second] }]);
       }
-      return jsonResponse(200, [{ notes: [second] }]);
-    }
-    return base(url, init);
-  };
-  const loaded = await loadMergeRequest(MR, { fetch: fetchImpl, token: '' });
-  assert.equal(commentPages, 2);
-  assert.equal(loaded.imported.feedback.length, 2);
-  assert.match(loaded.imported.feedback[1].text, /second/);
-});
+      return base(url, init);
+    };
+    const loaded = await loadMergeRequest(MR, { fetch: fetchImpl, token: '' });
+    assert.equal(commentPages, 2);
+    assert.equal(loaded.imported.feedback.length, 2);
+    assert.match(loaded.imported.feedback[0].text, /first/);
+    assert.match(loaded.imported.feedback[1].text, /second/);
+  });
+}
 
 test('discussionToNotes falls back to a todo when unmatched', () => {
   const items = itemsFromFiles(parseDiff(MR_DIFF), 'pr');
