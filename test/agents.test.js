@@ -2620,7 +2620,7 @@ test('fast shows on and off and marks the set one inverted', async () => {
   }
 });
 
-test('agent progress fills the row with yellow and grey parts', async () => {
+test('agent progress stays compact with yellow and grey parts', async () => {
   const { dir, env } = fakePath('claude-agent-acp');
   const { ui, repo } = await openUi();
   try {
@@ -2638,6 +2638,7 @@ test('agent progress fills the row with yellow and grey parts', async () => {
     ui.color = true;
     ui.draw();
     for (const [width, leftW] of [
+      [60, 42],
       [80, 56],
       [160, 112],
       [240, 168],
@@ -2654,8 +2655,13 @@ test('agent progress fills the row with yellow and grey parts', async () => {
         ui.draw();
         const row = labelRow(ui.lastFrame.rows, 'Status');
         const plain = stripAnsi(row).slice(0, leftW);
-        assert.match(plain, new RegExp(`Status +editing +${done}/2 ─+$`));
-        const barW = plain.length - plain.indexOf('─');
+        assert.match(plain, new RegExp(`Status +editing +${done}/2 ─+ *$`));
+        const barW = /─+/.exec(plain)[0].length;
+        assert.ok(barW <= 24);
+        if (width >= 80) {
+          assert.equal(barW, 24);
+          assert.ok(plain.endsWith(' '));
+        }
         const on = Math.round((done / 2) * barW);
         if (on) {
           const yellow = seq(THEME.warnFg, THEME.ctxBg);
