@@ -2,6 +2,7 @@
 
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
+const { EventEmitter } = require('node:events');
 const fs = require('node:fs');
 const path = require('node:path');
 
@@ -2524,6 +2525,19 @@ test('a standalone Escape still saves and leaves the task editor', async () => {
   assert.equal(session.mode, 'review');
   assert.equal(session.notes.tasks[0].text, 'task text');
   assert.equal(session.term.carry, '');
+});
+
+test('one standalone Escape ends the read loop on the file list', async () => {
+  const stdin = new EventEmitter();
+  const { session } = await openSession([sampleItem('a.js')], {
+    startPane: 'files',
+    stdin,
+  });
+  const ended = session.readLoop();
+  stdin.emit('data', Buffer.from('\x1b'));
+  await ended;
+  assert.equal(session.done, true);
+  assert.equal(session.finishReadLoop, null);
 });
 
 for (const [name, shift, ctrl] of [
