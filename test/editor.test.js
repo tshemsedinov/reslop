@@ -82,6 +82,14 @@ test('ctrl-enter and shift-enter insert a newline in every editor', () => {
   }
 });
 
+test('modified enter keeps a task editor open', () => {
+  const composer = composeOf('tasks');
+  composer.handleKey('ctrl-enter');
+  composer.handleKey('shift-enter');
+  assert.equal(composer.composeKind, 'tasks');
+  assert.equal(composer.editor.text, 'a\n\nb');
+});
+
 test('newline and line movement', () => {
   const editor = new Editor('ab');
   editor.home();
