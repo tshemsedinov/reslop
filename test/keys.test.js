@@ -161,6 +161,7 @@ test('decodeChunk reports mouse motion without a pressed button', () => {
 });
 
 test('actionFromKey maps aliases and ignores unbound keys', () => {
+  assert.equal(actionFromKey('ctrl-c'), null);
   assert.equal(actionFromKey('right'), 'next');
   assert.equal(actionFromKey('j'), 'next');
   assert.equal(actionFromKey('left'), 'prev');
