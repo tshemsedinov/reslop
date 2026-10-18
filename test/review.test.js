@@ -675,6 +675,33 @@ test('applyImportedNotes maps comments onto feedback and todos', () => {
   assert.equal(store.tasks[1].done, true);
 });
 
+test('a structured issue task survives a plan round trip', () => {
+  const task = [
+    '@tshemsedinov at github: Structured feedback/todo',
+    '',
+    '```',
+    'e10: bug high',
+    'where: src/pool.js#acquire:84',
+    'problem: Released connection can be assigned to two consumers.',
+    'evidence:',
+    '- test: test/pool-concurrency.js',
+    'expected: Each connection has at most one active owner.',
+    'check:',
+    '- all pool tests pass',
+    '```',
+    '',
+    'Issue: https://github.com/tshemsedinov/reslop/issues/86',
+  ].join('\n');
+  const store = new ReviewStore('/tmp/x.md');
+  store.applyImportedNotes({ tasks: [{ file: 'issue', text: task }] });
+
+  const text = serializeReview(store);
+  assert.match(text, /\n\s{2}where: src\/pool\.js#acquire:84/);
+  assert.match(text, /\n\s{2}- test: test\/pool-concurrency\.js/);
+  const loaded = parseReview(text, '/tmp/x.md');
+  assert.equal(loaded.tasks[0].text, task);
+});
+
 test('applyImportedNotes skips an identical issue and adds an edit', () => {
   const store = new ReviewStore('/tmp/x.md');
   const page = 'https://github.com/acme/app/issues/12';
