@@ -12,7 +12,8 @@ const render = require('../lib/report/render.js');
 
 const { renderDocument, notice, NOTICE_HEAD, displayMessage } = render;
 const { run } = require('../lib/cli.js');
-const { collect, winCommand } = require('../lib/report/run.js');
+const { collect } = require('../lib/report/run.js');
+const { winCommand } = require('../lib/common/process.js');
 const { readRuns } = require('../lib/runs/runs.js');
 const { tempDir, fakeProc } = require('./helpers.js');
 

@@ -3,7 +3,7 @@
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 
-const { LoadCoordinator, tagLoaded } = require('../lib/session/load.js');
+const { LoadCoordinator, tagLoaded } = require('../lib/session/lifecycle.js');
 const { isAbort } = require('../lib/common/process.js');
 const { Session } = require('../lib/session/session.js');
 const { uiSink, sampleHunk, tempDir } = require('./helpers.js');

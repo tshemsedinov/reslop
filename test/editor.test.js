@@ -3,9 +3,8 @@
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 
-const { Editor } = require('../lib/input/editor.js');
+const { Editor, lineKey } = require('../lib/input/editor.js');
 const clipboard = require('../lib/term/clipboard.js');
-const { lineKey } = require('../lib/input/line-edit.js');
 const { Composer } = require('../lib/session/compose.js');
 
 const EDIT_KINDS = [

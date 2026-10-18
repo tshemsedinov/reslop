@@ -4198,7 +4198,7 @@ test('only failures paint the status message in the error color', () => {
 });
 
 test('the unit pane paints only the rows on screen', () => {
-  const { paintBodyUnit } = require('../lib/render/unit.js');
+  const { paintBodyUnit } = require('../lib/render/diff.js');
   const unitLines = [];
   for (let i = 0; i < 500; i++) {
     const text = `const line${i} = ${i};`;
