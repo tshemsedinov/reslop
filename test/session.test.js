@@ -18,6 +18,7 @@ const { stripAnsi, THEME, BOLD, seq, bg } = ansi;
 const { logViewRows } = require('../lib/render/log.js');
 const { setTheme, themeName } = ansi;
 const { REVIEW_DIR } = require('../lib/common/files.js');
+const { TABLE_KEY } = require('../lib/runs/output.js');
 
 const taskRows = (lines) => [...lines, '[ ] ', '[ ] ', '[ ] ', '[ ] ', '[ ] '];
 const clipboard = require('../lib/term/clipboard.js');
@@ -5599,6 +5600,45 @@ test('solve bounds output and ignores passed and stopped runs', async () => {
   assert.ok(bug.text.length < 6200);
 });
 
+test('a saved test run shows the styled report, not Markdown', async () => {
+  const { session, cwd } = await openSession([sampleItem('a.js')]);
+  const tap = [
+    'TAP version 13',
+    'not ok 1 - broken parser',
+    '  ---',
+    '  name: AssertionError',
+    '  error: Expected 3, got 4',
+    '  code: ERR_ASSERTION',
+    '  operator: strictEqual',
+    '  expected: 3',
+    '  actual: 4',
+    '  ...',
+    '1..1',
+  ].join('\n');
+  const dir = path.join(cwd, '.log');
+  fs.mkdirSync(dir, { recursive: true });
+  fs.writeFileSync(path.join(dir, 't-01.log'), 'Reduced output;\n\n# test\n');
+  fs.writeFileSync(path.join(dir, 't-01.raw'), tap);
+  session.npm.runs.push({
+    id: 1,
+    name: 'test',
+    kind: 'script',
+    command: 'node --test',
+    label: 'npm run test',
+    status: 'exited',
+    exit: 1,
+    logName: 't-01.log',
+    rawName: 't-01.raw',
+    top: cwd,
+  });
+  session.npm.open();
+  session.npm.openView(1);
+  const output = session.npm.output;
+  assert.ok(output.includes(TABLE_KEY));
+  assert.ok(!output.includes('Reduced output'));
+  assert.match(stripAnsi(output), /✖ test/);
+});
+
 const frameBody = (session) => {
   session.draw();
   const bodyH = session.lastFrame.bodyH;
@@ -5906,7 +5946,7 @@ test('a history row opens the captured log if the file is gone', async () => {
   session.handleEvent({ type: 'key', key: 'right' });
   session.handleEvent({ type: 'key', key: 'enter' });
   assert.equal(session.view().npmView, true);
-  assert.match(session.npm.output, /not ok 1 npm history caption/);
+  assert.match(stripAnsi(session.npm.output), /✖ npm history caption/);
 });
 
 test('the run screen follows an outside reslop t', async () => {
