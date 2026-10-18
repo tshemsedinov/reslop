@@ -2620,7 +2620,7 @@ test('fast shows on and off and marks the set one inverted', async () => {
   }
 });
 
-test('progress is a line like the tasks of the dashboard', async () => {
+test('agent progress fills the row with yellow and grey parts', async () => {
   const { dir, env } = fakePath('claude-agent-acp');
   const { ui, repo } = await openUi();
   try {
@@ -2637,9 +2637,36 @@ test('progress is a line like the tasks of the dashboard', async () => {
     ui.agents.planPath = path.join(reviewDir, name);
     ui.color = true;
     ui.draw();
-    const row = labelRow(ui.lastFrame.rows, 'Status');
-    assert.match(stripAnsi(row), /Status +editing +1\/2 +─+/);
-    assert.ok(row.includes(seq(THEME.addLineFg, THEME.ctxBg)));
+    for (const [width, leftW] of [
+      [80, 56],
+      [160, 112],
+      [240, 168],
+    ]) {
+      ui.stdout.columns = width;
+      for (const done of [0, 1, 2]) {
+        const checks = ['one', 'two'].map(
+          (text, index) => `- [${index < done ? 'x' : ' '}] ${text}`,
+        );
+        fs.writeFileSync(
+          path.join(reviewDir, name),
+          `---\nstatus: editing\n---\n\n> a.js\n\n${checks.join('\n')}\n`,
+        );
+        ui.draw();
+        const row = labelRow(ui.lastFrame.rows, 'Status');
+        const plain = stripAnsi(row).slice(0, leftW);
+        assert.match(plain, new RegExp(`Status +editing +${done}/2 ─+$`));
+        const barW = plain.length - plain.indexOf('─');
+        const on = Math.round((done / 2) * barW);
+        if (on) {
+          const yellow = seq(THEME.warnFg, THEME.ctxBg);
+          assert.ok(row.includes(`${yellow}${'─'.repeat(on)}${RESET}`));
+        }
+        if (barW > on) {
+          const grey = seq(THEME.heatTrack, THEME.ctxBg);
+          assert.ok(row.includes(`${grey}${'─'.repeat(barW - on)}${RESET}`));
+        }
+      }
+    }
   } finally {
     ui.agents.reset();
     repo.cleanup();
@@ -3552,7 +3579,9 @@ test('agent history keeps the launch, output, time, and progress', async () => {
     assert.equal(session.tokens, 1234);
     assert.match(session.name, /-agent-/);
     assert.equal(session.title, 'rewrite loop');
-    assert.equal(fs.existsSync(path.join(repo.dir, '.reslop')), false);
+    const prefs = JSON.parse(fs.readFileSync(path.join(repo.dir, '.reslop')));
+    assert.equal(prefs.lastAgent, 'claude');
+    assert.equal(prefs.runs, undefined);
     ui.agents.reset();
     assert.equal(ui.agents.jobs[0].status, 'exit 0');
     ui.agents.openSession(sessionId);
