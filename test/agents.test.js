@@ -998,6 +998,29 @@ test('agents screen picks a model from the list', async () => {
   }
 });
 
+test('agents screen restores the last selected agent', async () => {
+  const { dir, env } = fakePath('claude-agent-acp', 'cursor-agent');
+  const { ui, repo } = await openUi();
+  try {
+    ui.agents.refresh(env);
+    await ui.agents.open();
+    const cursor = ui.agents.list.findIndex((row) => row.id === 'cursor');
+    ui.agents.chooseAgent(cursor);
+
+    const saved = JSON.parse(fs.readFileSync(path.join(repo.dir, '.reslop')));
+    assert.equal(saved.lastAgent, 'cursor');
+
+    ui.agents.reset();
+    ui.agents.refresh(env);
+    await ui.agents.open();
+    assert.equal(ui.agents.selected().id, 'cursor');
+  } finally {
+    ui.agents.reset();
+    repo.cleanup();
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test('start falls back to the latest review file', async () => {
   const { dir, env } = fakePath('claude-agent-acp');
   const { ui, repo } = await openUi();
