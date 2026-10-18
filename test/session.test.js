@@ -600,6 +600,8 @@ test('AC9 hotkeys dispatch add revert next prev quit', async () => {
   assert.equal(session.pane, 'files');
   session.handleEvent({ type: 'key', key: 'ctrl-c' });
   await session.ops.idle();
+  assert.equal(session.done, false);
+  session.dispatch('quit');
   assert.equal(session.done, true);
 });
 
@@ -5397,6 +5399,8 @@ test('files pane r opens npm scripts and bins', async () => {
   assert.equal(session.pane, 'npm');
   assert.equal(session.view().npmView, false);
   session.handleEvent({ type: 'key', key: 'ctrl-c' });
+  assert.equal(session.done, false);
+  session.dispatch('quit');
   assert.equal(session.done, true);
 });
 
@@ -6757,10 +6761,47 @@ test('ctrl-l toggles line numbers on a diff and while editing', async () => {
   assert.equal(session.editor.text, before);
 });
 
-test('ctrl-c quits outside an editor', async () => {
+test('ctrl-c stays in every screen when no text is selected', async () => {
   const { session } = await openSession([sampleItem('a.js')]);
-  press(session, 'ctrl-c');
-  assert.equal(session.done, true);
+  for (const pane of [
+    'dashboard',
+    'repos',
+    'files',
+    'diff',
+    'unit',
+    'branches',
+    'commits',
+    'tasks',
+    'npm',
+    'packages',
+    'agents',
+  ]) {
+    session.pane = pane;
+    session.pushInput('\x03');
+    assert.equal(session.done, false, pane);
+    assert.equal(session.mode, 'review', pane);
+  }
+});
+
+test('ctrl-c copies the screen selection without quitting', async (t) => {
+  const { session } = await openSession([sampleItem('a.js')]);
+  session.draw();
+  const at = session.lastFrame.rows.findIndex((row) => row.includes('a.js'));
+  const plain = stripAnsi(session.lastFrame.rows[at]);
+  const x = ansi.visibleWidth(plain.slice(0, plain.indexOf('a.js'))) + 1;
+  session.nav.selection = {
+    start: { x, y: at + 1 },
+    end: { x: x + 3, y: at + 1 },
+  };
+  const copied = [];
+  t.mock.method(clipboard, 'copyText', (text) => {
+    copied.push(text);
+    return true;
+  });
+  session.pushInput('\x1b[27;5;99~');
+  assert.deepEqual(copied, ['a.js']);
+  assert.equal(session.status, 'copied');
+  assert.equal(session.done, false);
 });
 
 test('editors select with shift and copy cut paste', async () => {
