@@ -126,7 +126,7 @@ test('pause and resume restore listening after an external command', () => {
   assert.ok(stdout.dump().endsWith(ENTER_TERM));
 });
 
-test('repeated listen and close restore listener and timer counts', () => {
+test('close restores listener and timer counts', async () => {
   const stdin = fakeStdin();
   const stdout = emitSink();
   const proc = new EventEmitter();
@@ -154,7 +154,7 @@ test('repeated listen and close restore listener and timer counts', () => {
   assert.equal(term.timers.has('progress'), false);
   term.enter();
   start();
-  term.close();
+  await term.close();
   assert.equal(stdin.listenerCount('data'), 0);
   assert.equal(stdout.listenerCount('resize'), 0);
   assert.equal(proc.listenerCount('SIGWINCH'), 0);
@@ -163,7 +163,7 @@ test('repeated listen and close restore listener and timer counts', () => {
   assert.equal(stdin.raw, false);
 });
 
-test('startup failure cleanup restores acquired terminal state', () => {
+test('startup failure cleanup restores acquired terminal state', async () => {
   const { term, stdin, stdout, proc } = openTerm({ stdout: emitSink() });
   const run = () => {
     term.enter();
@@ -178,7 +178,7 @@ test('startup failure cleanup restores acquired terminal state', () => {
     run();
   } catch (error) {
     assert.equal(error.message, 'boom');
-    term.close();
+    await term.close();
   }
   assert.equal(stdin.raw, false);
   assert.ok(stdout.dump().includes(LEAVE_TERM));
@@ -204,13 +204,13 @@ test('unchanged frames still allow a cursor-only update', () => {
   assert.ok(!extra.includes('[?2026h'));
 });
 
-test('paint after dispose writes nothing', () => {
+test('paint after dispose writes nothing', async () => {
   const stdout = sink();
   const { term } = openTerm({ stdout });
   term.enter();
   stdout.dump();
   const before = stdout.dump();
-  term.close();
+  await term.close();
   const closed = stdout.dump();
   term.paint({ text: 'x', rows: ['x'] }, { width: 8, height: 4 }, null);
   assert.equal(stdout.dump(), closed);
@@ -247,5 +247,26 @@ test('later runs once and can be scheduled again', async () => {
   term.later('save', () => (runs += 1), 5);
   await sleep(30);
   assert.equal(runs, 2);
-  term.close();
+  await term.close();
+});
+
+test('close drains late reports before restoring cooked input', async () => {
+  const { term, stdin, stdout } = openTerm();
+  let handled = 0;
+  term.enter();
+  term.startListening({ onData: () => handled++, onResize: () => {} });
+  const closing = term.close();
+  assert.equal(stdin.raw, true);
+  assert.ok(stdout.dump().endsWith(LEAVE_TERM));
+  assert.equal(term.close(), closing);
+  await sleep(10);
+  stdin.emit('data', '\x1b[<35;12;4M');
+  await sleep(10);
+  stdin.emit('data', '\x1b[13;2u');
+  assert.equal(stdin.raw, true);
+  await closing;
+  assert.equal(handled, 0);
+  assert.equal(stdin.raw, false);
+  assert.equal(stdin.paused, true);
+  assert.equal(stdin.listenerCount('data'), 0);
 });
