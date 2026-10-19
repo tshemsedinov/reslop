@@ -2,16 +2,28 @@
 
 ## [Unreleased][unreleased]
 
-- Restore the last selected agent from `.reslop` when reopening reslop
-- Put plan items with the same `F<number>` into one commit
+## [0.3.4][] - 2026-10-19
+
 - Rework the agents screen: a table of agent, model, effort, fast, context, and plan beside the sessions, with the hotkeys marked in the table and an install button
 - Start an agent on a task typed in the text box of the agents screen
-- Show effort, context size, and fast mode on the agents screen only where the agent and model have them, put the status and progress of the plan in one row, and leave one spacer before the sessions
 - Ask the installed agents for their models and sign-in at startup, the default one first and a few at a time, and show `loading…` until an agent has answered
 - Show on the agents screen whether the selected agent is signed in, and propose to sign in or out with `l` or the button
+- Restore the last selected agent from `.reslop` when reopening reslop
+- Show effort, context size, and fast mode on the agents screen only where the agent and model have them, put the status and progress of the plan in one row, and leave one spacer before the sessions
+- Improve agent progress on the dashboard and agents screen
+- Put plan items with the same `F<number>` into one commit
+- Walk diffs in the order of the file list and of lines in each file
+- Autoresolve rebase conflicts
+- Show saved test runs in the styled report on the run screen
+- Tell agents in review instructions to run process tests through `reslop t`
+- Preserve structured issue tasks when editing
+- Use `Enter` for a new line in the tasks editor; keep the task editor open on `Ctrl+Enter` and `Shift+Enter`
+- Quit on a single `Esc` press
+- Reserve `Ctrl+C` for copying text instead of exit
+- Select all text in editors with `Ctrl+A`
 - Copy and cut the character under the caret after a Shift-arrows selection
 - Ask the terminal to report Shift+Enter and Ctrl+Enter, so they add a line
-- Walk diffs in the order of the file list and of lines in each file
+- Optimize the library and unit tests
 
 ## [0.3.3][] - 2026-10-16
 
@@ -235,7 +247,8 @@
 - Feedback and todos that produce a repair plan for an agent
 - Intra-line highlighting in unified, mixed, and side-by-side layouts
 
-[unreleased]: https://github.com/tshemsedinov/reslop/compare/v0.3.3...HEAD
+[unreleased]: https://github.com/tshemsedinov/reslop/compare/v0.3.4...HEAD
+[0.3.4]: https://github.com/tshemsedinov/reslop/compare/v0.3.3...v0.3.4
 [0.3.3]: https://github.com/tshemsedinov/reslop/compare/v0.3.2...v0.3.3
 [0.3.2]: https://github.com/tshemsedinov/reslop/compare/v0.3.1...v0.3.2
 [0.3.1]: https://github.com/tshemsedinov/reslop/compare/v0.3.0...v0.3.1
