@@ -5,7 +5,6 @@
 [![ci status](https://github.com/tshemsedinov/reslop/workflows/Testing%20CI/badge.svg)](https://github.com/tshemsedinov/reslop/actions?query=workflow%3A%22Testing+CI%22+branch%3Amain)
 [![snyk](https://snyk.io/test/github/tshemsedinov/reslop/badge.svg)](https://snyk.io/test/github/tshemsedinov/reslop)
 [![npm version](https://badge.fury.io/js/reslop.svg)](https://badge.fury.io/js/reslop)
-[![npm downloads/month](https://img.shields.io/npm/dm/reslop.svg)](https://www.npmjs.com/package/reslop)
 [![npm downloads](https://img.shields.io/npm/dt/reslop.svg)](https://www.npmjs.com/package/reslop)
 [![license](https://img.shields.io/badge/license-MIT-blue.svg)](https://github.com/tshemsedinov/reslop/blob/main/LICENSE)
 
@@ -25,16 +24,13 @@ Review → Plan → Repair → Verify
 - Auto-reload local diffs when files change, keeping the current screen
 - Import GitHub PR and GitLab MR review comments, and GitHub/GitLab issues, into tasks and the local plan
 - Commits list: brief and full, view a commit's diff, commit, update, amend, apply, edit, fixup, and delete
-- Branches: checkout, create, rebase, delete, pull, and push; git worktrees as tiles above the branches
-- Pop-up menus on tables and controls
-- npm scripts and bins: run, edit, and reorder; double-click to run; clean logs older than 5 days
+- Branches: checkout, create, rebase with autoresolved conflicts, delete, pull, and push; git worktrees as tiles above the branches
+- npm scripts: run, edit, reorder, clean logs
 - Reduced test and lint output for agents: failures and a short summary, not passing noise
 - Review, renew, audit and update npm dependencies in `package.json` and the lockfile
 - Auto-update reslop patch and minor releases; confirm a new major
 - Work with git, npm, and fetch in the background; run tests in the background while you review
-- Execute the plan in local agents over ACP: pick agent, model, effort, fast mode, context size, and plan in a table, or type the task by hand; watch progress; sessions, history, and continue or new runs. The dashboard lists agents in two columns, without models
-- Agent defaults in `.reslop` (grouped settings sections)
-- Optional line numbers in diff and file views (`Ctrl+L`)
+- Execute the plan in local agents over ACP, continue or start new session
 
 ## Install
 
@@ -49,7 +45,6 @@ Requires Node.js `>=18.15.0`.
 
 - `reslop` live dashboard of this repository; press a block key to open its screen
 - `reslop folder` tiles of the repositories in a folder, each with its git worktrees
-- git worktrees of a repository are tiles above its branches when there are several: `←` `→` select a tile, `↑` `↓` go through the branches, `enter` or a click shows that worktree, `insert` and `delete` create and remove one
 - `reslop path/file` show only that path or file (starts on the file list)
 - `reslop 7ac260c` show that commit (read-only)
 - `reslop https://github.com/metarhia/metacom/pull/555` GitHub/GitLab PR/MR
@@ -57,10 +52,6 @@ Requires Node.js `>=18.15.0`.
 - `reslop https://github.com/metarhia/metacom/issues` import all issues
 - `reslop -r` read-only mode
 - `reslop t -- <program> [args]` run one program and print a reduced report
-
-While editing a task, `Enter` inserts a newline inside the current task.
-`Esc` saves the task and exits editing. Select a task or a blank draft row and
-press `Enter` to start editing it.
 
 Prefix each program in an npm script with `reslop t --`. Keep `&&` between those wraps, so each program is captured on its own and a failing step does not start the next one:
 
@@ -71,17 +62,11 @@ Prefix each program in an npm script with `reslop t --`. Keep `&&` between those
 
 The report is Markdown: failures, diagnostics, and a short summary. Passing results are omitted and similar problems are grouped. The reduced report is saved as `.log/<name>.log` and the raw output as `.log/<name>.raw`. The report names the raw file for an agent to read when a detail is missing. Set `RESLOP_OUTPUT=raw` to pass the command through unchanged. The review screen runs scripts in raw mode and applies its own filter once.
 
-`npm t` runs lint and the tests that do not start a process. Run a test file that starts git, node, or npm with `reslop t -- node --test <file>`, so the output stays reduced. New reviews include both commands in the agent instructions.
-
-`reslop t` records each run as `.log/<name>.json` beside those files so that the dashboard can show commands started by an agent in another terminal.
-
 Reviews go in `.plan/YYYY-MM-DD-NN.md` with frontmatter `status`:
 
 - `editing`: writing the review in reslop; AI works through the checkboxes
 - `partial`: AI started; some items remain
 - `done`: all items marked `[x]`; adding an issue in reslop sets it back to `editing`
-
-`ready` and `pending` in older reviews are read as `editing`.
 
 ## Agents
 
@@ -101,10 +86,6 @@ reslop runs a plan in an agent over the [Agent Client Protocol](https://agentcli
 | Cline       | `cline --acp`        | `npm i -g cline`                                  |
 | Windsurf    | `devin acp`          | install script from cli.devin.ai                  |
 | Kilo Code   | `kilo acp`           | `npm i -g @kilocode/cli`                          |
-
-A missing agent shows what it needs beside an `install` button, or in the warning color when reslop cannot install it; the button, clicked or pressed with `i`, proposes installing it. npm adapters are installed globally, together with the agent's own CLI when the adapter runs it and it is not on `PATH`, while Google Antigravity's official ACP runtime is downloaded from the ACP registry into reslop's user data directory. Windsurf is listed as `devin`: Cognition's Devin CLI is now the agent of Windsurf, and the Windsurf editor does not serve ACP. An agent CLI published with an install script, such as Kiro's or Devin's, is installed by running the vendor's script, and its command is also found in `~/.local/bin`. reslop also discovers that runtime on `PATH` and in Zed's registry directory. After confirmation, reslop lists the agent as soon as the install finishes and does not restart. [docs/acp-adapters.md](docs/acp-adapters.md) describes the integrations.
-
-The agents screen shows whether the selected agent is signed in: reslop opens a session of each agent to list its models, and an agent that answers that it needs authentication is signed out. `l` or the button next to the status proposes signing in, which uses the sign-in method the agent offers over ACP (a browser flow the agent starts itself), or signing out, which needs an agent that serves the ACP `logout` request; otherwise sign out in the CLI of the agent. Methods that need an API key or a terminal are left to you. Models are the ones the agent lists; efforts, context sizes, and fast mode are the ones it offers for the picked model. When a run ends, the session is set back to what it was, so the defaults of the agent's own CLI stay as they were. A run has nobody to ask, so reslop answers permission requests itself: edits inside the repository and `npm`, `npx`, `node`, `reslop`, and `git` commands, piped through read-only filters such as `grep` or `tail`, are allowed; everything else is refused.
 
 ## Future
 
