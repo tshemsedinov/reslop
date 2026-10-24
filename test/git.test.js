@@ -1105,6 +1105,47 @@ test('rewordCommit rewrites an older message', async () => {
   }
 });
 
+const OLD_DATE = '2001-01-01T00:00:00Z';
+
+const authorYear = (repo, rev) =>
+  repo.git(['log', '-1', '--format=%ad', '--date=format:%Y', rev]).trim();
+
+test('rewordCommit with now resets the author date of HEAD', async () => {
+  const repo = makeRepo();
+  try {
+    repo.write('a.txt', 'a\n');
+    repo.git(['add', 'a.txt']);
+    repo.git(['commit', '--date', OLD_DATE, '-m', 'one']);
+    const head = (await listCommits(repo.dir))[0].sha;
+    await git.rewordCommit(repo.dir, head, 'kept', { now: true });
+    assert.notEqual(authorYear(repo, 'HEAD'), '2001');
+    await git.rewordCommit(repo.dir, head, 'old');
+    assert.equal(repo.git(['log', '-1', '--format=%s']).trim(), 'old');
+  } finally {
+    repo.cleanup();
+  }
+});
+
+test('rewordCommit with now resets an older author date only', async () => {
+  const repo = makeRepo();
+  try {
+    for (const name of ['one', 'two', 'three']) {
+      repo.write(`${name}.txt`, `${name}\n`);
+      repo.git(['add', `${name}.txt`]);
+      repo.git(['commit', '--date', OLD_DATE, '-m', name]);
+    }
+    const older = (await listCommits(repo.dir))[1].sha;
+    await git.rewordCommit(repo.dir, older, 'TWO', { now: true });
+    const listed = (await listCommits(repo.dir)).map((entry) => entry.subject);
+    assert.deepEqual(listed, ['three', 'TWO', 'one']);
+    assert.equal(authorYear(repo, 'HEAD'), '2001');
+    assert.notEqual(authorYear(repo, 'HEAD~1'), '2001');
+    assert.equal(authorYear(repo, 'HEAD~2'), '2001');
+  } finally {
+    repo.cleanup();
+  }
+});
+
 test('dropBranch deletes a branch that is not current', async () => {
   const repo = makeRepo();
   try {
