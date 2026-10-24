@@ -197,6 +197,7 @@ const KEY_ACTIONS = [
   ['a', 'commits', 'add'],
   ['p', 'commits', 'apply'],
   ['e', 'commits', 'reword'],
+  ['ctrl-e', 'commits', 'rewordNow'],
   ['x', 'commits', null],
   ['r', 'commits', 'dashRun'],
   ['f', 'commits', 'dashFiles'],

@@ -214,8 +214,10 @@ const mockRepo = (initial, top) => {
       if (entry && entry.subject) return entry.subject;
       return 'previous message';
     },
-    reword: (top, sha, message) => {
-      rewords.push({ sha, message });
+    reword: (top, sha, message, options = {}) => {
+      rewords.push(
+        options.now ? { sha, message, now: true } : { sha, message },
+      );
       commitList = commitList.map((entry) => {
         if (entry.sha !== sha) return entry;
         const subject = `${message}`.split('\n')[0];
@@ -3031,6 +3033,37 @@ test('commits pane r rewords the selected commit', async () => {
     },
   ]);
   assert.equal(session.view().commits[2].subject, 'rewritten init');
+});
+
+test('commits pane ctrl+e rewords and resets the author date', async () => {
+  const { session, repo } = await openSession([sampleItem('a.js')], {
+    startPane: 'files',
+  });
+  session.pushInput('c');
+  await session.ops.idle();
+  session.dispatch('next');
+  await session.ops.idle();
+  session.dispatch('next');
+  await session.ops.idle();
+  press(session, 'ctrl-e');
+  await session.ops.idle();
+  assert.equal(session.commitKind, 'reword');
+  assert.equal(session.editor.text, 'init');
+  press(session, 'enter');
+  await session.ops.idle();
+  assert.equal(session.status, 'reworded');
+  assert.deepEqual(repo.rewords, [
+    {
+      sha: 'bbb2222bbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
+      message: 'init',
+      now: true,
+    },
+  ]);
+  session.pushInput('e');
+  await session.ops.idle();
+  press(session, 'enter');
+  await session.ops.idle();
+  assert.equal(repo.rewords[1].now, undefined);
 });
 
 test('commits pane a applies a selected fixup', async () => {
