@@ -3087,9 +3087,79 @@ test('commit ranges shrink, clear and restrict actions', async () => {
   assert.deepEqual(session.view().listSelection, []);
   assert.equal(session.commitCursor, 2);
   press(session, 'shift-home');
-  assert.deepEqual(session.view().listSelection, [0, 1, 2]);
+  assert.deepEqual(session.view().listSelection, [1, 2]);
   session.showFiles();
   assert.deepEqual(session.view().listSelection, []);
+});
+
+test('ranges omit current rows and suppress cursor markers', async () => {
+  const { session, repo } = await openSession([sampleItem('a.js')]);
+  session.commits.onCommit();
+  await session.ops.idle();
+  press(session, 'home', 'shift-end');
+  assert.deepEqual(session.view().listSelection, [1, 2]);
+  session.rev = session.commits.commits[0].sha;
+  assert.deepEqual(session.view().listSelection, [0, 2]);
+  assert.deepEqual(
+    session.commits.selectedRows().map((row) => row.subject),
+    ['uncommitted changes', 'init'],
+  );
+  const noMarkers = () => {
+    session.draw();
+    const body = session.lastFrame.rows.slice(1, -2).join('\n');
+    assert.ok(!stripAnsi(body).includes('▶'));
+  };
+  for (const mode of ['brief', 'full']) {
+    session.commits.commitView = mode;
+    noMarkers();
+  }
+  repo.listBranches = async () => [
+    { name: 'one' },
+    { name: 'main', current: true },
+    { name: 'two' },
+  ];
+  session.gitBranches.onBranch();
+  await session.ops.idle();
+  press(session, 'home', 'shift-end');
+  assert.deepEqual(session.view().listSelection, [0, 2]);
+  assert.deepEqual(
+    session.gitBranches.selectedRows().map((row) => row.name),
+    ['one', 'two'],
+  );
+  noMarkers();
+  session.dashboard.npm = {
+    hasManifest: true,
+    deps: 1,
+    dev: 0,
+    modules: {
+      bytes: 1,
+      count: 1,
+      packages: [{ name: 'one', version: '1.0.0', bytes: 1 }],
+    },
+  };
+  session.dashboard.openPackages();
+  press(session, 'shift-end');
+  assert.deepEqual(session.view().listSelection, [0]);
+  assert.equal(session.view().multiselect, true);
+  noMarkers();
+  assert.ok(!session.lastFrame.buttons.some((hit) => hit.id === 'packageNew'));
+  press(session, 'down');
+  assert.equal(session.view().multiselect, false);
+});
+
+test('an empty range cannot fall back to the current branch', async () => {
+  const { session, repo } = await openSession([sampleItem('a.js')]);
+  repo.listBranches = async () => [{ name: 'main', current: true }];
+  session.gitBranches.onBranch();
+  await session.ops.idle();
+  press(session, 'shift-up');
+  assert.equal(session.view().multiselect, true);
+  assert.deepEqual(session.view().listSelection, []);
+  assert.deepEqual(session.gitBranches.selectedRows(), []);
+  press(session, 'delete', 's', 'insert');
+  assert.equal(session.mode, 'review');
+  assert.deepEqual(repo.drops, []);
+  assert.deepEqual(repo.pushes, []);
 });
 
 test('commit ranges update timestamps and delete together', async () => {
