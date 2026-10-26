@@ -3099,10 +3099,10 @@ test('ranges omit current rows and suppress cursor markers', async () => {
   press(session, 'home', 'shift-end');
   assert.deepEqual(session.view().listSelection, [1, 2]);
   session.rev = session.commits.commits[0].sha;
-  assert.deepEqual(session.view().listSelection, [0, 2]);
+  assert.deepEqual(session.view().listSelection, [2]);
   assert.deepEqual(
     session.commits.selectedRows().map((row) => row.subject),
-    ['uncommitted changes', 'init'],
+    ['init'],
   );
   const noMarkers = () => {
     session.draw();
@@ -3160,6 +3160,26 @@ test('an empty range cannot fall back to the current branch', async () => {
   assert.equal(session.mode, 'review');
   assert.deepEqual(repo.drops, []);
   assert.deepEqual(repo.pushes, []);
+});
+
+test('uncommitted changes stay outside every commit range', async () => {
+  const { session, repo } = await openSession([sampleItem('a.js')]);
+  const calls = [];
+  repo.updateCommitTimes = (top, shas) => calls.push(shas);
+  session.commits.onCommit();
+  await session.ops.idle();
+  session.rev = session.commits.commits[0].sha;
+  press(session, 'home', 'shift-up');
+  assert.equal(session.view().multiselect, true);
+  assert.deepEqual(session.view().listSelection, []);
+  assert.deepEqual(session.commits.selectedRows(), []);
+  press(session, 'delete', 'u');
+  await session.ops.idle();
+  assert.equal(session.mode, 'review');
+  assert.deepEqual(repo.commitDrops, []);
+  assert.deepEqual(calls, []);
+  press(session, 'down');
+  assert.equal(session.view().multiselect, false);
 });
 
 test('commit ranges update timestamps and delete together', async () => {

@@ -32,6 +32,8 @@
     "buttonBg": "#2a2a40",
     "buttonHotFg": "#ffffff",
     "currentBg": "#a8ccb4",
+    "commitCurrentBg": "#8eb79d",
+    "commitCurrentFg": "#18261d",
     "selectionBg": "#444444",
     "checkFg": "#f4f4fc",
     "checkBg": "#525274",
