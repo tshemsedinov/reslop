@@ -1146,6 +1146,56 @@ test('rewordCommit with now resets an older author date only', async () => {
   }
 });
 
+test('dropCommits removes a range including HEAD', async () => {
+  const repo = makeRepo();
+  try {
+    for (const name of ['root', 'one', 'two', 'three']) {
+      repo.write(`${name}.txt`, `${name}\n`);
+      repo.git(['add', `${name}.txt`]);
+      repo.git(['commit', '-m', name]);
+    }
+    const commits = await listCommits(repo.dir);
+    await git.dropCommits(
+      repo.dir,
+      commits.slice(0, 2).map((entry) => entry.sha),
+    );
+    assert.deepEqual(
+      (await listCommits(repo.dir)).map((entry) => entry.subject),
+      ['one', 'root'],
+    );
+    assert.equal(fs.existsSync(path.join(repo.dir, 'two.txt')), false);
+    assert.equal(fs.existsSync(path.join(repo.dir, 'three.txt')), false);
+    assert.equal(repo.git(['status', '--porcelain']), '');
+  } finally {
+    repo.cleanup();
+  }
+});
+
+test('dropCommits retains unselected entries and refuses root', async () => {
+  const repo = makeRepo();
+  try {
+    for (const name of ['root', 'one', 'two', 'three', 'four']) {
+      repo.write(`${name}.txt`, `${name}\n`);
+      repo.git(['add', `${name}.txt`]);
+      repo.git(['commit', '-m', name]);
+    }
+    const commits = await listCommits(repo.dir);
+    await assert.rejects(
+      git.dropCommits(repo.dir, [commits[0].sha, commits[4].sha]),
+      /root/,
+    );
+    assert.equal(repo.git(['rev-parse', 'HEAD']).trim(), commits[0].sha);
+    await git.dropCommits(repo.dir, [commits[1].sha, commits[3].sha]);
+    assert.deepEqual(
+      (await listCommits(repo.dir)).map((entry) => entry.subject),
+      ['four', 'two', 'root'],
+    );
+    assert.equal(repo.git(['status', '--porcelain']), '');
+  } finally {
+    repo.cleanup();
+  }
+});
+
 test('dropBranch deletes a branch that is not current', async () => {
   const repo = makeRepo();
   try {

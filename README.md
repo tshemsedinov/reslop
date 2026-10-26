@@ -53,6 +53,10 @@ Requires Node.js `>=18.15.0`.
 - `reslop -r` read-only mode
 - `reslop t -- <program> [args]` run one program and print a reduced report
 
+In the commits list, hold Shift and press Up or Down to select a range.
+Shift+Home and Shift+End extend to either end of the list. Moving without Shift
+returns to a single selected row. Delete acts on the selected range.
+
 Prefix each program in an npm script with `reslop t --`. Keep `&&` between those wraps, so each program is captured on its own and a failing step does not start the next one:
 
 ```json

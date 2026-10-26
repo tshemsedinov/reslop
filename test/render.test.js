@@ -888,6 +888,29 @@ test('full commit selection scrolls the entire item into the window', () => {
   }
 });
 
+test('multiselected commits are grey throughout the full item', () => {
+  const { paintBodyCommits } = require('../lib/render/commits.js');
+  const commits = [
+    { sha: 'one', body: 'first\nbody', subject: 'first' },
+    { sha: 'two', body: 'second\nbody', subject: 'second' },
+  ];
+  for (const commitView of ['brief', 'full']) {
+    const view = {
+      commits,
+      commitView,
+      commitCursor: 1,
+      listSelection: [0, 1],
+      rev: 'one',
+    };
+    const painted = paintBodyCommits(view, 80, true, 16, 1);
+    for (const hit of painted.fileHits) {
+      const row = painted.body[hit.y - 2];
+      assert.ok(row.includes(bg(THEME.selectionBg)));
+      assert.ok(!row.includes(bg(THEME.currentBg)));
+    }
+  }
+});
+
 test('full view puts uncommitted changes on the first line', () => {
   const view = {
     pane: 'commits',
