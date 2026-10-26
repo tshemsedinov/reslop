@@ -4839,6 +4839,55 @@ test('packages screen manages dependencies', async () => {
   assert.equal(calls.length, 6);
 });
 
+test('package ranges batch updates and preserve dev groups', async () => {
+  const { session, repo } = await openSession([sampleItem('a.js')]);
+  session.dashboard.npm = {
+    hasManifest: true,
+    deps: 2,
+    dev: 1,
+    modules: {
+      bytes: 30,
+      count: 3,
+      packages: [
+        { name: 'one', bytes: 10, version: '1.0.0' },
+        { name: 'two', bytes: 10, version: '1.0.0' },
+        { name: 'dev', bytes: 10, version: '1.0.0', dev: true },
+      ],
+    },
+  };
+  const calls = [];
+  repo.runPackage = async (top, args) => {
+    calls.push(args);
+    return { status: 0 };
+  };
+  const select = () => press(session, 'home', 'shift-end');
+  session.dashboard.openPackages();
+  select();
+  session.draw();
+  assert.ok(!session.lastFrame.buttons.some((hit) => hit.id === 'packageNew'));
+  press(session, 'insert');
+  assert.equal(session.mode, 'review');
+  press(session, 'w');
+  await session.packages.job;
+  await session.ops.idle();
+  assert.deepEqual(calls, [['update', 'one', 'two', 'dev']]);
+  select();
+  press(session, 'l');
+  await session.packages.job;
+  await session.ops.idle();
+  assert.deepEqual(calls.slice(1), [
+    ['install', 'one@latest', 'two@latest'],
+    ['install', 'dev@latest', '--save-dev'],
+  ]);
+  select();
+  press(session, 'delete', 'n');
+  assert.equal(calls.length, 3);
+  press(session, 'delete', 'y');
+  await session.packages.job;
+  await session.ops.idle();
+  assert.deepEqual(calls.at(-1), ['uninstall', 'one', 'two', 'dev']);
+});
+
 test('delete refuses a transitive package', async () => {
   const { session } = await openSession([sampleItem('a.js')], {
     startPane: 'files',
