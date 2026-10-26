@@ -294,6 +294,29 @@ const dragBetween = (session, start, end) => {
   session.handleEvent({ ...base, kind: 'release', button: 0, ...end });
 };
 
+const listCell = (session, cursor, last = false) => {
+  session.draw();
+  const hits = session.lastFrame.fileHits.filter(
+    (hit) => !hit.tree && hit.cursor === cursor,
+  );
+  const hit = last ? hits.at(-1) : hits[0];
+  assert.ok(hit);
+  return { x: 5, y: hit.y };
+};
+
+const modifiedClick = (session, cell, button) => {
+  const event = { type: 'mouse', button, btn: 0, ...cell };
+  session.handleEvent({ ...event, kind: 'press' });
+  session.draw();
+  session.handleEvent({ ...event, kind: 'release' });
+};
+
+const shiftClick = (session, cell) => modifiedClick(session, cell, 4);
+
+const ctrlClick = (session, cell) => modifiedClick(session, cell, 16);
+
+const ctrlShiftClick = (session, cell) => modifiedClick(session, cell, 20);
+
 test('prev at first block stays put and next reaches last', async () => {
   const a = sampleItem('a.js');
   const b = sampleItem('b.js');
@@ -3180,6 +3203,240 @@ test('uncommitted changes stay outside every commit range', async () => {
   assert.deepEqual(calls, []);
   press(session, 'down');
   assert.equal(session.view().multiselect, false);
+});
+
+test('mouse ranges work across commits, branches and packages', async () => {
+  const { session, repo } = await openSession([sampleItem('a.js')]);
+  session.commits.onCommit();
+  await session.ops.idle();
+  shiftClick(session, listCell(session, 2));
+  assert.deepEqual(session.view().listSelection, [1, 2]);
+  assert.equal(session.mode, 'review');
+  assert.equal(session.nav.listDrag, null);
+  const first = listCell(session, 1);
+  click(session, first.x, first.y);
+  assert.equal(session.nav.multiselect, false);
+  dragBetween(session, listCell(session, 1), listCell(session, 2));
+  assert.deepEqual(session.view().listSelection, [1, 2]);
+  assert.equal(session.nav.selection, null);
+  repo.listBranches = async () => [
+    { name: 'one' },
+    { name: 'main', current: true },
+    { name: 'two' },
+  ];
+  session.gitBranches.onBranch();
+  await session.ops.idle();
+  dragBetween(session, listCell(session, 2), listCell(session, 0));
+  assert.deepEqual(session.view().listSelection, [0, 2]);
+  shiftClick(session, listCell(session, 1));
+  assert.deepEqual(session.view().listSelection, [2]);
+  session.dashboard.npm = {
+    hasManifest: true,
+    deps: 2,
+    dev: 0,
+    modules: {
+      bytes: 2,
+      count: 2,
+      packages: [
+        { name: 'one', version: '1.0.0', bytes: 1 },
+        { name: 'two', version: '1.0.0', bytes: 1 },
+      ],
+    },
+  };
+  session.dashboard.openPackages();
+  dragBetween(session, listCell(session, 1), listCell(session, 0));
+  assert.deepEqual(session.view().listSelection, [0, 1]);
+  const calls = [];
+  repo.runPackage = async (top, args) => {
+    calls.push(args);
+    return { status: 0 };
+  };
+  clickFooter(session, 'packageWanted');
+  await session.packages.job;
+  assert.deepEqual(calls, [['update', 'one', 'two']]);
+});
+
+test('full commit mouse ranges include multiline rows and gaps', async () => {
+  const { session, repo, stdout } = await openSession([sampleItem('a.js')]);
+  stdout.rows = 30;
+  repo.setCommits([
+    { sha: 'one', body: 'one\nbody\nlast', subject: 'one' },
+    { sha: 'two', body: 'two\nbody\nlast', subject: 'two' },
+  ]);
+  session.commits.onCommit();
+  await session.ops.idle();
+  session.commits.commitView = 'full';
+  const start = listCell(session, 1, true);
+  const end = listCell(session, 2);
+  dragBetween(session, start, end);
+  assert.deepEqual(session.view().listSelection, [1, 2]);
+  assert.equal(session.pane, 'commits');
+  assert.equal(session.nav.selection, null);
+  shiftClick(session, listCell(session, 1));
+  assert.deepEqual(session.view().listSelection, [1]);
+});
+
+test('mouse ranges extend past visible rows', async () => {
+  const { session, repo, stdout } = await openSession([sampleItem('a.js')]);
+  stdout.rows = 10;
+  repo.setCommits(
+    Array.from({ length: 20 }, (_, i) => ({
+      sha: `sha${i}`,
+      subject: `commit ${i}`,
+    })),
+  );
+  session.commits.onCommit();
+  await session.ops.idle();
+  const start = listCell(session, 1);
+  session.handleEvent({
+    type: 'mouse',
+    kind: 'press',
+    button: 0,
+    btn: 0,
+    ...start,
+  });
+  for (let i = 0; i < 6; i++) {
+    session.draw();
+    session.handleEvent({
+      type: 'mouse',
+      kind: 'drag',
+      button: 32,
+      btn: 0,
+      x: 5 + i,
+      y: session.lastFrame.height - 1,
+    });
+  }
+  session.draw();
+  session.handleEvent({
+    type: 'mouse',
+    kind: 'release',
+    button: 0,
+    btn: 0,
+    x: 10,
+    y: session.lastFrame.height - 1,
+  });
+  assert.ok(session.nav.commitCursor > 6);
+  assert.ok(session.nav.listScroll > 0);
+  assert.ok(session.view().listSelection.length > 6);
+  assert.equal(session.mode, 'review');
+  assert.equal(session.pane, 'commits');
+  assert.equal(session.nav.listDrag, null);
+});
+
+test('ctrl-click toggles rows and shift selects the anchor span', async () => {
+  const { session, repo } = await openSession([sampleItem('a.js')]);
+  repo.setCommits([
+    {
+      sha: '1111111111111111111111111111111111111111',
+      shortSha: '1111111',
+      subject: 'one',
+    },
+    {
+      sha: '2222222222222222222222222222222222222222',
+      shortSha: '2222222',
+      subject: 'two',
+    },
+    {
+      sha: '3333333333333333333333333333333333333333',
+      shortSha: '3333333',
+      subject: 'three',
+    },
+    {
+      sha: '4444444444444444444444444444444444444444',
+      shortSha: '4444444',
+      subject: 'four',
+    },
+  ]);
+  session.commits.onCommit();
+  await session.ops.idle();
+  const at = (cursor) => listCell(session, cursor);
+  const clickAt = (cursor) => {
+    const cell = at(cursor);
+    click(session, cell.x, cell.y);
+  };
+  clickAt(1);
+  assert.equal(session.nav.multiselect, false);
+  assert.deepEqual(session.view().listSelection, []);
+  shiftClick(session, at(4));
+  assert.deepEqual(session.view().listSelection, [1, 2, 3, 4]);
+  ctrlClick(session, at(2));
+  assert.deepEqual(session.view().listSelection, [1, 3, 4]);
+  ctrlClick(session, at(3));
+  assert.deepEqual(session.view().listSelection, [1, 4]);
+  ctrlClick(session, at(2));
+  assert.deepEqual(session.view().listSelection, [1, 2, 4]);
+  assert.deepEqual(
+    session.commits.selectedRows().map((row) => row.subject),
+    ['one', 'two', 'four'],
+  );
+  ctrlClick(session, at(0));
+  assert.deepEqual(session.view().listSelection, [1, 2, 4]);
+  const kept = at(1);
+  rightClick(session, kept.x, kept.y);
+  assert.deepEqual(session.view().listSelection, [1, 2, 4]);
+  assert.ok(!session.nav.contextMenu.actions.includes('reword'));
+  press(session, 'escape');
+  assert.deepEqual(session.view().listSelection, [1, 2, 4]);
+  ctrlShiftClick(session, at(3));
+  assert.deepEqual(session.view().listSelection, [1, 2, 3, 4]);
+  clickAt(1);
+  assert.equal(session.nav.multiselect, false);
+  ctrlClick(session, at(4));
+  assert.deepEqual(session.view().listSelection, [1, 4]);
+  press(session, 'shift-up');
+  assert.deepEqual(session.view().listSelection, [3, 4]);
+  press(session, 'down');
+  assert.equal(session.nav.multiselect, false);
+  assert.deepEqual(session.view().listSelection, []);
+  clickAt(2);
+  ctrlClick(session, at(2));
+  assert.equal(session.view().multiselect, true);
+  assert.deepEqual(session.view().listSelection, []);
+});
+
+test('ctrl-click toggles branch rows and skips the current one', async () => {
+  const { session, repo } = await openSession([sampleItem('a.js')]);
+  repo.listBranches = async () => [
+    { name: 'one' },
+    { name: 'main', current: true },
+    { name: 'two' },
+    { name: 'three' },
+  ];
+  session.gitBranches.onBranch();
+  await session.ops.idle();
+  const at = (cursor) => listCell(session, cursor);
+  const clickAt = (cursor) => {
+    const cell = at(cursor);
+    click(session, cell.x, cell.y);
+  };
+  clickAt(0);
+  ctrlClick(session, at(3));
+  assert.deepEqual(session.view().listSelection, [0, 3]);
+  ctrlClick(session, at(1));
+  assert.deepEqual(session.view().listSelection, [0, 3]);
+  ctrlClick(session, at(0));
+  assert.deepEqual(session.view().listSelection, [3]);
+  assert.deepEqual(
+    session.gitBranches.selectedRows().map((row) => row.name),
+    ['three'],
+  );
+});
+
+test('a context action preserves the mouse-selected range', async () => {
+  const { session, repo } = await openSession([sampleItem('a.js')]);
+  const calls = [];
+  repo.updateCommitTimes = async (top, shas) => calls.push(shas);
+  session.commits.onCommit();
+  await session.ops.idle();
+  shiftClick(session, listCell(session, 2));
+  const row = listCell(session, 1);
+  rightClick(session, row.x, row.y);
+  assert.deepEqual(session.view().listSelection, [1, 2]);
+  assert.ok(!session.nav.contextMenu.actions.includes('reword'));
+  press(session, 'u');
+  await session.ops.idle();
+  assert.deepEqual(calls, [session.commits.commits.map((entry) => entry.sha)]);
+  assert.equal(session.mode, 'review');
 });
 
 test('commit ranges update timestamps and delete together', async () => {
