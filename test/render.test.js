@@ -751,7 +751,7 @@ test('commit pane brief mode lists subject hash branch and age', () => {
   assert.ok(selectedRow.endsWith(tail));
 });
 
-test('viewed commit is marked like the current branch', () => {
+test('viewed commit uses a readable current palette', () => {
   const sha = 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa';
   const view = {
     pane: 'commits',
@@ -789,21 +789,31 @@ test('viewed commit is marked like the current branch', () => {
   });
   const pending = colored.rows.find((row) => row.includes('uncommitted'));
   const viewed = colored.rows.find((row) => row.includes('aaa1111'));
-  const currentBg = bg(THEME.currentBg);
-  const currentLead = ansi.paint('   ', THEME.headerFg, THEME.currentBg, true);
+  const currentBg = bg(THEME.commitCurrentBg);
+  const currentLead = ansi.paint(
+    '   ',
+    THEME.commitCurrentFg,
+    THEME.commitCurrentBg,
+    true,
+  );
   const currentSubject = ansi.paint(
     'land the change',
-    THEME.mutedFg,
-    THEME.currentBg,
+    THEME.commitCurrentFg,
+    THEME.commitCurrentBg,
     true,
   );
   const currentSha = ansi.paint(
     'aaa1111',
     THEME.shaDarkFg,
-    THEME.currentBg,
+    THEME.commitCurrentBg,
     true,
   );
-  const currentTail = ansi.paint(' ', THEME.headerFg, THEME.currentBg, true);
+  const currentTail = ansi.paint(
+    ' ',
+    THEME.commitCurrentFg,
+    THEME.commitCurrentBg,
+    true,
+  );
   assert.ok(pending.includes(bg(THEME.buttonBg)));
   assert.ok(!pending.includes(currentBg));
   assert.ok(viewed.includes(`${currentLead}${currentSubject}`));
@@ -818,11 +828,16 @@ test('viewed commit is marked like the current branch', () => {
     color: true,
   });
   const selectedViewed = selected.rows.find((row) => row.includes('aaa1111'));
-  const selectedLead = ansi.paint(' ▶ ', THEME.headerFg, THEME.currentBg, true);
+  const selectedLead = ansi.paint(
+    ' ▶ ',
+    THEME.commitCurrentFg,
+    THEME.commitCurrentBg,
+    true,
+  );
   const currentRefs = ansi.paint(
     'HEAD -> main',
     THEME.shaDarkFg,
-    THEME.currentBg,
+    THEME.commitCurrentBg,
     true,
   );
   assert.ok(selectedViewed.includes(`${selectedLead}${currentSubject}`));
@@ -840,11 +855,16 @@ test('viewed commit is marked like the current branch', () => {
   const currentPending = worktree.rows.find((row) =>
     row.includes('uncommitted'),
   );
-  const pendingLead = ansi.paint(' ▶ ', THEME.headerFg, THEME.currentBg, true);
+  const pendingLead = ansi.paint(
+    ' ▶ ',
+    THEME.commitCurrentFg,
+    THEME.commitCurrentBg,
+    true,
+  );
   const pendingSubject = ansi.paint(
     'uncommitted changes',
-    THEME.mutedFg,
-    THEME.currentBg,
+    THEME.commitCurrentFg,
+    THEME.commitCurrentBg,
     true,
   );
   assert.ok(currentPending.includes(`${pendingLead}${pendingSubject}`));
@@ -860,9 +880,39 @@ test('viewed commit is marked like the current branch', () => {
     color: true,
   });
   const hash = full.rows.find((row) => row.includes(sha));
-  const fullHash = ansi.paint(sha, THEME.shaDarkFg, THEME.currentBg, true);
+  const fullHash = ansi.paint(
+    sha,
+    THEME.shaDarkFg,
+    THEME.commitCurrentBg,
+    true,
+  );
   assert.ok(hash.includes(fullHash));
   assert.ok(!hash.includes(bg(THEME.ctxBg)));
+});
+
+test('current commit palettes are darker with readable contrast', () => {
+  const palettes = [
+    require('../lib/term/themes/dark.json').ui,
+    require('../lib/term/themes/light.json').ui,
+  ];
+  const luminance = (hex) => {
+    const channels = hex
+      .slice(1)
+      .match(/../g)
+      .map((part) => parseInt(part, 16) / 255);
+    const linear = channels.map((value) => {
+      if (value <= 0.04045) return value / 12.92;
+      return ((value + 0.055) / 1.055) ** 2.4;
+    });
+    return linear[0] * 0.2126 + linear[1] * 0.7152 + linear[2] * 0.0722;
+  };
+  for (const palette of palettes) {
+    const background = luminance(palette.commitCurrentBg);
+    const foreground = luminance(palette.commitCurrentFg);
+    assert.ok(background < luminance(palette.currentBg));
+    assert.ok(foreground < luminance(palette.mutedFg));
+    assert.ok((background + 0.05) / (foreground + 0.05) >= 4.5);
+  }
 });
 
 test('full commit selection scrolls the entire item into the window', () => {
