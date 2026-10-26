@@ -3112,6 +3112,36 @@ test('commit ranges delete together', async () => {
   assert.deepEqual(dropped, [shas]);
 });
 
+test('branch ranges squash and delete noncurrent branches', async () => {
+  const { session, repo } = await openSession([sampleItem('a.js')]);
+  const branches = [
+    { name: 'one' },
+    { name: 'main', current: true },
+    { name: 'two' },
+  ];
+  const squashed = [];
+  repo.listBranches = async () => branches;
+  repo.squashBranches = (top, names) => squashed.push(names);
+  session.gitBranches.onBranch();
+  await session.ops.idle();
+  press(session, 'home', 'shift-end');
+  session.draw();
+  const ids = session.lastFrame.buttons.map((hit) => hit.id);
+  assert.ok(ids.includes('squash'));
+  assert.ok(!ids.includes('newBranch'));
+  assert.ok(!ids.includes('rebase'));
+  press(session, 'insert', 'e');
+  assert.equal(session.mode, 'review');
+  assert.deepEqual(repo.rebases, []);
+  press(session, 's');
+  await session.ops.idle();
+  assert.deepEqual(squashed, [['one', 'two']]);
+  assert.deepEqual(repo.pushes, []);
+  press(session, 'home', 'shift-end', 'delete', 'y');
+  await session.ops.idle();
+  assert.deepEqual(repo.drops, ['one', 'two']);
+});
+
 test('commits pane a applies a selected fixup', async () => {
   const { session, repo } = await openSession([sampleItem('a.js')], {
     startPane: 'files',
