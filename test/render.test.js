@@ -900,7 +900,7 @@ test('multiselected commits are grey throughout the full item', () => {
       commitView,
       commitCursor: 1,
       listSelection: [0, 1],
-      rev: 'one',
+      rev: 'other',
     };
     const painted = paintBodyCommits(view, 80, true, 16, 1);
     for (const hit of painted.fileHits) {
