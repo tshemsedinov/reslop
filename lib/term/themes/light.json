@@ -32,6 +32,7 @@
     "buttonBg": "#f7f9fc",
     "buttonHotFg": "#0f1419",
     "currentBg": "#ace1c2",
+    "selectionBg": "#d0d0d0",
     "checkFg": "#1f2328",
     "checkBg": "#c8cfd8",
     "checkDoneFg": "#0f3d1f",

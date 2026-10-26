@@ -3066,6 +3066,52 @@ test('commits pane ctrl+e rewords and resets the author date', async () => {
   assert.equal(repo.rewords[1].now, undefined);
 });
 
+test('commit ranges shrink, clear and restrict actions', async () => {
+  const { session } = await openSession([sampleItem('a.js')]);
+  session.commits.onCommit();
+  await session.ops.idle();
+  press(session, 'down', 'shift-down');
+  assert.deepEqual(session.view().listSelection, [1, 2]);
+  session.draw();
+  const ids = session.lastFrame.buttons.map((hit) => hit.id);
+  for (const id of ['newCommit', 'apply', 'reword']) {
+    assert.ok(!ids.includes(id));
+  }
+  for (const key of ['insert', 'p', 'e', 'enter']) press(session, key);
+  assert.equal(session.mode, 'review');
+  assert.equal(session.pane, 'commits');
+  press(session, 'shift-up');
+  assert.deepEqual(session.view().listSelection, [1]);
+  press(session, 'shift-end');
+  assert.deepEqual(session.view().listSelection, [1, 2]);
+  press(session, 'down');
+  assert.deepEqual(session.view().listSelection, []);
+  assert.equal(session.commitCursor, 2);
+  press(session, 'shift-home');
+  assert.deepEqual(session.view().listSelection, [0, 1, 2]);
+  session.showFiles();
+  assert.deepEqual(session.view().listSelection, []);
+});
+
+test('commit ranges delete together', async () => {
+  const { session, repo } = await openSession([sampleItem('a.js')]);
+  const dropped = [];
+  repo.dropCommits = (top, shas) => dropped.push(shas);
+  session.commits.onCommit();
+  await session.ops.idle();
+  const shas = session
+    .view()
+    .commits.slice(1)
+    .map((entry) => entry.sha);
+  press(session, 'home', 'shift-end', 'delete');
+  assert.equal(session.mode, 'confirmDrop');
+  press(session, 'n');
+  assert.deepEqual(dropped, []);
+  press(session, 'delete', 'y');
+  await session.ops.idle();
+  assert.deepEqual(dropped, [shas]);
+});
+
 test('commits pane a applies a selected fixup', async () => {
   const { session, repo } = await openSession([sampleItem('a.js')], {
     startPane: 'files',
