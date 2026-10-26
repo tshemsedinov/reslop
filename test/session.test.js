@@ -8,6 +8,7 @@ const path = require('node:path');
 
 const { Session } = require('../lib/session/session.js');
 const { OpsRunner } = require('../lib/session/ops.js');
+const { Dashboard } = require('../lib/session/dashboard.js');
 const { hitAction } = require('../lib/input/keys.js');
 const helpers = require('./helpers.js');
 const { uiSink, sampleHunk, tempDir, press, click, rightClick } = helpers;
@@ -266,6 +267,7 @@ const openSession = async (items, extra = {}) => {
   // The worktree tiles and npm outdated would start git and npm
   session.worktrees.refreshTrees = async () => {};
   session.dashboard.tasks.npm.request = () => {};
+  session.dashboard.runNpm = async () => {};
   await session.load();
   return { session, repo, stdout, cwd };
 };
@@ -4886,6 +4888,51 @@ test('package ranges batch updates and preserve dev groups', async () => {
   await session.packages.job;
   await session.ops.idle();
   assert.deepEqual(calls.at(-1), ['uninstall', 'one', 'two', 'dev']);
+});
+
+test('package operations refresh installed versions and rows', async () => {
+  const { session, repo, cwd } = await openSession([sampleItem('a.js')]);
+  const lock = path.join(cwd, 'node_modules', '.package-lock.json');
+  const manifest = path.join(cwd, 'package.json');
+  const packageDir = path.join(cwd, 'node_modules', 'one');
+  fs.mkdirSync(packageDir, { recursive: true });
+  fs.writeFileSync(path.join(packageDir, 'index.js'), 'module.exports = 1;');
+  const write = (version) => {
+    const packages = version ? { 'node_modules/one': { version } } : {};
+    const dependencies = version ? { one: '^1.0.0' } : {};
+    fs.writeFileSync(manifest, JSON.stringify({ dependencies }));
+    fs.writeFileSync(lock, JSON.stringify({ packages }));
+  };
+  write('1.0.0');
+  session.dashboard.runNpm = Dashboard.prototype.runNpm.bind(session.dashboard);
+  await session.dashboard.runNpm(true);
+  session.dashboard.openPackages();
+  session.outdatedMap = new Map([
+    ['one', { current: '0.9.0', wanted: '1.1.0', latest: '2.0.0' }],
+  ]);
+  repo.runPackage = async (top, args) => {
+    if (args[0] === 'update') write('1.1.0');
+    if (args[0] === 'install') write('2.0.0');
+    if (args[0] === 'uninstall') {
+      write(null);
+      fs.rmSync(packageDir, { recursive: true });
+    }
+    return { status: 0 };
+  };
+  for (const [key, version] of [
+    ['w', '1.1.0'],
+    ['l', '2.0.0'],
+  ]) {
+    press(session, key);
+    await session.packages.job;
+    await session.ops.idle();
+    assert.equal(session.view().packages.modules.packages[0].current, version);
+  }
+  press(session, 'delete', 'y');
+  await session.packages.job;
+  await session.ops.idle();
+  assert.deepEqual(session.view().packages.modules.packages, []);
+  assert.equal(session.nav.packagesCursor, 0);
 });
 
 test('delete refuses a transitive package', async () => {
