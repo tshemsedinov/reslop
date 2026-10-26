@@ -93,8 +93,10 @@ test('enter and leave restore raw mode and write term sequences', () => {
 test('the terminal reports modified Enter while open', () => {
   assert.ok(ENTER_TERM.includes('\x1b[>4;2m'));
   assert.ok(ENTER_TERM.includes('\x1b[>1u'));
+  assert.ok(ENTER_TERM.includes('\x1b[>1s'));
   assert.ok(LEAVE_TERM.includes('\x1b[<u'));
   assert.ok(LEAVE_TERM.includes('\x1b[>4;0m'));
+  assert.ok(LEAVE_TERM.includes('\x1b[>0s'));
 });
 
 test('pause and resume restore listening after an external command', () => {

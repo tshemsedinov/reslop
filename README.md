@@ -58,6 +58,8 @@ Down to select a range. Shift+Home and Shift+End extend to either end of the
 list. Moving without Shift returns to a single selected row. Ranges skip the
 current row and hide cursor markers. Delete acts on the selected range.
 The uncommitted changes row is always excluded from commit ranges.
+Drag across rows or Shift-click a row to select a range. Ctrl-click toggles
+a row on or off. Ctrl-Shift-click adds a range to the rows already selected.
 In commits, `u` updates the selected commits' timestamps
 without editing their messages. In branches, `s` squashes the selected branches
 into staged changes on the current branch; the current branch is skipped. In
