@@ -3037,7 +3037,7 @@ test('commits pane r rewords the selected commit', async () => {
   assert.equal(session.view().commits[2].subject, 'rewritten init');
 });
 
-test('commits pane ctrl+e rewords and resets the author date', async () => {
+test('commits u updates the date without editing', async () => {
   const { session, repo } = await openSession([sampleItem('a.js')], {
     startPane: 'files',
   });
@@ -3047,25 +3047,21 @@ test('commits pane ctrl+e rewords and resets the author date', async () => {
   await session.ops.idle();
   session.dispatch('next');
   await session.ops.idle();
+  const calls = [];
+  repo.updateCommitTimes = (top, shas) => calls.push(shas);
   press(session, 'ctrl-e');
+  assert.equal(session.commitCursor, 2);
+  assert.equal(session.mode, 'review');
+  press(session, 'u');
   await session.ops.idle();
-  assert.equal(session.commitKind, 'reword');
-  assert.equal(session.editor.text, 'init');
-  press(session, 'enter');
-  await session.ops.idle();
-  assert.equal(session.status, 'reworded');
-  assert.deepEqual(repo.rewords, [
-    {
-      sha: 'bbb2222bbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
-      message: 'init',
-      now: true,
-    },
-  ]);
+  assert.equal(session.mode, 'review');
+  assert.equal(session.status, 'updated');
+  assert.deepEqual(calls, [['bbb2222bbbbbbbbbbbbbbbbbbbbbbbbbbbbbb']]);
   session.pushInput('e');
   await session.ops.idle();
   press(session, 'enter');
   await session.ops.idle();
-  assert.equal(repo.rewords[1].now, undefined);
+  assert.equal(repo.rewords[0].now, undefined);
 });
 
 test('commit ranges shrink, clear and restrict actions', async () => {
@@ -3079,6 +3075,7 @@ test('commit ranges shrink, clear and restrict actions', async () => {
   for (const id of ['newCommit', 'apply', 'reword']) {
     assert.ok(!ids.includes(id));
   }
+  assert.ok(ids.includes('updateTime'));
   for (const key of ['insert', 'p', 'e', 'enter']) press(session, key);
   assert.equal(session.mode, 'review');
   assert.equal(session.pane, 'commits');
@@ -3095,9 +3092,11 @@ test('commit ranges shrink, clear and restrict actions', async () => {
   assert.deepEqual(session.view().listSelection, []);
 });
 
-test('commit ranges delete together', async () => {
+test('commit ranges update timestamps and delete together', async () => {
   const { session, repo } = await openSession([sampleItem('a.js')]);
+  const updated = [];
   const dropped = [];
+  repo.updateCommitTimes = (top, shas) => updated.push(shas);
   repo.dropCommits = (top, shas) => dropped.push(shas);
   session.commits.onCommit();
   await session.ops.idle();
@@ -3105,6 +3104,10 @@ test('commit ranges delete together', async () => {
     .view()
     .commits.slice(1)
     .map((entry) => entry.sha);
+  press(session, 'down', 'shift-down', 'u');
+  await session.ops.idle();
+  assert.deepEqual(updated, [shas]);
+  assert.equal(session.mode, 'review');
   press(session, 'home', 'shift-end', 'delete');
   assert.equal(session.mode, 'confirmDrop');
   press(session, 'n');

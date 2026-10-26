@@ -1196,6 +1196,125 @@ test('dropCommits retains unselected entries and refuses root', async () => {
   }
 });
 
+test('updateCommitTimes preserves messages and trees', async () => {
+  const repo = makeRepo();
+  try {
+    for (const name of ['root', 'one', 'two', 'three']) {
+      repo.write(`${name}.txt`, `${name}\n`);
+      repo.git(['add', `${name}.txt`]);
+      repo.git([
+        'commit',
+        '--date',
+        OLD_DATE,
+        '-m',
+        `${name}\n\nbody for ${name}`,
+      ]);
+    }
+    const tree = repo.git(['rev-parse', 'HEAD^{tree}']);
+    const before = await listCommits(repo.dir);
+    await git.updateCommitTimes(repo.dir, [before[0].sha, before[2].sha]);
+    const after = await listCommits(repo.dir);
+    assert.deepEqual(
+      after.map((entry) => entry.body),
+      before.map((entry) => entry.body),
+    );
+    for (const rev of ['HEAD', 'HEAD~2']) {
+      assert.notEqual(authorYear(repo, rev), '2001');
+    }
+    for (const rev of ['HEAD~1', 'HEAD~3']) {
+      assert.equal(authorYear(repo, rev), '2001');
+    }
+    assert.equal(repo.git(['rev-parse', 'HEAD^{tree}']), tree);
+    assert.equal(repo.git(['status', '--porcelain']), '');
+  } finally {
+    repo.cleanup();
+  }
+});
+
+test('updateCommitTimes supports root and a staged index', async () => {
+  const repo = makeRepo();
+  try {
+    repo.write('one.txt', 'one\n');
+    repo.git(['add', 'one.txt']);
+    repo.git(['commit', '--date', OLD_DATE, '-m', 'root']);
+    repo.write('two.txt', 'two\n');
+    repo.git(['add', 'two.txt']);
+    repo.git(['commit', '--date', OLD_DATE, '-m', 'second']);
+    const before = await listCommits(repo.dir);
+    await git.updateCommitTimes(repo.dir, [before[1].sha]);
+    assert.notEqual(authorYear(repo, 'HEAD~1'), '2001');
+    assert.equal(authorYear(repo, 'HEAD'), '2001');
+    repo.write('one.txt', 'staged\n');
+    repo.git(['add', 'one.txt']);
+    const staged = repo.git(['diff', '--cached']);
+    const head = (await listCommits(repo.dir))[0].sha;
+    await git.updateCommitTimes(repo.dir, [head]);
+    assert.notEqual(authorYear(repo, 'HEAD'), '2001');
+    assert.equal(repo.git(['diff', '--cached']), staged);
+    assert.equal(repo.git(['log', '-1', '--format=%s']).trim(), 'second');
+  } finally {
+    repo.cleanup();
+  }
+});
+
+test('updateCommitTimes preserves merge topology', async () => {
+  const repo = makeRepo();
+  try {
+    repo.write('root.txt', 'root\n');
+    repo.git(['add', 'root.txt']);
+    repo.git(['commit', '--date', OLD_DATE, '-m', 'root']);
+    const main = await currentBranch(repo.dir);
+    repo.git(['checkout', '-b', 'side']);
+    repo.write('side.txt', 'side\n');
+    repo.git(['add', 'side.txt']);
+    repo.git(['commit', '--date', OLD_DATE, '-m', 'side']);
+    repo.git(['checkout', main]);
+    repo.write('main.txt', 'main\n');
+    repo.git(['add', 'main.txt']);
+    repo.git(['commit', '--date', OLD_DATE, '-m', 'main']);
+    repo.git(['merge', '--no-ff', '-m', 'merge', 'side']);
+    repo.git(['commit', '--amend', '--no-edit', '--date', OLD_DATE]);
+    const before = await listCommits(repo.dir);
+    const tree = repo.git(['rev-parse', 'HEAD^{tree}']);
+    const root = before.find((entry) => entry.subject === 'root');
+    await git.updateCommitTimes(repo.dir, [before[0].sha, root.sha]);
+    const parents = repo
+      .git(['rev-list', '--parents', '-1', 'HEAD'])
+      .trim()
+      .split(' ');
+    assert.equal(parents.length, 3);
+    assert.equal(repo.git(['rev-parse', 'HEAD^{tree}']), tree);
+    assert.notEqual(authorYear(repo, 'HEAD'), '2001');
+    assert.notEqual(authorYear(repo, 'HEAD~2'), '2001');
+    assert.equal(authorYear(repo, 'HEAD~1'), '2001');
+    assert.equal(authorYear(repo, 'HEAD^2'), '2001');
+  } finally {
+    repo.cleanup();
+  }
+});
+
+test('commit selection writes leave an existing rebase alone', async () => {
+  const repo = makeRepo();
+  try {
+    repo.write('one.txt', 'one\n');
+    repo.git(['add', 'one.txt']);
+    repo.git(['commit', '-m', 'one']);
+    const head = repo.git(['rev-parse', 'HEAD']).trim();
+    const rebaseDir = path.join(repo.dir, '.git', 'rebase-merge');
+    fs.mkdirSync(rebaseDir);
+    for (const write of [git.updateCommitTimes, git.dropCommits]) {
+      await assert.rejects(
+        write(repo.dir, [head]),
+        /rebase already in progress/,
+      );
+      assert.ok(fs.existsSync(rebaseDir));
+      assert.equal(repo.git(['rev-parse', 'HEAD']).trim(), head);
+    }
+  } finally {
+    repo.cleanup();
+  }
+});
+
 test('squashBranches stages the selected branches together', async () => {
   const repo = makeRepo();
   try {

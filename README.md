@@ -53,13 +53,14 @@ Requires Node.js `>=18.15.0`.
 - `reslop -r` read-only mode
 - `reslop t -- <program> [args]` run one program and print a reduced report
 
-In the commits, branches, and npm packages lists, hold Shift and press Up or Down to select a range.
-Shift+Home and Shift+End extend to either end of the list. Moving without Shift
-returns to a single selected row. Delete acts on the selected range.
-In branches, `s` squashes the selected branches into staged changes on the
-current branch; the current branch is skipped.
-In npm packages, `w` updates the range to wanted versions and `l` installs
-latest versions, keeping dev dependencies in their own section.
+In the commits, branches, and npm packages lists, hold Shift and press Up or
+Down to select a range. Shift+Home and Shift+End extend to either end of the
+list. Moving without Shift returns to a single selected row. Delete acts on
+the selected range. In commits, `u` updates the selected commits' timestamps
+without editing their messages. In branches, `s` squashes the selected branches
+into staged changes on the current branch; the current branch is skipped. In
+npm packages, `w` updates the range to wanted versions and `l` installs latest
+versions, keeping dev dependencies in their own section.
 
 Prefix each program in an npm script with `reslop t --`. Keep `&&` between those wraps, so each program is captured on its own and a failing step does not start the next one:
 
