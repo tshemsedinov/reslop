@@ -1196,6 +1196,34 @@ test('dropCommits retains unselected entries and refuses root', async () => {
   }
 });
 
+test('squashBranches stages the selected branches together', async () => {
+  const repo = makeRepo();
+  try {
+    repo.write('root.txt', 'root\n');
+    repo.git(['add', 'root.txt']);
+    repo.git(['commit', '-m', 'root']);
+    const main = await currentBranch(repo.dir);
+    const head = repo.git(['rev-parse', 'HEAD']);
+    for (const name of ['one', 'two']) {
+      repo.git(['checkout', '-b', name, main]);
+      repo.write(`${name}.txt`, `${name}\n`);
+      repo.git(['add', `${name}.txt`]);
+      repo.git(['commit', '-m', name]);
+    }
+    repo.git(['checkout', main]);
+    await git.squashBranches(repo.dir, ['one', 'two']);
+    assert.equal(repo.git(['rev-parse', 'HEAD']), head);
+    assert.equal(await currentBranch(repo.dir), main);
+    assert.deepEqual(
+      repo.git(['diff', '--cached', '--name-only']).trim().split('\n'),
+      ['one.txt', 'two.txt'],
+    );
+    assert.equal((await listBranches(repo.dir)).length, 3);
+  } finally {
+    repo.cleanup();
+  }
+});
+
 test('dropBranch deletes a branch that is not current', async () => {
   const repo = makeRepo();
   try {
