@@ -61,10 +61,9 @@ The uncommitted changes row is always excluded from commit ranges.
 Drag across rows or Shift-click a row to select a range. Ctrl-click toggles
 a row on or off. Ctrl-Shift-click adds a range to the rows already selected.
 In commits, `u` updates the selected commits' timestamps
-without editing their messages. In branches, `s` squashes the selected branches
-into staged changes on the current branch; the current branch is skipped. In
-npm packages, `w` updates the range to wanted versions and `l` installs latest
-versions, keeping dev dependencies in their own section.
+without editing their messages. In npm packages, `w` updates the range to
+wanted versions and `l` installs latest versions, keeping dev dependencies in
+their own section.
 
 Prefix each program in an npm script with `reslop t --`. Keep `&&` between those wraps, so each program is captured on its own and a failing step does not start the next one:
 
