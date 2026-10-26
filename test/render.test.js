@@ -865,6 +865,29 @@ test('viewed commit is marked like the current branch', () => {
   assert.ok(!hash.includes(bg(THEME.ctxBg)));
 });
 
+test('full commit selection scrolls the entire item into the window', () => {
+  const { paintBodyCommits } = require('../lib/render/commits.js');
+  const commits = Array.from({ length: 4 }, (_, index) => ({
+    sha: `sha${index}`,
+    subject: `subject ${index}`,
+    body: `subject ${index}\nbody ${index}\nlast ${index}`,
+  }));
+  const view = { commits, commitView: 'full', listScroll: 0 };
+  const options = [80, false, 10, 1];
+  for (const commitCursor of [0, 1, 2, 3, 2, 1, 0]) {
+    const painted = paintBodyCommits({ ...view, commitCursor }, ...options);
+    const selected = painted.fileHits.filter(
+      (hit) => hit.cursor === commitCursor,
+    );
+    assert.equal(selected.length, 4);
+    const text = painted.body.join('\n');
+    for (const part of [`sha${commitCursor}`, `last ${commitCursor}`]) {
+      assert.ok(text.includes(part));
+    }
+    view.listScroll = painted.listScroll;
+  }
+});
+
 test('full view puts uncommitted changes on the first line', () => {
   const view = {
     pane: 'commits',
