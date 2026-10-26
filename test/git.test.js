@@ -1302,7 +1302,12 @@ test('commit selection writes leave an existing rebase alone', async () => {
     const head = repo.git(['rev-parse', 'HEAD']).trim();
     const rebaseDir = path.join(repo.dir, '.git', 'rebase-merge');
     fs.mkdirSync(rebaseDir);
-    for (const write of [git.updateCommitTimes, git.dropCommits]) {
+    const writes = [
+      (dir, shas) => git.updateCommitTimes(dir, shas),
+      (dir, shas) => git.dropCommits(dir, shas),
+      (dir, shas) => git.squashCommits(dir, shas, 'joined'),
+    ];
+    for (const write of writes) {
       await assert.rejects(
         write(repo.dir, [head]),
         /rebase already in progress/,
@@ -1310,6 +1315,66 @@ test('commit selection writes leave an existing rebase alone', async () => {
       assert.ok(fs.existsSync(rebaseDir));
       assert.equal(repo.git(['rev-parse', 'HEAD']).trim(), head);
     }
+  } finally {
+    repo.cleanup();
+  }
+});
+
+const commitNamed = (repo, name) => {
+  repo.write(`${name}.txt`, `${name}\n`);
+  repo.git(['add', `${name}.txt`]);
+  repo.git(['commit', '-m', `${name}\n\nbody ${name}`]);
+};
+
+const namesAt = (repo, rev) =>
+  repo.git(['ls-tree', '--name-only', rev]).trim().split('\n').sort();
+
+test('squashCommits folds a range into one message', async () => {
+  const repo = makeRepo();
+  try {
+    for (const name of ['root', 'one', 'two', 'three']) commitNamed(repo, name);
+    const before = await listCommits(repo.dir);
+    const picked = [before[2].sha, before[1].sha];
+    await git.squashCommits(repo.dir, picked, 'joined\n\nkept');
+    const after = await listCommits(repo.dir);
+    assert.deepEqual(
+      after.map((entry) => entry.subject),
+      ['three', 'joined', 'root'],
+    );
+    assert.equal(after[1].body, 'joined\n\nkept');
+    assert.deepEqual(namesAt(repo, 'HEAD~1'), [
+      'one.txt',
+      'root.txt',
+      'two.txt',
+    ]);
+    assert.equal(repo.git(['status', '--porcelain']), '');
+    assert.equal(repo.read('two.txt'), 'two\n');
+  } finally {
+    repo.cleanup();
+  }
+});
+
+test('squashCommits keeps commits that were not selected', async () => {
+  const repo = makeRepo();
+  try {
+    for (const name of ['root', 'one', 'two', 'three']) commitNamed(repo, name);
+    const before = await listCommits(repo.dir);
+    const picked = [before[0].sha, before[2].sha];
+    await git.squashCommits(repo.dir, picked, 'ends');
+    const after = await listCommits(repo.dir);
+    assert.deepEqual(
+      after.map((entry) => entry.subject),
+      ['two', 'ends', 'root'],
+    );
+    assert.equal(after[1].body, 'ends');
+    assert.equal(after[0].body, 'two\n\nbody two');
+    assert.deepEqual(namesAt(repo, 'HEAD~1'), [
+      'one.txt',
+      'root.txt',
+      'three.txt',
+    ]);
+    assert.equal(repo.read('two.txt'), 'two\n');
+    assert.equal(repo.git(['status', '--porcelain']), '');
   } finally {
     repo.cleanup();
   }

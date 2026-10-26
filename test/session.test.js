@@ -3464,6 +3464,87 @@ test('commit ranges update timestamps and delete together', async () => {
   assert.deepEqual(dropped, [shas]);
 });
 
+test('commit ranges squash into one message for editing', async () => {
+  const { session, repo } = await openSession([sampleItem('a.js')]);
+  const squashed = [];
+  repo.setCommits([
+    {
+      sha: 'ccc3333ccccccccccccccccccccccccccccccc',
+      shortSha: 'ccc3333',
+      author: 'Ada',
+      date: 'now',
+      subject: 'three',
+      body: 'three\n\nthird',
+    },
+    {
+      sha: 'bbb2222bbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
+      shortSha: 'bbb2222',
+      author: 'Ada',
+      date: 'yesterday',
+      subject: 'two',
+      body: 'two\n\nsecond',
+    },
+    {
+      sha: 'aaa1111aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+      shortSha: 'aaa1111',
+      author: 'Ada',
+      date: '2 days ago',
+      subject: 'one',
+      body: 'one\n\nfirst',
+    },
+  ]);
+  repo.squashCommits = (top, shas, message) => {
+    squashed.push({ shas, message });
+  };
+  session.commits.onCommit();
+  await session.ops.idle();
+  press(session, 'shift-down', 's');
+  await session.ops.idle();
+  assert.equal(session.mode, 'review');
+  assert.deepEqual(squashed, []);
+  assert.deepEqual(repo.pushes, []);
+  press(session, 'home', 'shift-end');
+  session.draw();
+  const ids = session.lastFrame.buttons.map((hit) => hit.id);
+  assert.ok(ids.includes('squash'));
+  assert.ok(!ids.includes('push'));
+  assert.ok(!ids.includes('reword'));
+  press(session, 's');
+  await session.ops.idle();
+  assert.equal(session.mode, 'compose');
+  assert.equal(session.commitKind, 'squash');
+  assert.equal(session.commitCursor, 3);
+  const combined = 'one\n\nfirst\n\ntwo\n\nsecond\n\nthree\n\nthird';
+  assert.equal(session.editor.text, combined);
+  session.draw();
+  const header = stripAnsi(session.lastFrame.rows[0]);
+  const footer = stripAnsi(session.lastFrame.rows.at(-1));
+  assert.match(header, /commits full/);
+  assert.match(footer, /Ctrl-S/);
+  press(session, 'enter');
+  assert.equal(session.mode, 'compose');
+  press(session, 'escape');
+  assert.equal(session.mode, 'review');
+  assert.deepEqual(squashed, []);
+  press(session, 'home', 'shift-end', 's');
+  await session.ops.idle();
+  session.editor.replace('joined\n\nbody');
+  press(session, 'ctrl-s');
+  await session.ops.idle();
+  assert.equal(session.status, 'squashed');
+  assert.equal(session.mode, 'review');
+  assert.deepEqual(squashed, [
+    {
+      shas: [
+        'ccc3333ccccccccccccccccccccccccccccccc',
+        'bbb2222bbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
+        'aaa1111aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+      ],
+      message: 'joined\n\nbody',
+    },
+  ]);
+});
+
 test('branch ranges delete noncurrent branches', async () => {
   const { session, repo } = await openSession([sampleItem('a.js')]);
   const branches = [
