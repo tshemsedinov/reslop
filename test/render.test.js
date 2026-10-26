@@ -3903,7 +3903,7 @@ test('secondary screens lead the hint line with 🢐esc', () => {
     /^ 🢐esc {2}light {2}pull {2}push.*files {2}diffs/,
   );
   assert.match(plain({ pane: 'dashboard' }), /run {2}npm\s/);
-  assert.match(plain({ pane: 'commits' }), /view {2}pull {2}push/);
+  assert.match(plain({ pane: 'commits' }), /u {2}del {2}v {2}p {2}s/);
   assert.match(plain({ pane: 'repos' }), /^ 🢐esc {2}light/);
   assert.ok(!plain({ pane: 'repos' }).includes('files'));
   const output = footerOf({ pane: 'npm', npmView: true });
