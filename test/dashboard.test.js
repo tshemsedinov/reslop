@@ -1432,6 +1432,11 @@ test('the npm screen lists every package the tile cuts off', () => {
   const body = painted.body.join('\n');
   assert.match(painted.body[1], /^ {2}\S.* {2}$/);
   assert.ok(painted.body[1].includes('current'));
+  assert.equal(painted.body[2].trim(), '');
+  assert.match(painted.body[3], /^ {2}pkg/);
+  const first = Number(painted.body[3].match(/pkg(\d+)/)[1]);
+  const hit = painted.fileHits.find((spot) => spot.cursor === first);
+  assert.equal(hit.y, 1 + 3 + 1);
   assert.equal(body.includes('▶'), false);
   assert.ok(body.includes('pkg11'));
   assert.equal(body.includes('deps:'), false);
