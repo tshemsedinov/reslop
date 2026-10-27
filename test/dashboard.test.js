@@ -1430,9 +1430,9 @@ test('the npm screen lists every package the tile cuts off', () => {
   };
   const painted = paintBodyPackages(view, 48, false, 8, 1);
   const body = painted.body.join('\n');
-  assert.match(painted.body[1], /^ {3}/);
+  assert.match(painted.body[1], /^ {2}\S.* {2}$/);
   assert.ok(painted.body[1].includes('current'));
-  assert.ok(body.includes('▶'));
+  assert.equal(body.includes('▶'), false);
   assert.ok(body.includes('pkg11'));
   assert.equal(body.includes('deps:'), false);
 });
