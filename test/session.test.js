@@ -6890,6 +6890,28 @@ test('delete removes the selected npm script after confirmation', async () => {
   assert.equal(session.status, 'dropped test');
 });
 
+test('dragging the scroller of a list moves its rows and cursor', async () => {
+  const items = Array.from({ length: 40 }, (_, at) => sampleItem(`f${at}.js`));
+  const { session } = await openSession(items, { startPane: 'files' });
+  session.draw();
+  const [bar] = session.lastFrame.scrollBars;
+  assert.equal(bar.target, 'list');
+  assert.equal(bar.start, 0);
+  const mouse = (kind, y) =>
+    session.handleEvent({ type: 'mouse', kind, button: 0, x: bar.x, y });
+  mouse('press', bar.y + bar.track);
+  session.draw();
+  mouse('drag', bar.y + bar.height - 1);
+  session.draw();
+  mouse('release', bar.y + bar.height - 1);
+  session.draw();
+  const [moved] = session.lastFrame.scrollBars;
+  assert.equal(moved.start, 40 - moved.rows);
+  assert.equal(session.fileCursor, moved.start);
+  const picked = session.fileList()[moved.start].path;
+  assert.equal(session.reviewPath, picked);
+});
+
 test('ctrl+a selects every row of a list', async () => {
   const items = [sampleItem('a.js'), sampleItem('b.js'), sampleItem('c.js')];
   const { session, cwd } = await openSession(items, { startPane: 'files' });
