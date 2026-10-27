@@ -6758,6 +6758,74 @@ test('delete removes the selected npm script after confirmation', async () => {
   assert.equal(session.status, 'dropped test');
 });
 
+test('npm and run lists select a range', async () => {
+  const { session, cwd } = await openSession([sampleItem('a.js')]);
+  const file = path.join(cwd, 'package.json');
+  fs.writeFileSync(
+    file,
+    `${JSON.stringify({
+      scripts: {
+        test: 'node --test',
+        lint: 'eslint .',
+        build: 'node build.js',
+      },
+    })}\n`,
+  );
+  session.npm.open();
+  press(session, 'shift-down');
+  assert.deepEqual(session.view().listSelection, [0, 1]);
+  session.draw();
+  const ids = session.lastFrame.buttons.map((hit) => hit.id);
+  assert.ok(ids.includes('npmDrop'));
+  assert.ok(!ids.includes('npmEdit'));
+  const cell = session.lastFrame.fileHits.find(
+    (hit) => hit.side === 'commands' && hit.cursor === 2,
+  );
+  shiftClick(session, { x: cell.x0 + 2, y: cell.y });
+  assert.deepEqual(session.view().listSelection, [0, 1, 2]);
+  press(session, 'down');
+  assert.deepEqual(session.view().listSelection, []);
+  press(session, 'home', 'shift-down', 'delete', 'y');
+  const saved = JSON.parse(fs.readFileSync(file, 'utf8'));
+  assert.deepEqual(Object.keys(saved.scripts), ['build']);
+  session.npm.runs.push(
+    {
+      id: 1,
+      name: 'one',
+      command: 'echo one',
+      status: 'exited',
+      startedAt: 1,
+      endedAt: 2,
+    },
+    {
+      id: 2,
+      name: 'two',
+      command: 'echo two',
+      status: 'exited',
+      startedAt: 10,
+      endedAt: 12,
+    },
+    {
+      id: 3,
+      name: 'three',
+      command: 'echo three',
+      status: 'exited',
+      startedAt: 20,
+      endedAt: 22,
+    },
+  );
+  session.npm.focusRuns();
+  session.npm.runCursor = 0;
+  press(session, 'shift-down');
+  assert.deepEqual(session.view().listSelection, [0, 1]);
+  press(session, 'delete');
+  assert.equal(session.mode, 'review');
+  const kept = JSON.parse(fs.readFileSync(file, 'utf8'));
+  assert.equal(kept.scripts.build, 'node build.js');
+  press(session, 'down');
+  assert.deepEqual(session.view().listSelection, []);
+});
+
 const daysAgoStamp = (ago) => {
   const date = new Date();
   date.setDate(date.getDate() - ago);

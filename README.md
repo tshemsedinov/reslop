@@ -66,7 +66,9 @@ In commits, `u` updates the selected commits' timestamps
 without editing their messages, and `s` squashes the selected commits into
 one, opening the combined message for editing. In npm packages, `w` updates
 the range to wanted versions and `l` installs latest versions, keeping dev
-dependencies in their own section.
+dependencies in their own section. The npm scripts list, the run history,
+and the agent session list select the same way. Delete drops every selected
+npm script.
 
 Prefix each program in an npm script with `reslop t --`. Keep `&&` between those wraps, so each program is captured on its own and a failing step does not start the next one:
 
