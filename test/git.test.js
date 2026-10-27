@@ -1044,6 +1044,36 @@ test('applyFixup squashes a fixup into its target', async () => {
   }
 });
 
+test('applyFixup folds only the selected fixup into its target', async () => {
+  const repo = makeRepo();
+  try {
+    repo.write('a.txt', 'one\n');
+    repo.git(['add', 'a.txt']);
+    repo.git(['commit', '-m', 'one']);
+    repo.write('b.txt', 'two\n');
+    repo.git(['add', 'b.txt']);
+    repo.git(['commit', '-m', 'two']);
+    repo.write('b.txt', 'two-fix\n');
+    repo.git(['add', 'b.txt']);
+    repo.git(['commit', '-m', 'fixup! two']);
+    repo.write('a.txt', 'one-fix\n');
+    repo.git(['add', 'a.txt']);
+    repo.git(['commit', '-m', 'fixup! one']);
+    const listed = await listCommits(repo.dir);
+    await git.applyFixup(repo.dir, listed[1].sha);
+    const after = await listCommits(repo.dir);
+    assert.deepEqual(
+      after.map((entry) => entry.subject),
+      ['fixup! one', 'two', 'one'],
+    );
+    assert.equal(repo.read('a.txt'), 'one-fix\n');
+    assert.equal(repo.read('b.txt'), 'two-fix\n');
+    assert.equal(repo.git(['status', '--porcelain']), '');
+  } finally {
+    repo.cleanup();
+  }
+});
+
 test('applyFixup refuses a non-fixup commit', async () => {
   const repo = makeRepo();
   try {
@@ -1306,6 +1336,7 @@ test('commit selection writes leave an existing rebase alone', async () => {
       (dir, shas) => git.updateCommitTimes(dir, shas),
       (dir, shas) => git.dropCommits(dir, shas),
       (dir, shas) => git.squashCommits(dir, shas, 'joined'),
+      (dir, shas) => git.applyFixup(dir, shas[0]),
     ];
     for (const write of writes) {
       await assert.rejects(
