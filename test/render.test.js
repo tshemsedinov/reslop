@@ -2735,6 +2735,79 @@ test('a multiselected row looks like the single selected row', () => {
   assert.equal(rowOf({ ...both, multiselect: true }, 'node --test'), one);
 });
 
+test('long lists show a one column scroller', () => {
+  const base = { repoName: 'demo', counts: {}, status: '', scroll: 0 };
+  const options = { width: 60, height: 10, color: true };
+  const thumb = bg(THEME.taskHeadBg);
+  const thumbRows = (frame) =>
+    frame.rows.slice(1, -2).filter((row) => row.includes(`${thumb} `));
+  const entry = { status: 'unstaged', remaining: 1, staged: 0 };
+  const files = Array.from({ length: 30 }, (_, at) => ({
+    ...entry,
+    path: `f${at}.js`,
+    firstIndex: at,
+  }));
+  const flat = render.renderFrame(
+    { ...base, pane: 'files', files, fileCursor: 0 },
+    options,
+  );
+  assert.ok(thumbRows(flat).length > 0);
+  assert.equal(flat.scrollBars.length, 1);
+  assert.equal(flat.scrollBars[0].x, 60);
+  assert.equal(flat.scrollBars[0].target, 'list');
+  const few = render.renderFrame(
+    { ...base, pane: 'files', files: files.slice(0, 2), fileCursor: 0 },
+    options,
+  );
+  assert.equal(thumbRows(few).length, 0);
+  assert.deepEqual(few.scrollBars, []);
+  const folders = Array.from({ length: 20 }, (_, at) => ({
+    key: at ? `d${at}` : '.',
+    name: at ? `d${at}` : '/',
+    depth: at ? 1 : 0,
+    files: 1,
+    bytes: 1,
+    lines: 1,
+    sized: true,
+  }));
+  const tree = render.renderFrame(
+    { ...base, pane: 'files', fileScope: 'file', files, folders },
+    options,
+  );
+  const targets = tree.scrollBars.map((bar) => [bar.target, bar.x]);
+  assert.deepEqual(targets, [
+    ['folders', 18],
+    ['list', 60],
+  ]);
+  const branches = files.map((file) => ({ name: file.path, subject: 's' }));
+  const listed = render.renderFrame(
+    { ...base, pane: 'branches', branches, branchCursor: 0 },
+    options,
+  );
+  assert.equal(listed.scrollBars[0].target, 'list');
+  const commits = files.map((file, at) => ({
+    sha: `${at}`.repeat(7),
+    shortSha: `${at}`.repeat(7),
+    subject: file.path,
+    body: `${file.path}\nmore`,
+  }));
+  const brief = { ...base, pane: 'commits', commits, commitCursor: 0 };
+  assert.equal(render.renderFrame(brief, options).scrollBars[0].target, 'list');
+  const full = render.renderFrame({ ...brief, commitView: 'full' }, options);
+  assert.ok(thumbRows(full).length > 0);
+  assert.equal(full.scrollBars[0].target, '');
+  const tasks = render.renderFrame(
+    {
+      ...base,
+      pane: 'tasks',
+      tasks: files.map((file) => `[ ] ${file.path}`),
+      tasksFocus: 0,
+    },
+    options,
+  );
+  assert.ok(thumbRows(tasks).length > 0);
+});
+
 test('list screens keep two spaces at both sides of a row', () => {
   const base = { repoName: 'demo', counts: {}, status: '', scroll: 0 };
   const rowsOf = (view) =>
