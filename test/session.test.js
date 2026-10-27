@@ -3594,10 +3594,35 @@ test('commits pane a applies a selected fixup', async () => {
     },
   ]);
   session.commits.refresh();
+  await session.ops.idle();
+  session.draw();
+  assert.equal(
+    session.lastFrame.buttons.some((hit) => hit.id === 'apply'),
+    false,
+  );
   session.dispatch('next');
   await session.ops.idle();
   session.draw();
   assert.ok(session.lastFrame.buttons.find((hit) => hit.id === 'apply'));
+  const other = listCell(session, 2);
+  rightClick(session, other.x, other.y);
+  assert.equal(session.nav.contextMenu.actions.includes('apply'), false);
+  press(session, 'escape');
+  press(session, 'p');
+  await session.ops.idle();
+  session.draw();
+  assert.deepEqual(repo.applyFixups, []);
+  assert.equal(session.mode, 'review');
+  assert.equal(
+    session.lastFrame.buttons.some((hit) => hit.id === 'apply'),
+    false,
+  );
+  session.dispatch('prev');
+  await session.ops.idle();
+  const fixup = listCell(session, 1);
+  rightClick(session, fixup.x, fixup.y);
+  assert.ok(session.nav.contextMenu.actions.includes('apply'));
+  press(session, 'escape');
   session.pushInput('p');
   await session.ops.idle();
   assert.deepEqual(repo.applyFixups, [
@@ -3866,7 +3891,7 @@ test('files pane p and s do not pull or push', async () => {
   assert.equal(session.pane, 'files');
 });
 
-test('commits pane p applies and s does not push', async () => {
+test('commits pane p ignores a normal row and s pushes', async () => {
   const { session, repo } = await openSession([sampleItem('a.js')], {
     startPane: 'files',
   });
@@ -3874,9 +3899,12 @@ test('commits pane p applies and s does not push', async () => {
   await session.ops.idle();
   assert.equal(session.pane, 'commits');
   session.pushInput('p');
-  session.pushInput('s');
   assert.equal(repo.pulls.length, 0);
   assert.equal(repo.pushes.length, 0);
+  assert.equal(session.mode, 'review');
+  assert.equal(session.commitKind, null);
+  session.pushInput('s');
+  assert.equal(repo.pushes.length, 1);
   assert.equal(session.pane, 'commits');
 });
 

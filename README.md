@@ -23,7 +23,7 @@ Review → Plan → Repair → Verify
 - Stage, unstage, or revert each contiguous block of diff lines
 - Auto-reload local diffs when files change, keeping the current screen
 - Import GitHub PR and GitLab MR review comments, and GitHub/GitLab issues, into tasks and the local plan
-- Commits list: brief and full, view a commit's diff, commit, update, amend, apply, edit, fixup, and delete
+- Commits list: brief and full, view a commit's diff, commit, update, amend, apply a fixup onto its target, edit, fixup, and delete
 - Branches: checkout, create, rebase with autoresolved conflicts, delete, pull, and push; git worktrees as tiles above the branches
 - npm scripts: run, edit, reorder, clean logs
 - Reduced test and lint output for agents: failures and a short summary, not passing noise

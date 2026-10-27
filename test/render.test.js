@@ -689,6 +689,7 @@ test('commit pane brief mode lists subject hash branch and age', () => {
   for (const id of ['commit', 'apply', 'amend', 'fixup']) {
     assert.ok(!commitIds.includes(id), id);
   }
+  assert.equal(footer.includes('apply'), false);
   assert.ok(!footer.includes('add'));
   assert.ok(!footer.includes('←'));
   view.commits[0] = {
@@ -3953,7 +3954,10 @@ test('secondary screens lead the hint line with 🢐esc', () => {
     /^ 🢐esc {2}light {2}pull {2}push.*files {2}diffs/,
   );
   assert.match(plain({ pane: 'dashboard' }), /run {2}npm\s/);
-  assert.match(plain({ pane: 'commits' }), /u {2}del {2}v {2}p {2}s/);
+  const commits = plain({ pane: 'commits' });
+  assert.match(commits, /insert {2}edit {2}update {2}delete {2}view/);
+  assert.match(commits, /pull {2}push/);
+  assert.equal(commits.includes('apply'), false);
   assert.match(plain({ pane: 'repos' }), /^ 🢐esc {2}light/);
   assert.ok(!plain({ pane: 'repos' }).includes('files'));
   const output = footerOf({ pane: 'npm', npmView: true });

@@ -477,11 +477,11 @@ test('disabledActions hides add unstage drop ignore on files todos', () => {
   const pending = { pending: true, sha: '', canCommit: true };
   const pendingOff = disabledActions('commits', pending);
   assert.equal(pendingOff.includes('amend'), false);
-  assert.equal(pendingOff.includes('apply'), false);
+  assert.equal(pendingOff.includes('apply'), true);
   assert.equal(pendingOff.includes('reword'), true);
   assert.equal(pendingOff.includes('drop'), true);
   assert.equal(disabledActions('commits', viewed).includes('apply'), true);
-  assert.equal(commitOff.includes('apply'), false);
+  assert.equal(commitOff.includes('apply'), true);
   assert.equal(commitOff.includes('reword'), false);
   assert.equal(commitOff.includes('commit'), false);
   assert.equal(commitOff.includes('pull'), false);
