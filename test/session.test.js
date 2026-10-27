@@ -5758,7 +5758,7 @@ test('files pane r opens npm scripts and bins', async () => {
   assert.match(body, /test/);
   assert.match(body, /lint/);
   assert.match(body, /leftpad/);
-  assert.match(body, /: npm/);
+  assert.match(body, /: run /);
   assert.ok(!body.includes(' q'));
   session.pushInput('e');
   assert.equal(session.mode, 'compose');
