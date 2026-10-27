@@ -2636,6 +2636,7 @@ test('files screen shows a folder tree, the active pick lighter', () => {
   const view = {
     pane: 'files',
     files,
+    fileScope: 'file',
     folders,
     folderCursor: 1,
     fileCursor: 0,
@@ -2673,7 +2674,15 @@ test('files screen shows a folder tree, the active pick lighter', () => {
   const onTree = render.renderFrame({ ...view, folderFocus: true }, color);
   assert.ok(!onTree.rows[2].includes(strong));
   assert.ok(onTree.rows[3].includes(strong));
-  assert.match(render.headerText({ ...view, folderFocus: true }), /demo\/lib$/);
+  assert.match(render.headerText(view), /reslop: demo: files$/);
+  const onFolder = { ...view, folderFocus: true };
+  assert.match(render.headerText(onFolder), /reslop: demo: files$/);
+  const diffs = { ...view, fileScope: 'diff' };
+  assert.match(render.headerText(diffs), /reslop: demo\/lib\/a\.js$/);
+  const run = { ...view, pane: 'npm' };
+  assert.match(render.headerText(run), /reslop: demo: run$/);
+  const packages = { ...view, pane: 'packages' };
+  assert.match(render.headerText(packages), /reslop: demo: npm packages$/);
 });
 
 test('list screens show the selection without a marker', () => {
