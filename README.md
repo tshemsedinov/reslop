@@ -56,7 +56,8 @@ Requires Node.js `>=18.15.0`.
 In the commits, branches, npm packages, and files lists, hold Shift and press
 Up or Down to select a range. On the diff, Shift with Up, Down, Left, or Right
 selects hunks. Shift+Home and Shift+End extend to either end of the
-list. Moving without Shift returns to a single selected row. Ranges skip the
+list, and Ctrl+A selects every row of it. Moving without Shift returns to a
+single selected row. Ranges skip the
 current row and hide cursor markers. Delete acts on the selected range.
 The uncommitted changes row is always excluded from commit ranges.
 Drag across rows or Shift-click a row to select a range. Ctrl-click toggles
