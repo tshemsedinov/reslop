@@ -893,6 +893,175 @@ test('files pane add unstage revert apply to the whole file', async () => {
   assert.equal(session.fileList()[0].path, 'b.js');
 });
 
+const laterHunk = (name) => {
+  const item = sampleItem(name);
+  item.blockId = 1;
+  item.hunk = {
+    ...item.hunk,
+    oldStart: 10,
+    newStart: 10,
+    header: '@@ -10,1 +10,1 @@',
+    blockId: 1,
+  };
+  return item;
+};
+
+test('file selection stages unstages and drops the chosen files', async () => {
+  const { session, repo } = await openSession(
+    [sampleItem('a.js'), sampleItem('b.js'), sampleItem('c.js')],
+    { startPane: 'files' },
+  );
+  press(session, 'shift-down');
+  assert.deepEqual(session.view().listSelection, [0, 1]);
+  session.draw();
+  const ids = session.lastFrame.buttons.map((hit) => hit.id);
+  assert.ok(ids.includes('add'));
+  assert.ok(!ids.includes('code'));
+  session.dispatch('code');
+  assert.equal(session.pane, 'files');
+  session.dispatch('add');
+  await session.ops.idle();
+  assert.deepEqual(
+    session.items.map((item) => item.origin),
+    ['staged', 'staged', 'unstaged'],
+  );
+  assert.equal(session.nav.multiselect, false);
+  assert.equal(session.fileCursor, 2);
+  assert.equal(repo.added.length, 2);
+  press(session, 'home', 'shift-down');
+  session.dispatch('unstage');
+  await session.ops.idle();
+  assert.deepEqual(
+    session.items.map((item) => item.origin),
+    ['unstaged', 'unstaged', 'unstaged'],
+  );
+  press(session, 'home', 'shift-end');
+  session.dispatch('revert');
+  await session.ops.idle();
+  assert.equal(repo.reverted.length, 3);
+  assert.equal(session.fileList().length, 0);
+});
+
+test('sgr shift click selects the file span', async () => {
+  const { session } = await openSession(
+    [sampleItem('a.js'), sampleItem('b.js'), sampleItem('c.js')],
+    { startPane: 'files' },
+  );
+  const cell = listCell(session, 2);
+  const down = `\x1b[<4;${cell.x};${cell.y}M`;
+  const up = `\x1b[<4;${cell.x};${cell.y}m`;
+  session.pushInput(down + up);
+  assert.deepEqual(session.view().listSelection, [0, 1, 2]);
+});
+
+test('ctrl-click stages only the files left selected', async () => {
+  const { session, repo } = await openSession(
+    [sampleItem('a.js'), sampleItem('b.js'), sampleItem('c.js')],
+    { startPane: 'files' },
+  );
+  shiftClick(session, listCell(session, 2));
+  assert.deepEqual(session.view().listSelection, [0, 1, 2]);
+  ctrlClick(session, listCell(session, 1));
+  assert.deepEqual(session.view().listSelection, [0, 2]);
+  session.dispatch('add');
+  await session.ops.idle();
+  assert.deepEqual(
+    repo.added.map((item) => item.file.newPath),
+    ['a.js', 'c.js'],
+  );
+  press(session, 'down');
+  assert.deepEqual(session.view().listSelection, []);
+});
+
+test('file selection ignore writes every chosen path', async () => {
+  const { session, cwd } = await openSession(
+    [sampleItem('a.log'), sampleItem('b.log')],
+    { startPane: 'files' },
+  );
+  fs.writeFileSync(path.join(cwd, '.npmignore'), 'dist/\n');
+  press(session, 'shift-down');
+  session.dispatch('ignore');
+  const gitignore = fs.readFileSync(path.join(cwd, '.gitignore'), 'utf8');
+  assert.match(gitignore, /^a\.log\nb\.log\n$/);
+  const npmignore = fs.readFileSync(path.join(cwd, '.npmignore'), 'utf8');
+  assert.match(npmignore, /dist\/\na\.log\nb\.log\n$/);
+  assert.equal(session.nav.multiselect, false);
+});
+
+test('staged file cursor does not block adding the selection', async () => {
+  const { session } = await openSession(
+    [sampleItem('a.js', 'staged'), sampleItem('b.js'), sampleItem('c.js')],
+    { startPane: 'files' },
+  );
+  press(session, 'shift-end');
+  session.dispatch('add');
+  assert.deepEqual(
+    session.items.map((item) => item.origin),
+    ['staged', 'staged', 'staged'],
+  );
+  press(session, 'home', 'shift-end');
+  session.dispatch('add');
+  assert.equal(session.status, 'already staged');
+  assert.equal(session.nav.multiselect, true);
+  assert.equal(session.fileCursor, 2);
+});
+
+test('diff selection stages one hunk of a file', async () => {
+  const { session, repo } = await openSession([
+    sampleItem('a.js'),
+    laterHunk('a.js'),
+    sampleItem('b.js'),
+  ]);
+  press(session, 'shift-down', 'shift-up');
+  assert.deepEqual(session.view().listSelection, [0]);
+  assert.equal(session.nav.multiselect, true);
+  session.dispatch('add');
+  await session.ops.idle();
+  assert.deepEqual(
+    session.items.map((item) => item.origin),
+    ['staged', 'unstaged', 'unstaged'],
+  );
+  assert.equal(repo.added.length, 1);
+});
+
+test('diff selection stages unstages and drops the chosen blocks', async () => {
+  const { session, repo } = await openSession([
+    sampleItem('a.js'),
+    laterHunk('a.js'),
+    sampleItem('b.js'),
+  ]);
+  press(session, 'shift-right');
+  assert.deepEqual(session.view().listSelection, [0, 1]);
+  session.draw();
+  const ids = session.lastFrame.buttons.map((hit) => hit.id);
+  assert.ok(ids.includes('add'));
+  assert.ok(!ids.includes('code'));
+  session.dispatch('feedback');
+  assert.equal(session.pane, 'diff');
+  session.dispatch('add');
+  await session.ops.idle();
+  assert.deepEqual(
+    session.items.map((item) => item.origin),
+    ['staged', 'staged', 'unstaged'],
+  );
+  assert.equal(repo.added.length, 2);
+  press(session, 'left', 'shift-right');
+  session.dispatch('unstage');
+  await session.ops.idle();
+  assert.deepEqual(
+    session.items.map((item) => item.origin),
+    ['unstaged', 'unstaged', 'unstaged'],
+  );
+  press(session, 'left', 'shift-down');
+  assert.deepEqual(session.view().listSelection, [0, 1]);
+  press(session, 'right');
+  assert.deepEqual(session.view().listSelection, []);
+  press(session, 'shift-home');
+  session.dispatch('revert');
+  await session.ops.idle();
+  assert.equal(repo.reverted.length, 3);
+});
+
 test('files pane i appends the path to gitignore and npmignore', async () => {
   const { session, cwd } = await openSession([sampleItem('noise.log')], {
     startPane: 'files',
