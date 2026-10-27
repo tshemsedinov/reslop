@@ -940,7 +940,7 @@ test('full commit selection scrolls the entire item into the window', () => {
   }
 });
 
-test('multiselected commits are grey throughout the full item', () => {
+test('multiselected commits look like the selected one', () => {
   const { paintBodyCommits } = require('../lib/render/commits.js');
   const commits = [
     { sha: 'one', body: 'first\nbody', subject: 'first' },
@@ -957,7 +957,7 @@ test('multiselected commits are grey throughout the full item', () => {
     const painted = paintBodyCommits(view, 80, true, 16, 1);
     for (const hit of painted.fileHits) {
       const row = painted.body[hit.y - 2];
-      assert.ok(row.includes(bg(THEME.selectionBg)));
+      assert.ok(row.includes(bg(THEME.buttonBg)));
       assert.ok(!row.includes(bg(THEME.currentBg)));
     }
   }
@@ -2703,6 +2703,32 @@ test('list screens show the selection without a marker', () => {
   assert.deepEqual(marks({ pane: 'npm', npmCommands, npmCursor: 0 }), []);
   const branches = [{ name: 'main', current: true, subject: 'x' }];
   assert.deepEqual(marks({ pane: 'branches', branches, branchCursor: 0 }), []);
+});
+
+test('a multiselected row looks like the single selected row', () => {
+  const base = { repoName: 'demo', counts: {}, status: '', scroll: 0 };
+  const options = { width: 80, height: 10, color: true };
+  const entry = { status: 'unstaged', remaining: 1, staged: 0, firstIndex: 0 };
+  const files = [
+    { ...entry, path: 'a.js' },
+    { ...entry, path: 'b.js' },
+  ];
+  const rowOf = (view, name) =>
+    render
+      .renderFrame({ ...base, pane: 'files', files, ...view }, options)
+      .rows.slice(1)
+      .find((row) => stripAnsi(row).includes(name));
+  const single = rowOf({ fileCursor: 0 }, 'a.js');
+  const grouped = { fileCursor: 1, listSelection: [0, 1], multiselect: true };
+  assert.equal(rowOf(grouped, 'a.js'), single);
+  const npmCommands = [
+    { name: 'test', command: 'node --test' },
+    { name: 'lint', command: 'eslint .' },
+  ];
+  const npm = { pane: 'npm', npmCommands, npmFocus: 'commands' };
+  const one = rowOf({ ...npm, npmCursor: 0 }, 'node --test');
+  const both = { ...npm, npmCursor: 1, listSelection: [0, 1] };
+  assert.equal(rowOf({ ...both, multiselect: true }, 'node --test'), one);
 });
 
 test('list screens keep two spaces at both sides of a row', () => {
