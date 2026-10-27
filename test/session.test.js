@@ -573,6 +573,127 @@ test('j and k move the files cursor', async () => {
   assert.equal(session.fileCursor, 1);
 });
 
+test('files screen picks a folder and lists its files', async () => {
+  const items = [
+    sampleItem('README.md'),
+    sampleItem('lib/a.js'),
+    sampleItem('lib/b.js'),
+    sampleItem('lib/deep/c.js'),
+    sampleItem('test/x.js'),
+  ];
+  const { session } = await openSession(items, { startPane: 'files' });
+  session.nav.fileScope = 'file';
+  const view = () => session.view();
+  const names = () => session.fileList().map((entry) => entry.path);
+  const folders = () => view().folders.map((row) => row.key);
+  assert.deepEqual(folders(), ['.', 'lib', 'lib/deep', 'test']);
+  assert.equal(view().folderCursor, 0);
+  assert.deepEqual(names(), ['README.md']);
+  press(session, 'left');
+  assert.equal(view().folderFocus, true);
+  press(session, 'down');
+  assert.deepEqual(names(), ['lib/a.js', 'lib/b.js']);
+  assert.equal(session.reviewPath, 'lib/a.js');
+  assert.equal(view().folders[view().folderCursor].files, 3);
+  press(session, 'tab');
+  assert.equal(view().folderFocus, false);
+  press(session, 'down');
+  assert.equal(session.reviewPath, 'lib/b.js');
+  press(session, 'shift-tab', 'down', 'right');
+  assert.deepEqual(names(), ['lib/deep/c.js']);
+  assert.equal(session.fileCursor, 0);
+  press(session, 'left', 'end');
+  assert.deepEqual(names(), ['test/x.js']);
+  press(session, 'enter');
+  assert.equal(view().folderFocus, false);
+  assert.equal(session.pane, 'files');
+  press(session, 'enter');
+  assert.equal(session.pane, 'unit');
+  press(session, 'escape');
+  assert.equal(session.pane, 'files');
+  assert.deepEqual(names(), ['test/x.js']);
+  assert.equal(view().folderFocus, false);
+});
+
+test('file actions are off while the folder tree has the focus', async () => {
+  const { session, repo } = await openSession(
+    [sampleItem('lib/a.js'), sampleItem('b.js')],
+    { startPane: 'files' },
+  );
+  session.nav.fileScope = 'file';
+  press(session, 'left');
+  session.dispatch('add');
+  await session.ops.idle();
+  assert.equal(repo.added.length, 0);
+  press(session, 'right');
+  session.dispatch('add');
+  await session.ops.idle();
+  assert.deepEqual(
+    repo.added.map((item) => item.file.newPath),
+    ['b.js'],
+  );
+});
+
+test('a folder that empties falls back to its parent', async () => {
+  const { session } = await openSession(
+    [sampleItem('lib/a.js'), sampleItem('b.js')],
+    { startPane: 'files' },
+  );
+  session.nav.fileScope = 'file';
+  press(session, 'left', 'down', 'right');
+  assert.deepEqual(
+    session.fileList().map((entry) => entry.path),
+    ['lib/a.js'],
+  );
+  session.dispatch('revert');
+  await session.ops.idle();
+  assert.deepEqual(
+    session.fileList().map((entry) => entry.path),
+    ['b.js'],
+  );
+  assert.equal(session.view().folderCursor, 0);
+});
+
+test('the files screen shows the size and lines read from disk', async () => {
+  const cwd = tempDir('reslop-ui-');
+  fs.mkdirSync(path.join(cwd, 'lib'));
+  fs.writeFileSync(path.join(cwd, 'lib', 'a.js'), 'one\ntwo\nthree\n');
+  const { session } = await openSession([sampleItem('lib/a.js')], {
+    startPane: 'files',
+    cwd,
+  });
+  session.nav.fileScope = 'file';
+  session.view();
+  await session.ops.idle();
+  press(session, 'left', 'down');
+  const view = session.view();
+  assert.equal(view.files[0].bytes, 14);
+  assert.equal(view.files[0].lines, 3);
+  const lib = view.folders.find((row) => row.key === 'lib');
+  assert.equal(lib.bytes, 14);
+  assert.equal(lib.lines, 3);
+  assert.equal(view.folders[0].lines, 3);
+});
+
+test('the list of changes stays a plain list of paths', async () => {
+  const { session } = await openSession(
+    [sampleItem('lib/a.js'), sampleItem('b.js')],
+    { startPane: 'files' },
+  );
+  const view = session.view();
+  assert.equal(view.folders, undefined);
+  assert.deepEqual(
+    view.files.map((entry) => entry.path),
+    ['b.js', 'lib/a.js'],
+  );
+  press(session, 'left', 'tab', 'down');
+  assert.equal(session.fileCursor, 1);
+  session.draw();
+  const rows = session.lastFrame.rows.map(stripAnsi);
+  assert.ok(rows.some((row) => row.includes('▶ lib/a.js')));
+  assert.ok(!session.lastFrame.fileHits.some((hit) => hit.folder));
+});
+
 test('vim ctrl keys scroll the diff by line and page', async () => {
   const { session } = await openSession([tallItem('a.js', 80)]);
   session.draw();

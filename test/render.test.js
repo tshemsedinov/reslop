@@ -2595,6 +2595,67 @@ test('file list paints git status colors', () => {
   assert.match(mixed, /2\/3/);
 });
 
+test('files screen shows a folder tree, the active pick lighter', () => {
+  const files = [
+    {
+      path: 'lib/a.js',
+      status: 'unstaged',
+      remaining: 1,
+      staged: 0,
+      added: 2,
+      removed: 1,
+      bytes: 2048,
+      lines: 40,
+      firstIndex: 0,
+    },
+  ];
+  const folders = [
+    { key: '.', name: '/', depth: 0, files: 3, bytes: 4096, lines: 90 },
+    { key: 'lib', name: 'lib', depth: 1, files: 1, bytes: 2048, lines: 40 },
+  ].map((row) => ({ ...row, sized: true }));
+  const view = {
+    pane: 'files',
+    files,
+    folders,
+    folderCursor: 1,
+    fileCursor: 0,
+    repoName: 'demo',
+    counts: {},
+    status: '',
+    scroll: 0,
+  };
+  const options = { width: 100, height: 8, color: false };
+  const plain = render.renderFrame(view, options);
+  const top = stripAnsi(plain.rows[2]);
+  const row = stripAnsi(plain.rows[3]);
+  const leftW = 30;
+  assert.match(top.slice(0, leftW), /^ {3}\/ +3 4KB 90 $/);
+  assert.match(row.slice(0, leftW), /^ ▶ {3}lib +1 2KB 40 $/);
+  assert.match(
+    top.slice(leftW),
+    /^ ▶ a\.js +\+2 {2}-1 {2}0\/1 {2}2 KB {2}40 $/,
+  );
+  const tree = plain.fileHits.filter((hit) => hit.folder);
+  assert.deepEqual(
+    tree.map((hit) => [hit.cursor, hit.x0, hit.x1]),
+    [
+      [0, 0, leftW],
+      [1, 0, leftW],
+    ],
+  );
+  const color = { ...options, color: true };
+  const strong = bg(THEME.checkBg);
+  const onFiles = render.renderFrame(view, color);
+  assert.ok(onFiles.rows[2].includes(strong));
+  assert.ok(!onFiles.rows[3].includes(strong));
+  assert.ok(onFiles.rows[2].includes(bg(THEME.buttonBg)));
+  assert.ok(onFiles.rows[3].includes(bg(THEME.ctxBg)));
+  const onTree = render.renderFrame({ ...view, folderFocus: true }, color);
+  assert.ok(!onTree.rows[2].includes(strong));
+  assert.ok(onTree.rows[3].includes(strong));
+  assert.match(render.headerText({ ...view, folderFocus: true }), /demo\/lib$/);
+});
+
 test('AC25 header path roles use distinct greys', () => {
   assert.notDeepEqual(THEME.headerRepoFg, THEME.headerDirFg);
   assert.notDeepEqual(THEME.headerDirFg, THEME.headerFileFg);
