@@ -1562,6 +1562,31 @@ test('agents panels scroll past one screen', async (t) => {
   assert.equal(bottom.includes('run-39'), false);
 });
 
+test('agent sessions select a range', async (t) => {
+  const { env, ui } = await openAgents(t, 'claude-agent-acp');
+  await showAgents(ui, env);
+  for (let i = 0; i < 3; i++) {
+    ui.agents.jobs.push({
+      id: i + 1,
+      cliId: 'claude',
+      session: `sess-${i}`,
+      logName: `run-${i}.log`,
+      startedAt: i + 1,
+      model: 'sonnet',
+      status: 'exit 0',
+      command: `run-${i}`,
+    });
+  }
+  ui.agents.focusRuns();
+  ui.agents.runCursor = 0;
+  press(ui, 'shift-down');
+  assert.deepEqual(ui.view().listSelection, [0, 1]);
+  press(ui, 's');
+  assert.equal(ui.agents.viewing, false);
+  press(ui, 'down');
+  assert.deepEqual(ui.view().listSelection, []);
+});
+
 test('agents screen blocks a review file that is running', async (t) => {
   const { env, ui, repo } = await openAgents(
     t,
