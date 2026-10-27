@@ -2650,7 +2650,7 @@ test('files screen shows a folder tree, the active pick lighter', () => {
   const top = stripAnsi(plain.rows[2]);
   const row = stripAnsi(plain.rows[3]);
   const leftW = 30;
-  assert.match(top.slice(0, leftW), /^ {2}\/ +3 4KB 90 {2}$/);
+  assert.match(top.slice(0, leftW), /^ {2}\/ demo repository 3 4KB 90 {2}$/);
   assert.match(row.slice(0, leftW), /^ {4}lib +1 2KB 40 {2}$/);
   assert.match(
     top.slice(leftW),
@@ -2671,6 +2671,10 @@ test('files screen shows a folder tree, the active pick lighter', () => {
   assert.ok(!onFiles.rows[3].includes(strong));
   assert.ok(onFiles.rows[2].includes(bg(THEME.buttonBg)));
   assert.ok(onFiles.rows[3].includes(bg(THEME.ctxBg)));
+  const { mixRgb } = require('../lib/render/log.js');
+  const noteFg = mixRgb(THEME.buttonBg, THEME.chromeFg, 0.25);
+  const note = ansi.paint(' demo repository', noteFg, THEME.buttonBg, true);
+  assert.ok(onFiles.rows[2].includes(note));
   const onTree = render.renderFrame({ ...view, folderFocus: true }, color);
   assert.ok(!onTree.rows[2].includes(strong));
   assert.ok(onTree.rows[3].includes(strong));
