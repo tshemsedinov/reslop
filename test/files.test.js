@@ -9,6 +9,8 @@ const format = require('../lib/common/format.js');
 const { relativeAge, shortAge, ageSeconds } = format;
 const { TASKS_FILE, REPO_TASKS_LABEL, isTasksEntry, isTaskItem } = files;
 const { fileTotals, isTotalEntry, TOTAL_LABEL } = files;
+const folders = require('../lib/common/folders.js');
+const { folderTree, shownFolder, inFolder, folderOf } = folders;
 
 const item = (name, origin, indexHint) => ({
   origin,
@@ -223,4 +225,44 @@ test('ageSeconds reads long, short and unknown ages', () => {
   assert.equal(ageSeconds('1mo ago'), 2592000);
   assert.equal(ageSeconds('yesterday'), 86400);
   assert.equal(ageSeconds('some day'), Number.POSITIVE_INFINITY);
+});
+
+test('folderTree lists folders in tree order with nested totals', () => {
+  const entries = [
+    { path: 'b/z.js' },
+    { path: 'a.js' },
+    { path: 'b/a/x.js' },
+    { path: 'c/d/e/y.js' },
+  ];
+  const stats = new Map([
+    ['b/z.js', { size: 10, lines: 1 }],
+    ['b/a/x.js', { size: 20, lines: 2 }],
+    ['a.js', { size: 5, lines: 3 }],
+  ]);
+  const rows = folderTree(entries, stats);
+  const shape = rows.map((row) => [row.key, row.name, row.depth, row.files]);
+  assert.deepEqual(shape, [
+    ['.', '/', 0, 4],
+    ['b', 'b', 1, 2],
+    ['b/a', 'a', 2, 1],
+    ['c', 'c', 1, 1],
+    ['c/d', 'd', 2, 1],
+    ['c/d/e', 'e', 3, 1],
+  ]);
+  assert.equal(rows[0].bytes, 35);
+  assert.equal(rows[0].lines, 6);
+  assert.equal(rows[1].bytes, 30);
+  assert.equal(rows[3].sized, false);
+  assert.equal(folderTree([]).length, 1);
+});
+
+test('shownFolder falls back to the nearest folder still listed', () => {
+  const entries = [{ path: 'lib/a.js' }, { path: 'b.js' }];
+  assert.equal(shownFolder(entries, 'lib'), 'lib');
+  assert.equal(shownFolder(entries, 'lib/gone'), 'lib');
+  assert.equal(shownFolder(entries, 'other/x'), '.');
+  assert.equal(shownFolder(entries, ''), '.');
+  assert.deepEqual(inFolder(entries, '.'), [{ path: 'b.js' }]);
+  assert.equal(folderOf('a/b/c.js'), 'a/b');
+  assert.equal(folderOf('c.js'), '.');
 });
