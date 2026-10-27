@@ -6890,6 +6890,28 @@ test('delete removes the selected npm script after confirmation', async () => {
   assert.equal(session.status, 'dropped test');
 });
 
+test('ctrl+a selects every row of a list', async () => {
+  const items = [sampleItem('a.js'), sampleItem('b.js'), sampleItem('c.js')];
+  const { session, cwd } = await openSession(items, { startPane: 'files' });
+  press(session, 'down', 'ctrl-a');
+  assert.deepEqual(session.view().listSelection, [0, 1, 2]);
+  assert.equal(session.nav.multiselect, true);
+  assert.equal(session.fileCursor, 1);
+  press(session, 'down');
+  assert.deepEqual(session.view().listSelection, []);
+  session.nav.fileScope = 'file';
+  session.nav.folderFocus = true;
+  press(session, 'ctrl-a');
+  assert.equal(session.view().folderFocus, false);
+  assert.deepEqual(session.view().listSelection, [0, 1, 2]);
+  const file = path.join(cwd, 'package.json');
+  const scripts = { test: 'node --test', lint: 'eslint .' };
+  fs.writeFileSync(file, `${JSON.stringify({ scripts })}\n`);
+  session.npm.open();
+  press(session, 'ctrl-a');
+  assert.deepEqual(session.view().listSelection, [0, 1]);
+});
+
 test('npm and run lists select a range', async () => {
   const { session, cwd } = await openSession([sampleItem('a.js')]);
   const file = path.join(cwd, 'package.json');
