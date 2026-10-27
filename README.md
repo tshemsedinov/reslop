@@ -53,13 +53,15 @@ Requires Node.js `>=18.15.0`.
 - `reslop -r` read-only mode
 - `reslop t -- <program> [args]` run one program and print a reduced report
 
-In the commits, branches, and npm packages lists, hold Shift and press Up or
-Down to select a range. Shift+Home and Shift+End extend to either end of the
+In the commits, branches, npm packages, and files lists, hold Shift and press
+Up or Down to select a range. On the diff, Shift with Up, Down, Left, or Right
+selects hunks. Shift+Home and Shift+End extend to either end of the
 list. Moving without Shift returns to a single selected row. Ranges skip the
 current row and hide cursor markers. Delete acts on the selected range.
 The uncommitted changes row is always excluded from commit ranges.
 Drag across rows or Shift-click a row to select a range. Ctrl-click toggles
 a row on or off. Ctrl-Shift-click adds a range to the rows already selected.
+Add, unstage, drop, and ignore apply to every selected file or diff block.
 In commits, `u` updates the selected commits' timestamps
 without editing their messages, and `s` squashes the selected commits into
 one, opening the combined message for editing. In npm packages, `w` updates
