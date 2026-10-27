@@ -608,6 +608,7 @@ test('files screen picks a folder and lists its files', async () => {
   assert.equal(view().folderFocus, false);
   assert.equal(session.pane, 'files');
   press(session, 'enter');
+  await session.ops.idle();
   assert.equal(session.pane, 'unit');
   press(session, 'escape');
   assert.equal(session.pane, 'files');
@@ -688,10 +689,14 @@ test('the list of changes stays a plain list of paths', async () => {
   );
   press(session, 'left', 'tab', 'down');
   assert.equal(session.fileCursor, 1);
+  session.color = true;
   session.draw();
-  const rows = session.lastFrame.rows.map(stripAnsi);
-  assert.ok(rows.some((row) => row.includes('▶ lib/a.js')));
-  assert.ok(!session.lastFrame.fileHits.some((hit) => hit.folder));
+  const hit = session.lastFrame.fileHits.find((entry) => entry.cursor === 1);
+  const picked = session.lastFrame.rows[hit.y - 1];
+  assert.ok(stripAnsi(picked).includes('lib/a.js'));
+  assert.ok(picked.includes(bg(THEME.buttonBg)));
+  assert.equal(stripAnsi(picked).includes('▶'), false);
+  assert.ok(!session.lastFrame.fileHits.some((entry) => entry.folder));
 });
 
 test('vim ctrl keys scroll the diff by line and page', async () => {
@@ -748,14 +753,19 @@ test('vim ctrl-f pages down the files list', async () => {
 test('files list up moves the cursor before scrolling', async () => {
   const items = [];
   for (let i = 0; i < 20; i++) items.push(sampleItem(`f${i}.js`));
-  const { session } = await openSession(items, { startPane: 'files' });
+  const { session } = await openSession(items, {
+    startPane: 'files',
+    color: true,
+  });
   const last = session.fileList().length - 1;
   for (let i = 0; i < last; i++) session.dispatch('next');
   session.draw();
   assert.equal(session.fileCursor, last);
   const markRow = (frame) => {
     for (let i = 0; i < frame.rows.length; i++) {
-      if (stripAnsi(frame.rows[i]).includes('▶')) return i;
+      const plain = stripAnsi(frame.rows[i]);
+      if (!/f\d+\.js/.test(plain)) continue;
+      if (frame.rows[i].includes(bg(THEME.buttonBg))) return i;
     }
     return -1;
   };
@@ -5522,9 +5532,10 @@ test('packages screen manages dependencies', async () => {
   assert.match(status, /deps: 1 {2}dev: 1 {2}all: 2 \(20\) {2}⚠️ 1\s*$/);
   assert.match(status, /^ \S+\s{2,}deps: 1/);
   assert.equal(table.includes('deps:'), false);
-  assert.match(table, /^ {3}/m);
+  assert.match(table, /^ {2}name/m);
   assert.match(table, /current/);
-  assert.match(table, /^ ▶ leftpad/m);
+  assert.match(table, /^ {2}leftpad/m);
+  assert.equal(table.includes('▶'), false);
   assert.match(rows.at(-1), /insert/);
   assert.match(rows.at(-1), /delete/);
   assert.match(rows.at(-1), /wanted/);
@@ -7107,8 +7118,9 @@ test('click moves the caret in commit, branch, and npm editors', async () => {
 });
 
 const editRow = (session) => {
-  const rows = session.lastFrame.rows.map((row) => stripAnsi(row));
-  return rows.find((row) => row.includes('▶'));
+  const hit = session.lastFrame.editHits[0];
+  if (!hit) return '';
+  return stripAnsi(session.lastFrame.rows[hit.y - 1] ?? '');
 };
 
 const longValue = (head, tail) => `${head}${'m'.repeat(120)}${tail}`;

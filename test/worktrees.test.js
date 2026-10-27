@@ -588,7 +588,7 @@ test('worktrees are tiles above the branches', async () => {
     const head = lines.findIndex((line) => /app +⎇ main/.test(line));
     assert.equal(lines[head - 1].trim(), '');
     assert.match(lines[head - 2], /branches/);
-    const first = lines.findIndex((line) => /^ {3}main {2}/.test(line));
+    const first = lines.findIndex((line) => /^ {2}main {2}/.test(line));
     assert.equal(lines[first - 1].trim(), '');
     assert.match(lines[first - 2], /package\.json/);
     assert.equal(first - head, 7);

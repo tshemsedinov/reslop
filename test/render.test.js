@@ -660,19 +660,20 @@ test('commit pane brief mode lists subject hash branch and age', () => {
   const oldRow = rows.find((row) => row.includes('bbb2222'));
   assert.ok(headRow);
   assert.ok(oldRow);
-  assert.ok(headRow.includes('▶ land the change'));
+  assert.ok(headRow.includes('  land the change'));
+  assert.equal(headRow.includes('▶'), false);
   assert.ok(headRow.includes('HEAD -> main'));
   assert.ok(headRow.includes('2h ago'));
   assert.equal(headRow.includes('Ada'), false);
-  assert.ok(oldRow.includes('   init'));
+  assert.ok(oldRow.includes('  init'));
   assert.ok(oldRow.includes('old'));
   assert.ok(oldRow.includes('1d ago'));
   assert.ok(headRow.indexOf('land the change') < headRow.indexOf('aaa1111'));
   assert.ok(headRow.indexOf('aaa1111') < headRow.indexOf('HEAD -> main'));
   assert.equal(headRow.indexOf('HEAD -> main'), oldRow.indexOf('old'));
   assert.ok(headRow.indexOf('HEAD -> main') < headRow.indexOf('2h ago'));
-  assert.ok(headRow.endsWith('2h ago '));
-  assert.ok(oldRow.endsWith('1d ago '));
+  assert.ok(headRow.endsWith('2h ago  '));
+  assert.ok(oldRow.endsWith('1d ago  '));
   assert.equal(visibleWidth(headRow), 80);
   assert.equal(visibleWidth(oldRow), 80);
   assert.equal(
@@ -712,14 +713,14 @@ test('commit pane brief mode lists subject hash branch and age', () => {
     color: true,
   });
   const headPainted = colored.rows.find((row) => row.includes('aaa1111'));
-  const mark = ansi.paint(' ▶ ', THEME.chromeFg, THEME.buttonBg, true);
+  const mark = ansi.paint('  ', THEME.chromeFg, THEME.buttonBg, true);
   const subject = ansi.paint(
     'land the change',
     THEME.buttonHotFg,
     THEME.buttonBg,
     true,
   );
-  const tail = ansi.paint(' ', THEME.chromeFg, THEME.buttonBg, true);
+  const tail = ansi.paint('  ', THEME.chromeFg, THEME.buttonBg, true);
   assert.ok(headPainted.includes(`${mark}${subject}`));
   assert.ok(headPainted.endsWith(tail));
   assert.ok(!headPainted.includes(bg(THEME.currentBg)));
@@ -732,7 +733,7 @@ test('commit pane brief mode lists subject hash branch and age', () => {
     color: true,
   });
   const idleHead = selected.rows.find((row) => row.includes('aaa1111'));
-  const idleMark = ansi.paint('   ', THEME.mutedFg, THEME.ctxBg, true);
+  const idleMark = ansi.paint('  ', THEME.mutedFg, THEME.ctxBg, true);
   const idleSubject = ansi.paint(
     'land the change',
     THEME.chromeFg,
@@ -741,7 +742,7 @@ test('commit pane brief mode lists subject hash branch and age', () => {
   );
   assert.ok(idleHead.includes(`${idleMark}${idleSubject}`));
   const selectedRow = selected.rows.find((row) => row.includes('bbb2222'));
-  const selectedMark = ansi.paint(' ▶ ', THEME.chromeFg, THEME.buttonBg, true);
+  const selectedMark = ansi.paint('  ', THEME.chromeFg, THEME.buttonBg, true);
   const selectedSubject = ansi.paint(
     'init',
     THEME.buttonHotFg,
@@ -792,7 +793,7 @@ test('viewed commit uses a readable current palette', () => {
   const viewed = colored.rows.find((row) => row.includes('aaa1111'));
   const currentBg = bg(THEME.commitCurrentBg);
   const currentLead = ansi.paint(
-    '   ',
+    '  ',
     THEME.commitCurrentFg,
     THEME.commitCurrentBg,
     true,
@@ -810,7 +811,7 @@ test('viewed commit uses a readable current palette', () => {
     true,
   );
   const currentTail = ansi.paint(
-    ' ',
+    '  ',
     THEME.commitCurrentFg,
     THEME.commitCurrentBg,
     true,
@@ -830,7 +831,7 @@ test('viewed commit uses a readable current palette', () => {
   });
   const selectedViewed = selected.rows.find((row) => row.includes('aaa1111'));
   const selectedLead = ansi.paint(
-    ' ▶ ',
+    '  ',
     THEME.commitCurrentFg,
     THEME.commitCurrentBg,
     true,
@@ -857,7 +858,7 @@ test('viewed commit uses a readable current palette', () => {
     row.includes('uncommitted'),
   );
   const pendingLead = ansi.paint(
-    ' ▶ ',
+    '  ',
     THEME.commitCurrentFg,
     THEME.commitCurrentBg,
     true,
@@ -995,7 +996,8 @@ test('full view puts uncommitted changes on the first line', () => {
   const rows = frame.rows.map((row) => stripAnsi(row));
   const subject = rows.find((row) => row.includes('uncommitted changes'));
   const at = rows.indexOf(subject);
-  assert.ok(subject.includes('▶'));
+  assert.ok(subject.startsWith('  '));
+  assert.equal(subject.includes('▶'), false);
   assert.ok(subject.includes('Diffs:'));
   assert.ok(subject.indexOf('Diffs:') < subject.indexOf('+2/4'));
   assert.ok(subject.indexOf('+2/4') < subject.indexOf('-1/3'));
@@ -1195,8 +1197,9 @@ test('brief mode shows only the first line of a commit message', () => {
     color: false,
   });
   const editRows = editing.rows.map((row) => stripAnsi(row));
-  const editRow = editRows.find((row) => row.includes('▶'));
-  assert.ok(editRow.includes('ship it'));
+  const editRow = editRows.find((row) => row.includes('ship it'));
+  assert.ok(editRow.startsWith('  ship it'));
+  assert.equal(editRow.includes('▶'), false);
   assert.equal(editRow.includes('land the change'), false);
   assert.equal(
     editRows.some((row) => row.includes('extra line')),
@@ -1239,13 +1242,12 @@ test('commit pane types a message on a row at the top of the list', () => {
     color: false,
   });
   const rows = frame.rows.map((row) => stripAnsi(row));
-  const editAt = rows.findIndex(
-    (row) => row.includes('▶') && row.includes('ship it'),
-  );
+  const editAt = rows.findIndex((row) => row.includes('ship it'));
   const headAt = rows.findIndex((row) => row.includes('aaa1111'));
   assert.ok(editAt >= 0);
   assert.ok(headAt > editAt);
-  assert.ok(rows[editAt].includes('▶ ship it'));
+  assert.ok(rows[editAt].includes('  ship it'));
+  assert.equal(rows[editAt].includes('▶'), false);
   assert.ok(!rows[editAt].includes('[ship it]'));
   assert.equal(frame.cursor.y, editAt + 1);
   assert.match(render.headerText(view), /demo: commits brief$/);
@@ -1291,15 +1293,16 @@ test('amend types over the current commit row', () => {
     color: false,
   });
   const rows = frame.rows.map((row) => stripAnsi(row));
-  const editAt = rows.findIndex(
-    (row) => row.includes('▶') && row.includes('rewritten'),
-  );
+  const editAt = rows.findIndex((row) => row.includes('rewritten'));
   const oldAt = rows.findIndex((row) => row.includes('bbb2222'));
   assert.ok(editAt >= 0);
   assert.ok(oldAt > editAt);
   assert.ok(rows[editAt].includes('aaa1111'));
   assert.ok(!rows[editAt].includes('land the change'));
-  assert.equal(rows.filter((row) => row.includes('▶')).length, 1);
+  assert.equal(
+    rows.some((row) => row.includes('▶')),
+    false,
+  );
   assert.equal(frame.cursor.y, editAt + 1);
   assert.match(render.headerText(view), /demo: commits brief$/);
 });
@@ -1355,7 +1358,8 @@ test('full mode amend edits the message inside the panel', () => {
   const head = rows.find((row) => row.includes(hash));
   const subject = rows.find((row) => row.includes('rewritten'));
   const editAt = rows.findIndex((row) => row.includes('rewritten'));
-  assert.ok(head.includes('▶'));
+  assert.ok(head.startsWith('  '));
+  assert.equal(head.includes('▶'), false);
   assert.ok(head.includes('Ada <ada@example.com>'));
   assert.equal(head.includes('rewritten'), false);
   assert.equal(head.includes('land the change'), false);
@@ -1365,7 +1369,10 @@ test('full mode amend edits the message inside the panel', () => {
     rows.some((row) => row.includes('explain the change')),
     false,
   );
-  assert.equal(rows.filter((row) => row.includes('▶')).length, 1);
+  assert.equal(
+    rows.some((row) => row.includes('▶')),
+    false,
+  );
   assert.equal(frame.cursor.y, editAt + 1);
   const bob = rows.find((row) => row.includes('Bob'));
   assert.ok(bob.includes('b'.repeat(40)));
@@ -1431,11 +1438,15 @@ test('full mode new commit stays a multiline message', () => {
   const draft = rows.find((row) => row.includes('ship it'));
   const editAt = rows.findIndex((row) => row.includes('ship it'));
   const kept = rows.find((row) => row.includes(hash));
-  assert.ok(draft.includes('▶'));
+  assert.ok(draft.startsWith('  '));
+  assert.equal(draft.includes('▶'), false);
   assert.equal(draft.includes(hash), false);
   assert.equal(draft.includes('aaa1111'), false);
   assert.ok(rows.some((row) => row.includes('more')));
-  assert.equal(rows.filter((row) => row.includes('▶')).length, 1);
+  assert.equal(
+    rows.some((row) => row.includes('▶')),
+    false,
+  );
   assert.equal(frame.cursor.y, editAt + 1);
   assert.ok(kept.includes('Ada'));
   assert.equal(kept.includes('▶'), false);
@@ -1490,7 +1501,8 @@ test('commit pane full mode shows the message author date and branches', () => {
   const branches = rows.find((row) =>
     row.includes('HEAD -> main, origin/main'),
   );
-  assert.ok(head.includes('▶'));
+  assert.ok(head.startsWith('  '));
+  assert.equal(head.includes('▶'), false);
   assert.ok(head.includes('Ada <ada@example.com>'));
   assert.ok(head.indexOf(hash) < head.indexOf('Ada'));
   assert.ok(stamp.includes('land the change'));
@@ -1522,7 +1534,7 @@ test('commit pane full mode shows the message author date and branches', () => {
   );
   assert.equal(branchRow.indexOf(wideRefs), origin);
   assert.equal(timeRow.indexOf(ago) + ago.length, origin + columnW);
-  assert.ok(timeRow.endsWith(`${ago} `));
+  assert.ok(timeRow.endsWith(`${ago}  `));
   assert.ok(timeRow.indexOf(ago) > origin + when.length);
   assert.equal(visibleWidth(timeRow), 120);
   const oldHash = 'b'.repeat(40);
@@ -1572,9 +1584,9 @@ test('commit pane full mode shows the message author date and branches', () => {
   assert.ok(paintedAuthor.includes(emailPaint));
   assert.equal(visibleWidth(stripAnsi(paintedAuthor)), 120);
   assert.ok(!paintedAuthor.includes(bg(THEME.ctxBg)));
-  const panelTail = ansi.paint(' ', THEME.chromeFg, THEME.buttonBg, true);
+  const panelTail = ansi.paint('  ', THEME.chromeFg, THEME.buttonBg, true);
   assert.ok(paintedSubject.endsWith(panelTail));
-  assert.ok(stripAnsi(paintedSubject).endsWith('2h ago '));
+  assert.ok(stripAnsi(paintedSubject).endsWith('2h ago  '));
   assert.ok(paintedSubject.includes(subjectPaint));
   assert.ok(paintedBody.includes(bodyPaint));
   view.commitCursor = 1;
@@ -1770,8 +1782,9 @@ test('header and file list keep a right-side gap', () => {
   assert.equal(header.endsWith(' '), true);
   assert.match(header, /👁️ {2}reslop/);
   const row = stripAnsi(frame.rows[2]);
-  assert.equal(row.endsWith(' '), true);
-  assert.match(row, /▶ a\.js/);
+  assert.equal(row.endsWith('  '), true);
+  assert.match(row, /^ {2}a\.js/);
+  assert.equal(row.includes('▶'), false);
 });
 
 test('file list keeps a blank line before and after', () => {
@@ -1852,7 +1865,8 @@ test('file list leads with repository TODOs and a count', () => {
   );
   const lead = stripAnsi(frame.rows[2]);
   const file = stripAnsi(frame.rows[3]);
-  assert.ok(lead.includes(`▶ ${REPO_TASKS_LABEL}`));
+  assert.ok(lead.includes(`  ${REPO_TASKS_LABEL}`));
+  assert.equal(lead.includes('▶'), false);
   assert.match(lead, /1\/3\s*$/);
   assert.match(file, /a\.js/);
   assert.ok(!file.includes('Repository'));
@@ -1901,11 +1915,16 @@ test('file list marks only the cursor row', () => {
       status: '',
       scroll: 0,
     },
-    { width: 40, height: 8, color: false },
+    { width: 40, height: 8, color: true },
   );
-  assert.match(stripAnsi(frame.rows[2]), /▶ a\.js/);
-  assert.match(stripAnsi(frame.rows[3]), / {2}b\.js/);
-  assert.ok(!stripAnsi(frame.rows[3]).includes('▶'));
+  const cursor = frame.rows[2];
+  const other = frame.rows[3];
+  assert.match(stripAnsi(cursor), /^ {2}a\.js/);
+  assert.match(stripAnsi(other), /^ {2}b\.js/);
+  assert.ok(cursor.includes(bg(THEME.buttonBg)));
+  assert.ok(!other.includes(bg(THEME.buttonBg)));
+  assert.equal(stripAnsi(cursor).includes('▶'), false);
+  assert.equal(stripAnsi(other).includes('▶'), false);
 });
 
 test('AC10 footer words highlight the bound letter', () => {
@@ -2220,10 +2239,10 @@ test('branch pane lists names and marks the default branch', () => {
     undefined,
   );
   assert.equal(mainRow.indexOf('aaa1111'), featRow.indexOf('bbb2222'));
-  assert.ok(mainRow.endsWith('2d ago '));
-  assert.ok(!mainRow.endsWith('2d ago  '));
-  assert.ok(featRow.endsWith('3w ago '));
-  assert.ok(!featRow.endsWith('3w ago  '));
+  assert.ok(mainRow.endsWith('2d ago  '));
+  assert.ok(!mainRow.endsWith('2d ago   '));
+  assert.ok(featRow.endsWith('3w ago  '));
+  assert.ok(!featRow.endsWith('3w ago   '));
   assert.equal(
     mainRow.indexOf('2d ago') + '2d ago'.length,
     featRow.indexOf('3w ago') + '3w ago'.length,
@@ -2253,9 +2272,10 @@ test('branch pane lists names and marks the default branch', () => {
   assert.ok(!featPainted.includes(`${fg(THEME.shaFg)}${currentBg}`));
   assert.ok(featPainted.includes(`${fg(THEME.headerFg)}${currentBg}`));
   const date = ansi.paint('3w ago', THEME.headerFg, THEME.currentBg, true);
-  const dateTail = ansi.paint(' ', THEME.headerFg, THEME.currentBg, true);
-  const currentLead = ansi.paint(' ▶ ', THEME.headerFg, THEME.currentBg, true);
-  assert.ok(featPainted.includes(currentLead));
+  const dateTail = ansi.paint('  ', THEME.headerFg, THEME.currentBg, true);
+  const currentLead = ansi.paint('  ', THEME.headerFg, THEME.currentBg, true);
+  assert.ok(featPainted.includes(`${currentLead}${currentName}feat`));
+  assert.ok(!stripAnsi(featPainted).includes('▶'));
   assert.ok(featPainted.includes(`${date}${dateTail}`));
   assert.ok(!featPainted.includes(bg(THEME.ctxBg)));
   assert.ok(featPainted.includes(`${fg(THEME.delLineFg)}${currentBg}`));
@@ -2281,11 +2301,11 @@ test('branch pane lists names and marks the default branch', () => {
   const ontoFeat = onto.rows.find((row) => row.includes('bbb2222'));
   const ontoMain = onto.rows.find((row) => row.includes('aaa1111'));
   assert.ok(ontoFeat.includes(currentBg));
-  const currentPlain = ansi.paint('   ', THEME.headerFg, THEME.currentBg, true);
+  const currentPlain = ansi.paint('  ', THEME.headerFg, THEME.currentBg, true);
   assert.ok(ontoFeat.includes(currentPlain));
   assert.ok(!ontoFeat.includes(bg(THEME.ctxBg)));
   const selectDate = ansi.paint('2d ago', THEME.mutedFg, THEME.buttonBg, true);
-  const selectTail = ansi.paint(' ', THEME.chromeFg, THEME.buttonBg, true);
+  const selectTail = ansi.paint('  ', THEME.chromeFg, THEME.buttonBg, true);
   assert.ok(ontoMain.includes(`${selectDate}${selectTail}`));
   assert.ok(!ontoMain.includes(bg(THEME.ctxBg)));
   assert.ok(onto.buttons.find((hit) => hit.id === 'rebase'));
@@ -2441,7 +2461,7 @@ test('AC26 file list status and counts are column-aligned', () => {
     color: false,
   });
   const first = stripAnsi(slim.rows[2]);
-  assert.match(first, /unstaged {2}0\/4 {2}$/);
+  assert.match(first, /unstaged {2}0\/4 {3}$/);
 });
 
 test('file list dates are right-aligned', () => {
@@ -2482,8 +2502,8 @@ test('file list dates are right-aligned', () => {
   const rows = [2, 3].map((i) => stripAnsi(frame.rows[i]));
   const recent = rows.find((row) => row.includes('a.js'));
   const older = rows.find((row) => row.includes('b.js'));
-  assert.ok(recent.endsWith('2h ago '));
-  assert.ok(older.endsWith('1d ago '));
+  assert.ok(recent.endsWith('2h ago  '));
+  assert.ok(older.endsWith('1d ago  '));
   assert.equal(
     recent.indexOf('2h ago') + '2h ago'.length,
     older.indexOf('1d ago') + '1d ago'.length,
@@ -2629,11 +2649,11 @@ test('files screen shows a folder tree, the active pick lighter', () => {
   const top = stripAnsi(plain.rows[2]);
   const row = stripAnsi(plain.rows[3]);
   const leftW = 30;
-  assert.match(top.slice(0, leftW), /^ {3}\/ +3 4KB 90 $/);
-  assert.match(row.slice(0, leftW), /^ ▶ {3}lib +1 2KB 40 $/);
+  assert.match(top.slice(0, leftW), /^ {2}\/ +3 4KB 90 {2}$/);
+  assert.match(row.slice(0, leftW), /^ {4}lib +1 2KB 40 {2}$/);
   assert.match(
     top.slice(leftW),
-    /^ ▶ a\.js +\+2 {2}-1 {2}0\/1 {2}2 KB {2}40 $/,
+    /^ {2}a\.js +\+2 {2}-1 {2}0\/1 {2}2 KB {2}40 {2}$/,
   );
   const tree = plain.fileHits.filter((hit) => hit.folder);
   assert.deepEqual(
@@ -2654,6 +2674,88 @@ test('files screen shows a folder tree, the active pick lighter', () => {
   assert.ok(!onTree.rows[2].includes(strong));
   assert.ok(onTree.rows[3].includes(strong));
   assert.match(render.headerText({ ...view, folderFocus: true }), /demo\/lib$/);
+});
+
+test('list screens show the selection without a marker', () => {
+  const base = { repoName: 'demo', counts: {}, status: '', scroll: 0 };
+  const options = { width: 80, height: 10, color: false };
+  const entry = { status: 'unstaged', remaining: 1, staged: 0, firstIndex: 0 };
+  const files = [
+    { ...entry, path: 'a.js' },
+    { ...entry, path: 'b.js' },
+  ];
+  const marks = (view) =>
+    render
+      .renderFrame({ ...base, ...view }, options)
+      .rows.slice(1, -2)
+      .filter((row) => stripAnsi(row).includes('▶'));
+  assert.deepEqual(marks({ pane: 'files', files, fileCursor: 1 }), []);
+  const npmCommands = [{ name: 'test', command: 'node --test' }];
+  assert.deepEqual(marks({ pane: 'npm', npmCommands, npmCursor: 0 }), []);
+  const branches = [{ name: 'main', current: true, subject: 'x' }];
+  assert.deepEqual(marks({ pane: 'branches', branches, branchCursor: 0 }), []);
+});
+
+test('list screens keep two spaces at both sides of a row', () => {
+  const base = { repoName: 'demo', counts: {}, status: '', scroll: 0 };
+  const rowsOf = (view) =>
+    render
+      .renderFrame(
+        { ...base, ...view },
+        { width: 80, height: 10, color: false },
+      )
+      .rows.slice(1, -2)
+      .map(stripAnsi)
+      .filter((row) => row.trim());
+  const edged = (text) => /^ {2}\S(.*\S)? {2}$/.test(text);
+  const entry = { status: 'unstaged', remaining: 1, staged: 0, added: 1 };
+  const files = [{ ...entry, path: 'lib/a.js', removed: 0, date: '1h' }];
+  const [flat] = rowsOf({ pane: 'files', files, fileCursor: 0 });
+  assert.ok(edged(flat), flat);
+  const folders = [
+    {
+      key: '.',
+      name: '/',
+      depth: 0,
+      files: 1,
+      bytes: 9,
+      lines: 1,
+      sized: true,
+    },
+  ];
+  const tree = { pane: 'files', files, folders, folderCursor: 0 };
+  const [split] = rowsOf({ ...tree, fileCursor: 0 });
+  assert.ok(edged(split.slice(0, 24)), split);
+  assert.ok(edged(split.slice(24)), split);
+  const commit = {
+    sha: 'a'.repeat(40),
+    shortSha: 'aaa1111',
+    date: '1h',
+    subject: 'land',
+    head: true,
+  };
+  const [commitRow] = rowsOf({
+    pane: 'commits',
+    commits: [commit],
+    commitCursor: 0,
+  });
+  assert.ok(edged(commitRow), commitRow);
+  const runs = rowsOf({
+    pane: 'npm',
+    npmCommands: [{ name: 'test', command: 'node --test', kind: 'script' }],
+    npmCursor: 0,
+    npmRuns: [{ name: 'test', mark: 'pass', total: '4', when: '14:05' }],
+  });
+  assert.match(runs[0], /^ {2}test {2}node --test {2}/);
+  for (const row of runs) assert.ok(edged(row.slice(24)), row);
+  const pkg = { name: 'x', current: '1.0.0', wanted: '1.0.0', latest: '1.0.0' };
+  const modules = { count: 1, bytes: 10, packages: [{ ...pkg, bytes: 10 }] };
+  const packages = { ready: true, hasManifest: true, deps: 1, modules };
+  const listed = rowsOf({ pane: 'packages', packages, packagesCursor: 0 });
+  for (const row of listed) assert.ok(edged(row), row);
+  const branches = [{ name: 'main', current: true, subject: 'x', date: '1h' }];
+  const [branch] = rowsOf({ pane: 'branches', branches, branchCursor: 0 });
+  assert.ok(edged(branch), branch);
 });
 
 test('AC25 header path roles use distinct greys', () => {
@@ -3966,7 +4068,7 @@ test('npm history caption, columns, and scrollbar', () => {
       ...view,
       npmRuns: [run('very-long-command-name')],
     },
-    { width: 50, height: 12, color: false },
+    { width: 60, height: 12, color: false },
   );
   const narrowBody = narrow.rows
     .slice(1, 1 + narrow.bodyH)
