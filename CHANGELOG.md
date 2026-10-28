@@ -2,6 +2,17 @@
 
 ## [Unreleased][unreleased]
 
+## [0.3.5][] - 2026-10-28
+
+- Rework the files screen into a folder tree and file panels
+- Multiselect in all screens: support ranges, mouse, grouped actions; ctrl+a
+- Squash selected commits into one and reword the message
+- Batch-delete commits and branches
+- Update selected commit timestamps with `u`
+- Edit a commit with ctrl+e and set the current date
+- Show a scroller in lists/tabes in all screend
+- Fix show author date in the commit list to match relative age
+
 ## [0.3.4][] - 2026-10-19
 
 - Rework the agents screen: a table of agent, model, effort, fast, context, and plan beside the sessions, with the hotkeys marked in the table and an install button
@@ -247,7 +258,8 @@
 - Feedback and todos that produce a repair plan for an agent
 - Intra-line highlighting in unified, mixed, and side-by-side layouts
 
-[unreleased]: https://github.com/tshemsedinov/reslop/compare/v0.3.4...HEAD
+[unreleased]: https://github.com/tshemsedinov/reslop/compare/v0.3.5...HEAD
+[0.3.5]: https://github.com/tshemsedinov/reslop/compare/v0.3.4...v0.3.5
 [0.3.4]: https://github.com/tshemsedinov/reslop/compare/v0.3.3...v0.3.4
 [0.3.3]: https://github.com/tshemsedinov/reslop/compare/v0.3.2...v0.3.3
 [0.3.2]: https://github.com/tshemsedinov/reslop/compare/v0.3.1...v0.3.2
