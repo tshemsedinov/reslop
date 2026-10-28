@@ -16,15 +16,15 @@ Open a change, leave findings and a backlog, and prepare a repair plan for the a
 Review → Plan → Repair → Verify
 ```
 
-- Live dashboard: files, diffs, tasks, branches, commits, run, agents, and npm, updated in real time
+- Live dashboard: files and folder, diffs, tasks, branches, commits, run, agents, and npm, updated in real time
 - Leave feedback, a project backlog, and in-place code proposals as a repair plan
 - Review uncommitted git diffs, a given commit, a GitHub PR, or a GitLab MR
 - File-scope review mode: not just diffs, with editor mode
 - Stage, unstage, or revert each contiguous block of diff lines
 - Auto-reload local diffs when files change, keeping the current screen
 - Import GitHub PR and GitLab MR review comments, and GitHub/GitLab issues, into tasks and the local plan
-- Commits list: brief and full, view a commit's diff, commit, update, amend, apply a fixup onto its target, edit, fixup, and delete
-- Branches: checkout, create, rebase with autoresolved conflicts, delete, pull, and push; git worktrees as tiles above the branches
+- Commits list: brief and full, view a commit's diff, commit, update, amend, squash a range, apply a fixup onto its target, edit, fixup, and delete
+- Branches: checkout, create, rebase with autoresolved conflicts, delete ranges, pull, and push; git worktrees as tiles above the branches
 - npm scripts: run, edit, reorder, clean logs
 - Reduced test and lint output for agents: failures and a short summary, not passing noise
 - Review, renew, audit and update npm dependencies in `package.json` and the lockfile
@@ -52,24 +52,6 @@ Requires Node.js `>=18.15.0`.
 - `reslop https://github.com/metarhia/metacom/issues` import all issues
 - `reslop -r` read-only mode
 - `reslop t -- <program> [args]` run one program and print a reduced report
-
-In the commits, branches, npm packages, and files lists, hold Shift and press
-Up or Down to select a range. On the diff, Shift with Up, Down, Left, or Right
-selects hunks. Shift+Home and Shift+End extend to either end of the
-list, and Ctrl+A selects every row of it. Moving without Shift returns to a
-single selected row. Ranges skip the
-current row and hide cursor markers. Delete acts on the selected range.
-The uncommitted changes row is always excluded from commit ranges.
-Drag across rows or Shift-click a row to select a range. Ctrl-click toggles
-a row on or off. Ctrl-Shift-click adds a range to the rows already selected.
-Add, unstage, drop, and ignore apply to every selected file or diff block.
-In commits, `u` updates the selected commits' timestamps
-without editing their messages, and `s` squashes the selected commits into
-one, opening the combined message for editing. In npm packages, `w` updates
-the range to wanted versions and `l` installs latest versions, keeping dev
-dependencies in their own section. The npm scripts list, the run history,
-and the agent session list select the same way. Delete drops every selected
-npm script.
 
 Prefix each program in an npm script with `reslop t --`. Keep `&&` between those wraps, so each program is captured on its own and a failing step does not start the next one:
 
@@ -113,7 +95,7 @@ reslop runs a plan in an agent over the [Agent Client Protocol](https://agentcli
 - Send questions and the repair plan to experts for approval
 - Ask experts
 - Apply refactoring skills
-- Squash, cherry-pick, and interactive rebase
+- Cherry-pick and interactive rebase
 - Merge, rename, and conflict resolution
 
 ## License
