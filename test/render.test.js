@@ -2809,6 +2809,37 @@ test('long lists show a one column scroller', () => {
     options,
   );
   assert.ok(thumbRows(tasks).length > 0);
+  const packages = Array.from({ length: 30 }, (_, at) => ({
+    name: `pkg${at}`,
+    bytes: at + 1,
+    current: '1.0.0',
+    wanted: '1.0.0',
+    latest: '1.0.0',
+  }));
+  const data = {
+    ready: true,
+    hasManifest: true,
+    deps: 30,
+    modules: { bytes: 30, count: 30, packages },
+  };
+  const listedPackages = render.renderFrame(
+    { ...base, pane: 'packages', packages: data, packagesCursor: 0 },
+    options,
+  );
+  assert.ok(thumbRows(listedPackages).length > 0);
+  assert.equal(listedPackages.scrollBars.length, 1);
+  assert.equal(listedPackages.scrollBars[0].target, 'list');
+  assert.equal(listedPackages.scrollBars[0].x, 60);
+  const plain = listedPackages.rows.map(stripAnsi);
+  const headAt = plain.findIndex((row) => row.includes('current'));
+  assert.equal(listedPackages.rows[headAt].includes(thumb), false);
+  const one = packages.slice(0, 1);
+  const short = { ...data, modules: { ...data.modules, packages: one } };
+  const fewPackages = render.renderFrame(
+    { ...base, pane: 'packages', packages: short, packagesCursor: 0 },
+    options,
+  );
+  assert.deepEqual(fewPackages.scrollBars, []);
 });
 
 test('list screens keep two spaces at both sides of a row', () => {
