@@ -1073,6 +1073,52 @@ test('file selection stages unstages and drops the chosen files', async () => {
   assert.equal(session.fileList().length, 0);
 });
 
+test('a click leaves multiselect on files and diffs', async () => {
+  const { session, repo } = await openSession(
+    [sampleItem('a.js'), laterHunk('a.js'), sampleItem('b.js')],
+    { startPane: 'files' },
+  );
+  press(session, 'shift-down');
+  assert.equal(session.nav.multiselect, true);
+  const kept = session.fileCursor;
+  session.draw();
+  click(session, 4, 1);
+  assert.equal(session.nav.multiselect, false);
+  assert.equal(session.fileCursor, kept);
+  press(session, 'shift-end');
+  assert.equal(session.nav.multiselect, true);
+  session.draw();
+  const listed = session.lastFrame.fileHits.filter((hit) => !hit.folder);
+  const row = listed.at(-1);
+  click(session, 5, row.y);
+  assert.equal(session.nav.multiselect, false);
+  assert.equal(session.fileCursor, row.cursor);
+  session.nav.fileScope = 'file';
+  press(session, 'home', 'shift-down');
+  assert.equal(session.nav.multiselect, true);
+  session.draw();
+  const files = session.lastFrame.fileHits.filter((hit) => !hit.folder);
+  const file = files.find((hit) => hit.cursor !== session.fileCursor);
+  click(session, 5, file.y);
+  assert.equal(session.nav.multiselect, false);
+  assert.equal(session.fileCursor, file.cursor);
+  session.nav.pane = 'diff';
+  session.nav.index = 0;
+  press(session, 'shift-right');
+  assert.equal(session.nav.multiselect, true);
+  assert.deepEqual(session.view().listSelection, [0, 1]);
+  session.draw();
+  click(session, 4, 3);
+  assert.equal(session.nav.multiselect, false);
+  session.nav.pane = 'files';
+  session.nav.fileScope = 'diff';
+  press(session, 'home', 'shift-down');
+  assert.equal(session.nav.multiselect, true);
+  clickFooter(session, 'add');
+  await session.ops.idle();
+  assert.equal(repo.added.length, 3);
+});
+
 test('sgr shift click selects the file span', async () => {
   const { session } = await openSession(
     [sampleItem('a.js'), sampleItem('b.js'), sampleItem('c.js')],
