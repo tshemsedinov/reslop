@@ -6912,6 +6912,41 @@ test('dragging the scroller of a list moves its rows and cursor', async () => {
   assert.equal(session.reviewPath, picked);
 });
 
+test('dragging the packages scroller moves the package cursor', async () => {
+  const packages = Array.from({ length: 40 }, (_, at) => ({
+    name: `pkg${at}`,
+    bytes: at + 1,
+    dev: false,
+    version: '1.0.0',
+  }));
+  const { session } = await openSession([sampleItem('a.js')], {
+    startPane: 'files',
+  });
+  session.dashboard.npm = {
+    ready: true,
+    hasManifest: true,
+    deps: 40,
+    dev: 0,
+    modules: { bytes: 40, count: 40, packages },
+  };
+  session.dashboard.openPackages();
+  session.draw();
+  const [bar] = session.lastFrame.scrollBars;
+  assert.equal(bar.target, 'list');
+  assert.equal(bar.start, 0);
+  const mouse = (kind, y) =>
+    session.handleEvent({ type: 'mouse', kind, button: 0, x: bar.x, y });
+  mouse('press', bar.y + bar.track);
+  session.draw();
+  mouse('drag', bar.y + bar.height - 1);
+  session.draw();
+  mouse('release', bar.y + bar.height - 1);
+  session.draw();
+  const [moved] = session.lastFrame.scrollBars;
+  assert.equal(moved.start, 40 - moved.rows);
+  assert.equal(session.nav.packagesCursor, moved.start);
+});
+
 test('ctrl+a selects every row of a list', async () => {
   const items = [sampleItem('a.js'), sampleItem('b.js'), sampleItem('c.js')];
   const { session, cwd } = await openSession(items, { startPane: 'files' });
