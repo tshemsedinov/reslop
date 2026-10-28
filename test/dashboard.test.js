@@ -26,6 +26,7 @@ const { TILES, paintBodyDashboard } = dashboardPaint;
 const { agentsBlock } = require('../lib/render/agents.js');
 const dashBlocks = require('../lib/render/dashboard/blocks.js');
 const { filesBlock, diffsBlock, npmBlock, npmContent, tasksBlock } = dashBlocks;
+const { badgeColors } = require('../lib/render/icons.js');
 const { paintBodyPackages } = require('../lib/render/npm.js');
 const dashboardSession = require('../lib/session/dashboard.js');
 const { Dashboard, classify, ageDelay } = dashboardSession;
@@ -1002,6 +1003,14 @@ test('the files share bar stays on a narrow tile', () => {
   assert.match(folder, /📁 lib/);
   assert.equal(folder.includes('📁  '), false);
   assert.equal(ext.indexOf('*.js'), folder.indexOf('lib'));
+  assert.match(ext, /^js \*\.js/);
+  const js = block.lines[1].find((part) => part.text === 'js');
+  const chip = badgeColors('yellow');
+  assert.deepEqual(js.bg, chip.bg);
+  assert.deepEqual(js.fg, chip.fg);
+  assert.equal(js.bold, true);
+  const folderIcon = block.lines[0].find((part) => part.text === '📁');
+  assert.equal(folderIcon.bg, null);
   assert.equal(folder.includes('📄'), false);
   assert.match(ext, /\*\.js/);
   assert.equal(ext.includes('📄'), false);
@@ -1064,6 +1073,12 @@ test('diff columns keep one space after the mark and fill the row', () => {
   assert.equal(mark.tone, 'add');
   assert.match(folder, /📁 lib/);
   assert.equal(folder.includes('📁  '), false);
+  assert.match(ext, /^js \*\.js/);
+  const jsLine = block.lines.find((line) =>
+    line.some((part) => part.text === 'js'),
+  );
+  const jsIcon = jsLine.find((part) => part.text === 'js');
+  assert.deepEqual(jsIcon.bg, badgeColors('yellow').bg);
   assert.equal(ext.indexOf('*.js'), folder.indexOf('lib'));
   assert.equal(visibleWidth(header), 40);
   assert.equal(visibleWidth(folder), 40);

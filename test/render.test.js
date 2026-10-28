@@ -1783,7 +1783,7 @@ test('header and file list keep a right-side gap', () => {
   assert.match(header, /👁️ {2}reslop/);
   const row = stripAnsi(frame.rows[2]);
   assert.equal(row.endsWith('  '), true);
-  assert.match(row, /^ {2}a\.js/);
+  assert.match(row, /^ {2}js a\.js/);
   assert.equal(row.includes('▶'), false);
 });
 
@@ -1865,7 +1865,8 @@ test('file list leads with repository TODOs and a count', () => {
   );
   const lead = stripAnsi(frame.rows[2]);
   const file = stripAnsi(frame.rows[3]);
-  assert.ok(lead.includes(`  ${REPO_TASKS_LABEL}`));
+  assert.ok(lead.startsWith('  📋 '));
+  assert.ok(lead.includes('Project Tasks:'));
   assert.equal(lead.includes('▶'), false);
   assert.match(lead, /1\/3\s*$/);
   assert.match(file, /a\.js/);
@@ -1919,8 +1920,8 @@ test('file list marks only the cursor row', () => {
   );
   const cursor = frame.rows[2];
   const other = frame.rows[3];
-  assert.match(stripAnsi(cursor), /^ {2}a\.js/);
-  assert.match(stripAnsi(other), /^ {2}b\.js/);
+  assert.match(stripAnsi(cursor), /^ {2}js a\.js/);
+  assert.match(stripAnsi(other), /^ {2}js b\.js/);
   assert.ok(cursor.includes(bg(THEME.buttonBg)));
   assert.ok(!other.includes(bg(THEME.buttonBg)));
   assert.equal(stripAnsi(cursor).includes('▶'), false);
@@ -2432,10 +2433,12 @@ test('AC26 file list status and counts are column-aligned', () => {
     const del = /-[0-9]+/.exec(t);
     const status = /(unstaged|staged|untracked)/.exec(t);
     const ratio = /(\d+)\/(\d+)$/.exec(t);
-    const addEnd = add.index + add[0].length;
-    const delEnd = del.index + del[0].length;
-    const statusEnd = status.index + status[0].length;
-    const slashAt = ratio.index + ratio[1].length;
+    const endAt = (index, text) =>
+      visibleWidth(t.slice(0, index + text.length));
+    const addEnd = endAt(add.index, add[0]);
+    const delEnd = endAt(del.index, del[0]);
+    const statusEnd = endAt(status.index, status[0]);
+    const slashAt = endAt(ratio.index, ratio[1]);
     return { addEnd, delEnd, statusEnd, slashAt };
   };
   const marks = rows.map(columnMarks);
@@ -2645,16 +2648,16 @@ test('files screen shows a folder tree, the active pick lighter', () => {
     status: '',
     scroll: 0,
   };
-  const options = { width: 100, height: 8, color: false };
+  const options = { width: 110, height: 8, color: false };
   const plain = render.renderFrame(view, options);
   const top = stripAnsi(plain.rows[2]);
   const row = stripAnsi(plain.rows[3]);
-  const leftW = 30;
-  assert.match(top.slice(0, leftW), /^ {2}\/ demo repository 3 4KB 90 {2}$/);
-  assert.match(row.slice(0, leftW), /^ {4}lib +1 2KB 40 {2}$/);
+  const leftW = 33;
+  assert.match(top.slice(0, leftW), /^ {2}📁 \/ demo repository 3 4KB 90 {2}$/);
+  assert.match(row.slice(0, leftW), /^ {4}📁 lib +1 2KB 40 {2}$/);
   assert.match(
     top.slice(leftW),
-    /^ {2}a\.js +\+2 {2}-1 {2}0\/1 {2}2 KB {2}40 {2}$/,
+    /^ {2}js a\.js +\+2 {2}-1 {2}0\/1 {2}2 KB {2}40 {2}$/,
   );
   const tree = plain.fileHits.filter((hit) => hit.folder);
   assert.deepEqual(
