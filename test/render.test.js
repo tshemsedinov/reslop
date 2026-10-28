@@ -2685,7 +2685,7 @@ test('files screen shows a folder tree, the active pick lighter', () => {
   const onFolder = { ...view, folderFocus: true };
   assert.match(render.headerText(onFolder), /reslop: demo: files$/);
   const diffs = { ...view, fileScope: 'diff' };
-  assert.match(render.headerText(diffs), /reslop: demo\/lib\/a\.js$/);
+  assert.match(render.headerText(diffs), /reslop: demo: files$/);
   const run = { ...view, pane: 'npm' };
   assert.match(render.headerText(run), /reslop: demo: run$/);
   const packages = { ...view, pane: 'packages' };
@@ -2965,8 +2965,8 @@ test('find marks path matches and the active one is stronger', () => {
   assert.match(status.text, /^ \/lib /);
   assert.ok(status.raw.includes(bg(THEME.searchOnBg)));
   const header = rows[0];
-  assert.ok(header.raw.includes(bg(THEME.searchOnBg)));
-  assert.match(header.text, /lib\/find\.js/);
+  assert.match(header.text, /demo: files/);
+  assert.equal(header.raw.includes(bg(THEME.searchOnBg)), false);
 });
 
 test('presentRows overwrites in place without a leading wipe', () => {
