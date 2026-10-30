@@ -741,6 +741,38 @@ test('ctrl+l sets the priority of the focused task from a pop-up', async () => {
   assert.equal(session.editor.text, 'B2: timeout names the pool!');
 });
 
+test('ctrl+g puts the focused task into a commit group', async () => {
+  const { session } = await planScreen('blocks.md', SECTIONS);
+  const captions = () => Object.values(session.nav.contextMenu.captions);
+  focusTask(session, rowOf(session, 'B2:'));
+  press(session, 'ctrl-g');
+  assert.deepEqual(captions(), [
+    'b1  1 task',
+    'b2  1 task',
+    's1  1 task',
+    'new f1',
+    'ungroup',
+  ]);
+  assert.equal(session.nav.contextMenu.cursor, 1);
+  press(session, 'n');
+  assert.equal(focusedRow(session), '[ ] f1: timeout names the pool');
+  focusTask(session, rowOf(session, 'S1:'));
+  press(session, 'ctrl-g');
+  assert.deepEqual(captions(), [
+    'b1  1 task',
+    'f1  1 task',
+    's1  1 task',
+    'new f2',
+    'ungroup',
+  ]);
+  press(session, '1');
+  assert.equal(focusedRow(session), '[ ] f1: keep paths inside the root');
+  press(session, 'ctrl-g');
+  assert.equal(captions()[1], 'f1  2 tasks');
+  press(session, 'u');
+  assert.equal(focusedRow(session), '[ ] keep paths inside the root');
+});
+
 test('ctrl+f jumps between the blocks that match', async () => {
   const { session } = await planScreen('blocks.md', SECTIONS);
   const all = session.composer.tasks.taskTexts();
