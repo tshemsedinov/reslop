@@ -645,7 +645,7 @@ test('loadGitlabIssue imports the title, description, and notes', async () => {
   assert.equal(loaded.change.source, 'issue');
   assert.equal(loaded.change.repository, 'acme/app');
   assert.equal(loaded.change.url, GL_ISSUE_JSON['web_url']);
-  assert.equal(loaded.imported.tasks.length, 2);
+  assert.equal(loaded.imported.tasks.length, 1);
   assert.match(loaded.imported.tasks[0].text, /^@alice at gitlab: Add import/);
   assert.match(loaded.imported.tasks[0].text, /from the cli/);
   assert.equal(
@@ -655,7 +655,12 @@ test('loadGitlabIssue imports the title, description, and notes', async () => {
     true,
   );
   assert.equal(loaded.imported.tasks[0].done, false);
-  assert.match(loaded.imported.tasks[1].text, /^@bob at gitlab: seen$/);
+  const { issue } = loaded.imported.tasks[0];
+  assert.equal(issue.title, 'Add import');
+  assert.equal(issue.body, 'from the cli');
+  assert.equal(issue.author, 'alice');
+  assert.equal(issue.host, 'gitlab');
+  assert.deepEqual(issue.comments, [{ author: 'bob', body: 'seen' }]);
   const noteCall = fetchImpl.calls.find((call) => call.url.includes('/notes'));
   assert.match(noteCall.url, /\/projects\/acme%2Fapp\/issues\/12\/notes/);
   assert.equal(fetchImpl.calls[0].auth, 'secret');
@@ -759,7 +764,7 @@ test('loadGitlabIssue imports every open issue from a list', async () => {
   assert.match(calls[0], /\/projects\/acme%2Fapp\/issues\?/);
   assert.match(calls[0], /state=opened/);
   assert.equal(loaded.sourceLabel, 'acme/app');
-  assert.equal(loaded.imported.tasks.length, 3);
+  assert.equal(loaded.imported.tasks.length, 2);
   const texts = loaded.imported.tasks.map((task) => task.text);
   assert.match(texts[0], /^@ScriptHound at gitlab: Line numbers/);
   assert.equal(
@@ -771,7 +776,9 @@ test('loadGitlabIssue imports every open issue from a list', async () => {
     texts[1].endsWith('\nIssue: https://gitlab.com/acme/app/-/issues/31'),
     true,
   );
-  assert.match(texts[2], /^@cara at gitlab: agree$/);
+  assert.deepEqual(loaded.imported.tasks[1].issue.comments, [
+    { author: 'cara', body: 'agree' },
+  ]);
   assert.equal(
     texts.some((text) => text.includes('Old')),
     false,
