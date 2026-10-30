@@ -8754,6 +8754,8 @@ const LINKED = [
   '- [ ] B2: Lines and missing symbols',
   '  - where: lib/term.js:4',
   '  - related: lib/term.js#nowhere',
+  '- [ ] B3: Outside the root',
+  '  - where: ../../.ssh/id_rsa',
   '',
 ].join('\n');
 
@@ -8810,4 +8812,13 @@ test('a line or a symbol opens there; a missing one at the top', async () => {
   press(other, 'down', 'enter');
   await other.ops.idle();
   assert.equal(other.nav.unitLine, 3);
+});
+
+test('a location outside the root is named, never opened', async () => {
+  const { session } = await linkedScreen();
+  session.tasksFocus = rowOf(session, 'B3:');
+  press(session, 'down', 'enter');
+  await session.ops.idle();
+  assert.equal(session.pane, 'tasks');
+  assert.equal(session.status, 'outside the repository: ../../.ssh/id_rsa');
 });
