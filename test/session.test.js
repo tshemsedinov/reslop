@@ -8681,3 +8681,26 @@ test('# numbers open tasks after the highest ID of a letter', async () => {
   assert.equal(session.status, 'every open task has an ID');
   assert.equal(fs.readFileSync(session.notes.reviewPath, 'utf8'), once);
 });
+
+test('e edits the plan as raw Markdown and keeps the focus', async () => {
+  const { session } = await planScreen('sections.md', SECTIONS);
+  session.tasksFocus = rowOf(session, 'B2:');
+  const b2 = session.notes.tasks[1].id;
+  press(session, 'e');
+  assert.equal(session.mode, 'compose');
+  assert.equal(session.editor.text, SECTIONS);
+  assert.equal(session.editor.cursor, SECTIONS.indexOf('- [ ] B2'));
+  assert.deepEqual(session.view().tasks, [SECTIONS]);
+  press(session, 'home');
+  session.pushInput('- [ ] B0: found while reading\x1b\r');
+  press(session, 'escape');
+  assert.equal(session.mode, 'review');
+  assert.equal(focusedRow(session), '[ ] B2: timeout names the pool');
+  assert.equal(session.notes.tasks[2].id, b2);
+  assert.deepEqual(taskRows(session).slice(0, 2), [
+    '[ ] B1: pool hands a connection out twice',
+    '[ ] B0: found while reading',
+  ]);
+  const text = fs.readFileSync(session.notes.reviewPath, 'utf8');
+  assert.match(text, /twice\n- \[ \] B0: found while reading\n- \[ \] B2:/);
+});
