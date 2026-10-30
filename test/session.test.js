@@ -8704,3 +8704,40 @@ test('e edits the plan as raw Markdown and keeps the focus', async () => {
   const text = fs.readFileSync(session.notes.reviewPath, 'utf8');
   assert.match(text, /twice\n- \[ \] B0: found while reading\n- \[ \] B2:/);
 });
+
+const FIXTURE_PLAN = fs.readFileSync(
+  path.join(__dirname, 'fixtures', 'plan.md'),
+  'utf8',
+);
+
+test('specs/ plans open from the plan menu and keep their bytes', async () => {
+  const { session, cwd } = await openSession([sampleItem('a.js')]);
+  const specs = path.join(cwd, 'specs');
+  fs.mkdirSync(specs, { recursive: true });
+  const file = path.join(specs, 'structured-plan.md');
+  fs.writeFileSync(file, FIXTURE_PLAN);
+  fs.writeFileSync(path.join(specs, 'notes.txt'), 'not a plan');
+  session.dispatch('tasks');
+  press(session, 'escape', 'p');
+  const labels = session.view().planNames;
+  const at = labels.findIndex((label) => label.startsWith('specs/structured'));
+  assert.ok(at >= 0);
+  assert.ok(!labels.some((label) => label.includes('notes.txt')));
+  assert.match(labels[at], /editing {2}2\/7$/);
+  session.composer.tasks.choosePlan(at);
+  assert.equal(session.notes.reviewPath, file);
+  assert.equal(session.composer.tasks.planName(), 'specs/structured-plan.md');
+  assert.equal(
+    focusedRow(session),
+    '[ ] B1 high: A lone Escape ends the read loop on the file list',
+  );
+  press(session, ' ');
+  const after = fs.readFileSync(file, 'utf8');
+  const before = FIXTURE_PLAN.split('\n');
+  const changed = after.split('\n').filter((line, i) => line !== before[i]);
+  assert.deepEqual(changed, [
+    '- [x] B1 high: A lone Escape ends the read loop on the file list',
+  ]);
+  const agents = session.agents.planMenu();
+  assert.ok(agents.some((label) => label.startsWith('specs/structured')));
+});

@@ -3397,3 +3397,28 @@ test('legacy .reslop runs move into .log', async (t) => {
   assert.equal(saved.runs, undefined);
   assert.equal(saved.agents.claude.model, 'sonnet');
 });
+
+test('a plan without agent instructions gets them in the prompt', () => {
+  const dir = tempDir('reslop-guide-');
+  try {
+    const row = { ...rowOf(specOf('claude')) };
+    const spec = path.join(dir, 'specs', 'plan.md');
+    fs.mkdirSync(path.dirname(spec), { recursive: true });
+    fs.writeFileSync(spec, '# Plan\n\n- [ ] F1: do it\n');
+    const bare = buildLaunch(row, emptyChoice(), spec, dir);
+    assert.equal(bare.plan, 'specs/plan.md');
+    assert.match(
+      bare.prompt,
+      /^Read and execute repair plan at specs\/plan\.md/,
+    );
+    assert.match(bare.prompt, /has no agent instructions; follow these:/);
+    assert.match(bare.prompt, /Work through unchecked items\./);
+    assert.match(bare.prompt, /unattended/);
+    const own = '# Plan\n\n## Agent instructions\n\nMine.\n\n- [ ] F1: x\n';
+    fs.writeFileSync(spec, own);
+    const told = buildLaunch(row, emptyChoice(), spec, dir);
+    assert.equal(told.prompt, planPrompt('specs/plan.md'));
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
