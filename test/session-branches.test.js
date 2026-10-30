@@ -1418,3 +1418,39 @@ test('tasks mark their lines and blocks in the gutter', async () => {
   assert.equal(session.pane, 'diff');
   assert.deepEqual(marked(), ['+▎b']);
 });
+
+const movedItem = (name, line, text) => {
+  const item = sampleItem(name);
+  item.hunk = {
+    ...item.hunk,
+    oldStart: line,
+    newStart: line,
+    lines: [
+      { type: 'del', text: `${text}-old`, noNl: false, blockId: 0 },
+      { type: 'add', text, noNl: false, blockId: 0 },
+    ],
+  };
+  return item;
+};
+
+test('a reload moves block tasks to where their blocks went', async () => {
+  const before = [movedItem('a.js', 3, 'one'), movedItem('a.js', 9, 'two')];
+  const { session, repo } = await openSession(before);
+  const notes = session.notes;
+  notes.setBlockTask('a.js:3', { text: 'first' });
+  notes.setBlockTask('a.js:9', { text: 'second' });
+  notes.addTask('TODOs', 'line\n- where: a.js:3-4', false, 'improvements');
+  const after = [movedItem('a.js', 9, 'one'), movedItem('a.js', 20, 'two')];
+  repo.load = () => ({ top: '/tmp', items: after });
+  session.dispatch('reload');
+  await session.ops.idle();
+  const placed = notes.tasks.map((task) => [
+    task.item.title,
+    task.item.value('where'),
+  ]);
+  assert.deepEqual(placed, [
+    ['first', 'a.js:9'],
+    ['second', 'a.js:20'],
+    ['line', 'a.js:3-4'],
+  ]);
+});
