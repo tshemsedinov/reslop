@@ -101,3 +101,9 @@ test('symbolLine finds a symbol, a dotted path, or a heading anchor', () => {
   assert.equal(symbolLine(doc, 'task-item'), 2);
   assert.equal(symbolLine(doc, 'plan-menu'), 4);
 });
+
+test('parseLocations reads a range of lines', () => {
+  const [range, one] = parseLocations('a.js:12-15, b.js:7:3');
+  assert.deepEqual([range.path, range.line, range.end], ['a.js', 12, 15]);
+  assert.deepEqual([one.path, one.line, one.end], ['b.js', 7, 7]);
+});

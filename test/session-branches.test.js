@@ -1393,3 +1393,28 @@ test('ctrl+t while editing a diff block adds a task and goes on', async () => {
   assert.deepEqual(whereOf(session), ['a.js:1']);
   assert.equal(session.notes.tasks[0].item.title, 'the line');
 });
+
+test('tasks mark their lines and blocks in the gutter', async () => {
+  const { session } = await twoBlockFile();
+  const marked = () => {
+    session.draw();
+    return session.lastFrame.rows
+      .map(stripAnsi)
+      .filter((row) => row.includes('▎'))
+      .map((row) => row.trim());
+  };
+  assert.deepEqual(marked(), []);
+  session.notes.setBlockTask('a.js:3', { text: 'check d' });
+  assert.deepEqual(marked(), ['▎c', '▎d']);
+  session.notes.addTask(
+    'TODOs',
+    'keep\n- where: a.js:1-2',
+    false,
+    'improvements',
+  );
+  assert.deepEqual(marked(), ['+▎b', '▎keep', '▎c', '▎d']);
+  session.pushInput('d');
+  press(session, 'enter');
+  assert.equal(session.pane, 'diff');
+  assert.deepEqual(marked(), ['+▎b']);
+});
