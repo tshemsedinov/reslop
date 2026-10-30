@@ -9,7 +9,7 @@ const { setImmediate: settle } = require('node:timers/promises');
 const agents = require('../../lib/agents/agents.js');
 const { planPrompt } = agents;
 const { emptyChoice, buildLaunch, AGENTS } = agents;
-const { press, click, tempDir } = require('../helpers.js');
+const { press, click, tempDir, removeTree } = require('../helpers.js');
 const ansi = require('../../lib/term/ansi.js');
 const { stripAnsi, THEME, bg } = ansi;
 const agentsHelpers = require('../agents-helpers.js');
@@ -490,7 +490,7 @@ test('a plan runs through an acp agent to its end', SH_ONLY, async () => {
     assert.equal(rows[1].id, 'session-1');
   } finally {
     ui.agents.reset();
-    repo.cleanup();
+    await removeTree(repo.dir);
     fs.rmSync(dir, { recursive: true, force: true });
   }
 });

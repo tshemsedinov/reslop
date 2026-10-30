@@ -180,6 +180,33 @@ test('an adapter runs only when the cli of its agent is installed', () => {
   }
 });
 
+test('a command is found by the name it has on disk on Windows', () => {
+  const { dir, bins, env } = fakePath('kiro-cli.exe');
+  try {
+    assert.equal(findBin('kiro-cli', env, 'win32'), bins['kiro-cli.exe']);
+    assert.equal(findBin('KIRO-CLI', env, 'win32'), bins['kiro-cli.exe']);
+    assert.equal(findBin('kiro-cli', env, 'linux'), '');
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('a command added within one tick of the directory time is found', () => {
+  const { dir, env } = fakePath('first');
+  const tick = new Date();
+  const keepTime = () => fs.utimesSync(dir, tick, tick);
+  try {
+    keepTime();
+    assert.notEqual(findBin('first', env), '');
+    assert.equal(findBin('second', env), '');
+    const second = makeBin(dir, 'second');
+    keepTime();
+    assert.equal(findBin('second', env), second);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test('Kiro installs with its script and is found in ~/.local/bin', () => {
   const home = tempDir('reslop-home-');
   try {

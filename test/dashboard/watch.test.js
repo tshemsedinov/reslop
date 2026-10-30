@@ -169,6 +169,8 @@ test('the disk watcher reports changed paths and run records', async () => {
     fs.writeFileSync(path.join(root, 'a.js'), 'x\n');
     assert.ok(await waitUntil(() => seen.has('a.js')));
     assert.ok(changes >= 1);
+    // macOS can report the write again after the debounce
+    await wait(250);
     const before = changes;
     fs.mkdirSync(path.join(root, '.log', '.runs'), { recursive: true });
     await wait(60);
