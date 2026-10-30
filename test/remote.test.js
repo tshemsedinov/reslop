@@ -130,7 +130,7 @@ test('noteFromLocation maps RIGHT and LEFT lines onto feedback', () => {
     'github',
     'pull request',
   );
-  assert.equal(right.kind, 'feedback');
+  assert.equal(right.kind, 'blockTask');
   assert.equal(right.file, 'lib/parser.js');
   const left = noteFromLocation(
     items,
@@ -139,7 +139,7 @@ test('noteFromLocation maps RIGHT and LEFT lines onto feedback', () => {
     'gitlab',
     'merge request',
   );
-  assert.equal(left.kind, 'feedback');
+  assert.equal(left.kind, 'blockTask');
   assert.match(left.text, /keep old/);
 });
 

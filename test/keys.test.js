@@ -160,7 +160,6 @@ const KEY_ACTIONS = [
   ['ctrl-d', undefined, 'halfDown'],
   ['enter', undefined, 'open'],
   ['e', undefined, 'code'],
-  ['d', undefined, 'revert'],
   ['c', undefined, 'commit'],
   ['l', undefined, 'theme'],
   ['x', undefined, null],
@@ -182,9 +181,12 @@ const KEY_ACTIONS = [
   ['u', 'unit', 'unstage'],
   ['f', 'files', 'dashFiles'],
   ['f', 'diff', 'dashFiles'],
-  ['d', 'files', 'revert'],
-  ['d', 'diff', 'revert'],
-  ['d', 'unit', 'revert'],
+  ['delete', 'files', 'revert'],
+  ['delete', 'diff', 'revert'],
+  ['delete', 'unit', 'revert'],
+  ['d', 'files', 'dashDiffs'],
+  ['d', 'diff', 'dashDiffs'],
+  ['f', 'diff', 'dashFiles'],
   ['left', 'unit', 'prev'],
   ['right', 'unit', 'next'],
   ['s', 'files', null],
@@ -228,8 +230,8 @@ const KEY_ACTIONS = [
   ['c', 'files', 'dashCommits'],
   ['e', 'npm', 'npmEdit'],
   ['insert', 'npm', 'npmNew'],
-  ['q', 'diff', 'feedback'],
-  ['q', 'unit', 'feedback'],
+  ['ctrl-t', 'diff', 'blockTask'],
+  ['ctrl-t', 'unit', 'blockTask'],
   ['q', 'files', null],
   ['e', 'files', 'code'],
   ['e', 'diff', 'code'],
@@ -293,9 +295,12 @@ test('button words and letters name the bound keys', () => {
   assert.equal(actions.buttonWord('newBranch'), 'insert');
   assert.equal(actions.buttonWord('npmNew'), 'insert');
   assert.equal(actions.actionLetter('newCommit'), 'ins');
-  assert.equal(actions.buttonWord('lines'), 'ctrl+l');
-  assert.equal(actions.actionLetter('feedback'), 'q');
-  assert.equal(actions.buttonWord('feedback'), 'quote');
+  assert.equal(actions.buttonWord('lines'), '^lines');
+  assert.equal(actions.buttonWord('revert'), 'delete');
+  assert.equal(actions.buttonWord('listSelectAll'), '^all');
+  assert.equal(actions.buttonWord('npmTask'), '^task');
+  assert.equal(actions.actionLetter('blockTask'), '^t');
+  assert.equal(actions.buttonWord('blockTask'), '^task');
   assert.equal(actions.buttonWord('packageWanted'), 'wanted');
   assert.equal(actions.buttonWord('packageLatest'), 'latest');
   const dashOff = disabledActions('dashboard', null);
@@ -333,7 +338,7 @@ test('layoutButtons hitboxes cover labels', () => {
   const off = layoutButtons(160, { hidden: FILES_DISABLED });
   const hitIds = off.hits.map((hit) => hit.id);
   assert.equal(hitIds.includes('layout'), false);
-  assert.equal(hitIds.includes('feedback'), false);
+  assert.equal(hitIds.includes('blockTask'), false);
   assert.equal(hitIds.includes('code'), true);
   assert.equal(hitIds.includes('add'), true);
   assert.equal(hitIds.includes('reload'), false);
@@ -343,7 +348,7 @@ test('layoutButtons hitboxes cover labels', () => {
   assert.equal(hitIds.includes('newBranch'), false);
   const ids = off.parts.map((part) => part.id);
   assert.equal(ids.includes('layout'), false);
-  assert.equal(ids.includes('feedback'), false);
+  assert.equal(ids.includes('blockTask'), false);
   assert.equal(ids.includes('code'), true);
   assert.equal(ids.includes('tasks'), true);
   const filesHint = layoutButtons(160, {

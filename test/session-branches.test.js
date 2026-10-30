@@ -65,14 +65,10 @@ test('load applies imported GitHub notes on a new review', async () => {
   const item = sampleItem('lib/parser.js', 'pr');
   const cwd = tempDir('reslop-ui-');
   const imported = {
-    feedback: [
+    blockTasks: [
       {
-        file: 'lib/parser.js',
-        oldStart: 1,
-        newStart: 1,
-        blockId: 0,
+        where: 'lib/parser.js:1',
         origin: 'pr',
-        header: '@@ -1,1 +1,1 @@',
         text: '@alice review at github: use const',
         done: false,
       },
@@ -97,17 +93,17 @@ test('load applies imported GitHub notes on a new review', async () => {
     revert: () => {},
   };
   const { session } = await openSession([item], { cwd, repo });
-  const notes = [...session.notes.feedback.values()];
-  assert.equal(notes.length, 1);
-  assert.match(notes[0].text, /use const/);
-  assert.equal(session.notes.tasks.length, 1);
-  assert.match(session.notes.tasks[0].text, /add tests/);
+  const note = session.notes.blockTask('lib/parser.js:1');
+  assert.match(note.text, /use const/);
+  const texts = session.notes.tasks.map((task) => task.text);
+  assert.equal(texts.length, 2);
+  assert.match(texts[0], /add tests/);
   assert.equal(
     session.fileList().some((entry) => entry.kind === 'tasks'),
     false,
   );
   await session.load();
-  assert.equal(session.notes.tasks.length, 1);
+  assert.equal(session.notes.tasks.length, 2);
 });
 
 test('load skips imported GitHub notes when resuming a review', async () => {
@@ -119,7 +115,7 @@ test('load skips imported GitHub notes when resuming a review', async () => {
   fs.writeFileSync(reviewPath, serializeReview(draft), 'utf8');
   const item = sampleItem('lib/parser.js', 'pr');
   const imported = {
-    feedback: [],
+    blockTasks: [],
     todos: [{ file: 'pull request', text: 'from github', done: false }],
   };
   const { session } = await openSession([item], {
@@ -698,7 +694,7 @@ test('files pane u unstages', async () => {
   assert.equal(session.status, 'unstaged');
 });
 
-test('files pane f opens file scope and d drops', async () => {
+test('files pane f opens file scope, d diffs, delete drops', async () => {
   const item = sampleItem('a.js', 'staged');
   const { session, repo } = await openSession([item], { startPane: 'files' });
   session.dispatch('next');
@@ -707,9 +703,12 @@ test('files pane f opens file scope and d drops', async () => {
   assert.equal(session.fileScope, 'file');
   assert.equal(session.pane, 'files');
   assert.equal(repo.unstageCalls.length, 0);
-  session.pushInput('d');
+  press(session, 'delete');
   assert.equal(session.fileScope, 'file');
   assert.equal(repo.reverted.length, 1);
+  session.pushInput('d');
+  assert.equal(session.fileScope, 'diff');
+  assert.equal(session.fileCursorEntry().path, 'a.js');
 });
 
 test('unit scope lists every file sorted by path', async () => {
@@ -1274,4 +1273,123 @@ test('partial file add reloads after a later hunk fails', async () => {
   assert.equal(session.items[0].origin, 'staged');
   assert.equal(session.items[1].origin, 'unstaged');
   assert.equal(session.items[1].blockId, 1);
+});
+
+const twoBlockFile = async () => {
+  const first = sampleItem('a.js');
+  const second = sampleItem('a.js');
+  second.blockId = 1;
+  second.hunk = {
+    oldStart: 3,
+    oldCount: 1,
+    newStart: 3,
+    newCount: 1,
+    header: '@@ -3,1 +3,1 @@',
+    lines: [
+      { type: 'del', text: 'c', noNl: false, blockId: 1 },
+      { type: 'add', text: 'd', noNl: false, blockId: 1 },
+    ],
+  };
+  const opened = await openSession([first, second], { startPane: 'files' });
+  opened.repo.fileBodies['a.js'] = 'b\nkeep\nd\n';
+  opened.session.dispatch('file');
+  await opened.session.ops.idle();
+  opened.session.dispatch('open');
+  await opened.session.ops.idle();
+  return opened;
+};
+
+const whereOf = (session) =>
+  session.notes.tasks.map((task) => task.item.value('where'));
+
+test('ctrl+t in the file view names the line or the block', async () => {
+  const { session } = await twoBlockFile();
+  assert.equal(session.pane, 'unit');
+  session.nav.unitLine = 2;
+  press(session, 'ctrl-t');
+  assert.equal(session.composeKind, 'blockTask');
+  session.pushInput('keep it');
+  press(session, 'enter');
+  session.nav.unitLine = 4;
+  press(session, 'ctrl-t');
+  session.pushInput('check d');
+  press(session, 'enter');
+  assert.deepEqual(whereOf(session), ['a.js:2', 'a.js:3']);
+});
+
+test('ctrl+t in the file editor adds a task and goes on editing', async () => {
+  const { session } = await twoBlockFile();
+  session.dispatch('code');
+  await session.ops.idle();
+  assert.equal(session.composeKind, 'file');
+  session.editor.place(0);
+  session.pushInput('x');
+  press(session, 'down', 'shift-down');
+  press(session, 'ctrl-t');
+  assert.equal(session.composeKind, 'blockTask');
+  assert.equal(session.view().compose.prompt, 'task: [ ] ');
+  session.pushInput('two lines');
+  press(session, 'escape');
+  assert.equal(session.composeKind, 'file');
+  assert.equal(session.editor.text, 'xb\nkeep\nd\n');
+  assert.equal(session.editor.hasSelect(), true);
+  session.editor.place(1);
+  press(session, 'ctrl-t');
+  session.pushInput('first block');
+  press(session, 'enter');
+  assert.equal(session.composeKind, 'file');
+  assert.deepEqual(whereOf(session), ['a.js:2-3', 'a.js:1']);
+});
+
+test('f and d keep the file the cursor is on', async () => {
+  const items = ['lib/a.js', 'src/b.js', 'src/c.js'].map((rel) =>
+    sampleItem(rel),
+  );
+  const { session } = await openSession(items, { startPane: 'files' });
+  const shown = () => session.fileCursorEntry().path;
+  press(session, 'down');
+  session.pushInput('f');
+  await session.ops.idle();
+  assert.equal(session.fileScope, 'file');
+  assert.equal(session.nav.folder, 'src');
+  assert.equal(shown(), 'src/b.js');
+  press(session, 'down');
+  session.pushInput('d');
+  assert.equal(session.fileScope, 'diff');
+  assert.equal(shown(), 'src/c.js');
+  press(session, 'enter');
+  assert.equal(session.current().file.newPath, 'src/c.js');
+});
+
+test('the files menu selects all and leaves enter to the key', async () => {
+  const items = [sampleItem('a.js'), sampleItem('b.js')];
+  const { session } = await openSession(items, { startPane: 'files' });
+  session.draw();
+  const hit = session.lastFrame.fileHits.find((entry) => entry.cursor === 0);
+  helpers.rightClick(session, 10, hit.y);
+  const { actions } = session.nav.contextMenu;
+  assert.ok(!actions.includes('open'));
+  assert.equal(actions.at(-1), 'listSelectAll');
+  press(session, 'ctrl-a');
+  assert.equal(session.nav.contextMenu, null);
+  assert.deepEqual(session.view().listSelection, [0, 1]);
+});
+
+test('ctrl+t while editing a diff block adds a task and goes on', async () => {
+  const { session } = await openSession([sampleItem('a.js')]);
+  session.pushInput('e');
+  assert.equal(session.composeKind, 'code');
+  session.pushInput('2');
+  press(session, 'ctrl-t');
+  assert.equal(session.composeKind, 'blockTask');
+  session.pushInput('name the value');
+  press(session, 'enter');
+  assert.equal(session.composeKind, 'code');
+  assert.equal(session.editor.text, 'b2');
+  press(session, 'shift-home', 'ctrl-t');
+  assert.equal(session.editor.text, 'name the value');
+  session.editor.replace('the line');
+  press(session, 'enter');
+  assert.deepEqual(whereOf(session), ['a.js:1']);
+  assert.equal(session.notes.tasks[0].item.title, 'the line');
 });

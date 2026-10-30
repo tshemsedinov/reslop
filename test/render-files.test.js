@@ -194,9 +194,8 @@ test('AC10 footer words highlight the bound letter', () => {
   const plain = stripAnsi(row);
   assert.match(
     plain,
-    /^ 🢐esc {2}add {2}unstage {2}drop {2}ignore {2}edit.*files {2}diffs/,
+    /^ 🢐esc {2}add {2}unstage {2}delete {2}ignore {2}edit.*files {2}diffs/,
   );
-  assert.match(plain, /drop {2}ignore/);
   assert.match(plain, /^ 🢐esc {2}add {2}/);
   assert.ok(!plain.includes('q'));
   assert.ok(!plain.includes('prev'));
@@ -221,13 +220,13 @@ test('AC10 footer words highlight the bound letter', () => {
   const dimRow = dim.rows[dim.rows.length - 1];
   assert.match(
     dimRow,
-    /🢐esc {2}add {2}unstage {2}drop {2}ignore {2}edit.*files {2}diffs/,
+    /🢐esc {2}add {2}unstage {2}delete {2}ignore {2}edit.*files {2}diffs/,
   );
-  assert.match(dimRow, /drop {2}ignore/);
+  assert.match(dimRow, /delete {2}ignore/);
   assert.ok(!dimRow.includes('q'));
   assert.ok(!dimRow.includes('['));
   const mode = frame.buttons.find((hit) => hit.id === 'layout');
-  const feedback = frame.buttons.find((hit) => hit.id === 'feedback');
+  const feedback = frame.buttons.find((hit) => hit.id === 'blockTask');
   const code = frame.buttons.find((hit) => hit.id === 'code');
   assert.equal(mode, undefined);
   assert.equal(feedback, undefined);
@@ -261,7 +260,7 @@ test('AC10 footer words highlight the bound letter', () => {
   const fileScopeRow = fileScope.rows[fileScope.rows.length - 1];
   assert.match(
     fileScopeRow,
-    /🢐esc {2}add {2}unstage {2}drop {2}ignore {2}edit.*files {2}diffs/,
+    /🢐esc {2}add {2}unstage {2}delete {2}ignore {2}edit.*files {2}diffs/,
   );
   assert.ok(fileScope.buttons.find((hit) => hit.id === 'revert'));
   assert.ok(fileScope.buttons.find((hit) => hit.id === 'dashDiffs'));
@@ -295,9 +294,8 @@ test('files pane todos row dims add unstage drop', () => {
   const footer = frame.rows[frame.rows.length - 1];
   assert.match(
     footer,
-    /🢐esc {2}add {2}unstage {2}drop {2}ignore {2}edit.*files {2}diffs/,
+    /🢐esc {2}add {2}unstage {2}delete {2}ignore {2}edit.*files {2}diffs/,
   );
-  assert.match(footer, /drop {2}ignore/);
   assert.ok(!footer.includes('q'));
   assert.ok(!footer.includes('←'));
   assert.ok(!footer.includes('→'));
@@ -334,7 +332,7 @@ test('files pane todos row dims add unstage drop', () => {
   const fileFooter = file.rows[file.rows.length - 1];
   assert.match(
     fileFooter,
-    /🢐esc {2}add {2}unstage {2}drop {2}ignore {2}edit.*files {2}diffs/,
+    /🢐esc {2}add {2}unstage {2}delete {2}ignore {2}edit.*files {2}diffs/,
   );
   assert.ok(file.buttons.find((hit) => hit.id === 'add'));
 });
@@ -367,7 +365,7 @@ test('diff pane dims add on staged and unstage on unstaged', () => {
   const stagedRow = staged.rows[staged.rows.length - 1];
   const rest = seq(THEME.buttonFg, THEME.buttonBg);
   const hot = seq(THEME.buttonHotFg, THEME.buttonBg);
-  assert.match(stripAnsi(stagedRow), /add {2}unstage {2}drop {2}ignore/);
+  assert.match(stripAnsi(stagedRow), /add {2}unstage {2}delete {2}ignore/);
   assert.equal(
     staged.buttons.find((hit) => hit.id === 'add'),
     undefined,

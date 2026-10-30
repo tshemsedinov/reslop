@@ -141,7 +141,7 @@ test('loadMergeRequest converts a GitLab patch into pr items', async () => {
   assert.equal(loaded.items[0].file.newPath, 'lib/parser.js');
   assert.ok(loaded.items[0].hunk);
   assert.equal(loaded.items[1].file.newPath, 'README.md');
-  assert.deepEqual(loaded.imported, { feedback: [], tasks: [] });
+  assert.deepEqual(loaded.imported, { blockTasks: [], tasks: [] });
 });
 
 test('mrApiUrl encodes nested project paths', () => {
@@ -253,9 +253,9 @@ const inlineDiffNote = (extra = {}) => {
 test('discussionToNotes maps an inline comment onto hunk feedback', () => {
   const items = itemsFromFiles(parseDiff(MR_DIFF), 'pr');
   const notes = discussionToNotes([{ notes: [inlineDiffNote()] }], items);
-  assert.equal(notes.feedback.length, 1);
+  assert.equal(notes.blockTasks.length, 1);
   assert.equal(notes.tasks.length, 0);
-  const note = notes.feedback[0];
+  const note = notes.blockTasks[0];
   assert.equal(note.file, 'lib/parser.js');
   assert.equal(note.oldStart, 1);
   assert.equal(note.newStart, 1);
@@ -303,7 +303,7 @@ test('discussionToNotes maps file-level and general comments to todos', () => {
     ],
     items,
   );
-  assert.equal(notes.feedback.length, 0);
+  assert.equal(notes.blockTasks.length, 0);
   assert.equal(notes.tasks.length, 3);
   assert.equal(notes.tasks[0].file, 'lib/parser.js');
   assert.match(notes.tasks[0].text, /add types/);
@@ -328,7 +328,7 @@ test('discussionToNotes skips system notes', () => {
     ],
     items,
   );
-  assert.deepEqual(notes, { feedback: [], tasks: [] });
+  assert.deepEqual(notes, { blockTasks: [], tasks: [] });
 });
 
 test('discussionToNotes marks resolved inline comments done', () => {
@@ -337,8 +337,8 @@ test('discussionToNotes marks resolved inline comments done', () => {
     [{ notes: [inlineDiffNote({ resolved: true })] }],
     items,
   );
-  assert.equal(notes.feedback[0].done, true);
-  assert.equal(notes.feedback[0].text, '@alice review at gitlab: use const');
+  assert.equal(notes.blockTasks[0].done, true);
+  assert.equal(notes.blockTasks[0].text, '@alice review at gitlab: use const');
 });
 
 test('discussionToNotes maps a later hunk block by new line', () => {
@@ -377,8 +377,8 @@ test('discussionToNotes maps a later hunk block by new line', () => {
     ],
     [item0, item1],
   );
-  assert.equal(notes.feedback.length, 1);
-  assert.equal(notes.feedback[0].blockId, 1);
+  assert.equal(notes.blockTasks.length, 1);
+  assert.equal(notes.blockTasks[0].blockId, 1);
 });
 
 test('discussionToNotes skips empty bodies and out of scope paths', () => {
@@ -419,8 +419,8 @@ test('discussionToNotes skips empty bodies and out of scope paths', () => {
     items,
     ['lib'],
   );
-  assert.equal(notes.feedback.length, 1);
-  assert.match(notes.feedback[0].text, /parser nit/);
+  assert.equal(notes.blockTasks.length, 1);
+  assert.match(notes.blockTasks[0].text, /parser nit/);
   assert.equal(notes.tasks.length, 1);
   assert.match(notes.tasks[0].text, /please add tests/);
 });
@@ -450,9 +450,9 @@ test('loadMergeRequest imports review discussion', async () => {
     ],
   });
   const loaded = await loadMergeRequest(MR, { fetch: fetchImpl, token: '' });
-  assert.equal(loaded.imported.feedback.length, 1);
-  assert.equal(loaded.imported.feedback[0].done, true);
-  assert.match(loaded.imported.feedback[0].text, /use const/);
+  assert.equal(loaded.imported.blockTasks.length, 1);
+  assert.equal(loaded.imported.blockTasks[0].done, true);
+  assert.match(loaded.imported.blockTasks[0].text, /use const/);
   assert.equal(loaded.imported.tasks.length, 2);
 });
 
@@ -479,9 +479,9 @@ for (const [name, value] of Object.entries(NEXT_PAGE)) {
     };
     const loaded = await loadMergeRequest(MR, { fetch: fetchImpl, token: '' });
     assert.equal(commentPages, 2);
-    assert.equal(loaded.imported.feedback.length, 2);
-    assert.match(loaded.imported.feedback[0].text, /first/);
-    assert.match(loaded.imported.feedback[1].text, /second/);
+    assert.equal(loaded.imported.blockTasks.length, 2);
+    assert.match(loaded.imported.blockTasks[0].text, /first/);
+    assert.match(loaded.imported.blockTasks[1].text, /second/);
   });
 }
 
@@ -500,7 +500,7 @@ test('discussionToNotes falls back to a todo when unmatched', () => {
     ],
     items,
   );
-  assert.equal(notes.feedback.length, 0);
+  assert.equal(notes.blockTasks.length, 0);
   assert.equal(notes.tasks.length, 1);
   assert.equal(notes.tasks[0].file, 'lib/parser.js');
   assert.match(notes.tasks[0].text, /orphan/);
@@ -547,7 +547,7 @@ test('loadMergeRequest still opens when discussion import fails', async () => {
     retry: { attempts: 1 },
   });
   assert.equal(loaded.change.number, 123);
-  assert.deepEqual(loaded.imported, { feedback: [], tasks: [] });
+  assert.deepEqual(loaded.imported, { blockTasks: [], tasks: [] });
 });
 
 const GL_ISSUE = {

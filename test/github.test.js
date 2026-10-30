@@ -166,7 +166,7 @@ test('loadPullRequest converts a GitHub patch into pr items', async () => {
   assert.equal(loaded.items[0].file.newPath, 'lib/parser.js');
   assert.ok(loaded.items[0].hunk);
   assert.equal(loaded.items[1].file.newPath, 'README.md');
-  assert.deepEqual(loaded.imported, { feedback: [], tasks: [] });
+  assert.deepEqual(loaded.imported, { blockTasks: [], tasks: [] });
 });
 
 test('loadPullRequest folds package.json and lockfile changes', async () => {
@@ -296,9 +296,9 @@ test('discussionToNotes maps an inline comment onto hunk feedback', () => {
     },
     items,
   );
-  assert.equal(notes.feedback.length, 1);
+  assert.equal(notes.blockTasks.length, 1);
   assert.equal(notes.tasks.length, 0);
-  const note = notes.feedback[0];
+  const note = notes.blockTasks[0];
   assert.equal(note.file, 'lib/parser.js');
   assert.equal(note.oldStart, 1);
   assert.equal(note.newStart, 1);
@@ -329,7 +329,7 @@ test('discussionToNotes maps file-level and general comments to todos', () => {
     },
     items,
   );
-  assert.equal(notes.feedback.length, 0);
+  assert.equal(notes.blockTasks.length, 0);
   assert.equal(notes.tasks.length, 3);
   assert.equal(notes.tasks[0].file, 'lib/parser.js');
   assert.match(notes.tasks[0].text, /add types/);
@@ -357,8 +357,8 @@ test('discussionToNotes marks resolved inline comments done', () => {
     },
     items,
   );
-  assert.equal(notes.feedback[0].done, true);
-  assert.equal(notes.feedback[0].text, '@alice review at github: use const');
+  assert.equal(notes.blockTasks[0].done, true);
+  assert.equal(notes.blockTasks[0].text, '@alice review at github: use const');
 });
 
 test('discussionToNotes maps a later hunk block by new line', () => {
@@ -398,8 +398,8 @@ test('discussionToNotes maps a later hunk block by new line', () => {
     },
     [item0, item1],
   );
-  assert.equal(notes.feedback.length, 1);
-  assert.equal(notes.feedback[0].blockId, 1);
+  assert.equal(notes.blockTasks.length, 1);
+  assert.equal(notes.blockTasks[0].blockId, 1);
 });
 
 test('discussionToNotes skips empty bodies and out of scope paths', () => {
@@ -437,8 +437,8 @@ test('discussionToNotes skips empty bodies and out of scope paths', () => {
     items,
     ['lib'],
   );
-  assert.equal(notes.feedback.length, 1);
-  assert.match(notes.feedback[0].text, /parser nit/);
+  assert.equal(notes.blockTasks.length, 1);
+  assert.match(notes.blockTasks[0].text, /parser nit/);
   assert.equal(notes.tasks.length, 1);
   assert.match(notes.tasks[0].text, /please add tests/);
 });
@@ -475,9 +475,9 @@ test('loadPullRequest imports review discussion', async () => {
     },
   });
   const loaded = await loadPullRequest(PR, { fetch: fetchImpl, token: '' });
-  assert.equal(loaded.imported.feedback.length, 1);
-  assert.equal(loaded.imported.feedback[0].done, true);
-  assert.match(loaded.imported.feedback[0].text, /use const/);
+  assert.equal(loaded.imported.blockTasks.length, 1);
+  assert.equal(loaded.imported.blockTasks[0].done, true);
+  assert.match(loaded.imported.blockTasks[0].text, /use const/);
   assert.equal(loaded.imported.tasks.length, 2);
 });
 
@@ -515,9 +515,9 @@ test('loadPullRequest paginates review comments', async () => {
   };
   const loaded = await loadPullRequest(PR, { fetch: fetchImpl, token: '' });
   assert.equal(commentPages, 2);
-  assert.equal(loaded.imported.feedback.length, 2);
-  assert.match(loaded.imported.feedback[0].text, /first/);
-  assert.match(loaded.imported.feedback[1].text, /second/);
+  assert.equal(loaded.imported.blockTasks.length, 2);
+  assert.match(loaded.imported.blockTasks[0].text, /first/);
+  assert.match(loaded.imported.blockTasks[1].text, /second/);
 });
 
 test('loadPullRequest still opens when discussion import fails', async () => {
@@ -534,7 +534,7 @@ test('loadPullRequest still opens when discussion import fails', async () => {
     retry: { attempts: 1 },
   });
   assert.equal(loaded.change.number, 123);
-  assert.deepEqual(loaded.imported, { feedback: [], tasks: [] });
+  assert.deepEqual(loaded.imported, { blockTasks: [], tasks: [] });
 });
 
 test('discussionToNotes falls back to a todo when unmatched', () => {
@@ -554,7 +554,7 @@ test('discussionToNotes falls back to a todo when unmatched', () => {
     },
     items,
   );
-  assert.equal(notes.feedback.length, 0);
+  assert.equal(notes.blockTasks.length, 0);
   assert.equal(notes.tasks.length, 1);
   assert.equal(notes.tasks[0].file, 'lib/parser.js');
   assert.match(notes.tasks[0].text, /orphan/);
@@ -606,9 +606,9 @@ test('loadPullRequest keeps comments if GraphQL resolved fails', async () => {
     return base(url, init);
   };
   const loaded = await loadPullRequest(PR, { fetch: fetchImpl, token: '' });
-  assert.equal(loaded.imported.feedback.length, 1);
-  assert.equal(loaded.imported.feedback[0].done, false);
-  assert.match(loaded.imported.feedback[0].text, /use const/);
+  assert.equal(loaded.imported.blockTasks.length, 1);
+  assert.equal(loaded.imported.blockTasks[0].done, false);
+  assert.match(loaded.imported.blockTasks[0].text, /use const/);
 });
 
 const ISSUE = { owner: 'acme', repo: 'app', number: 12 };

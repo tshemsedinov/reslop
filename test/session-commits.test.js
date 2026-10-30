@@ -1075,10 +1075,10 @@ test('escape from commit message does not run git', async () => {
 
 test('compose c inserts a letter and does not open commit', async () => {
   const { session, repo } = await openSession([sampleItem('a.js')]);
-  session.dispatch('feedback');
+  session.dispatch('blockTask');
   session.pushInput('c');
   assert.equal(session.mode, 'compose');
-  assert.equal(session.composeKind, 'feedback');
+  assert.equal(session.composeKind, 'blockTask');
   assert.equal(session.editor.text, 'c');
   assert.equal(repo.commits.length, 0);
 });
@@ -1238,7 +1238,7 @@ test('double click commit row opens its diff', async () => {
   assert.equal(session.rev, 'bbb2222bbbbbbbbbbbbbbbbbbbbbbbbbbbbbb');
 });
 
-test('files pane a and d stay add and revert', async () => {
+test('files pane a adds and delete drops', async () => {
   const added = await openSession([sampleItem('a.js')], { startPane: 'files' });
   press(added.session, 'down');
   added.session.pushInput('a');
@@ -1247,8 +1247,7 @@ test('files pane a and d stay add and revert', async () => {
   const reverted = await openSession([sampleItem('a.js')], {
     startPane: 'files',
   });
-  press(reverted.session, 'down');
-  reverted.session.pushInput('d');
+  press(reverted.session, 'down', 'delete');
   await reverted.session.ops.idle();
   assert.equal(reverted.repo.reverted.length, 1);
 });

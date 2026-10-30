@@ -54,12 +54,12 @@ test('click moves the caret in the code and file editors', async () => {
 
 test('click moves the caret in feedback and todo editors', async () => {
   const { session } = await openSession([sampleItem('a.js')]);
-  session.dispatch('feedback');
+  session.dispatch('blockTask');
   session.editor.replace('ab\ncd');
   session.draw();
   clickCaret(session, -1, -1);
   assert.equal(session.editor.cursor, 1);
-  assert.equal(session.composeKind, 'feedback');
+  assert.equal(session.composeKind, 'blockTask');
   press(session, 'escape');
   session.dispatch('tasks');
   session.pushInput('ship');
@@ -331,7 +331,7 @@ test('ctrl-c copies the screen selection without quitting', async (t) => {
 
 test('editors select with shift and copy cut paste', async () => {
   const { session, stdout } = await openSession([sampleItem('a.js')]);
-  session.dispatch('feedback');
+  session.dispatch('blockTask');
   session.editor.replace('hello');
   session.color = true;
   session.draw();
@@ -392,7 +392,7 @@ test('editors select with shift and copy cut paste', async () => {
 });
 
 for (const [kind, pane] of [
-  ['feedback', 'diff'],
+  ['blockTask', 'diff'],
   ['branch', 'branches'],
   ['worktree', 'branches'],
   ['commit', 'commits'],
@@ -481,10 +481,10 @@ test('reverse mouse drags select scrolled file text', async () => {
   assert.equal(session.nav.selection, null);
 });
 
-test('mouse selection spans visually wrapped feedback', async () => {
+test('mouse selection spans a visually wrapped block task', async () => {
   const { session, stdout } = await openSession([sampleItem('a.js')]);
-  stdout.columns = 20;
-  session.composer.openCompose('feedback', 'alpha beta gamma delta epsilon');
+  stdout.columns = 30;
+  session.composer.openCompose('blockTask', 'alpha beta gamma delta epsilon');
   session.editor.place(0);
   session.draw();
   const hits = session.lastFrame.editHits;
@@ -890,12 +890,12 @@ test('a file edit reloads once and later saves do not stage', async () => {
   assert.equal(repo.edited.length, 1);
   assert.deepEqual(repo.stagedPaths, ['a.js']);
   assert.equal(loads, 1);
-  session.dispatch('feedback');
+  session.dispatch('blockTask');
   session.pushInput('note');
   press(session, 'enter');
   await session.ops.idle();
   assert.equal(session.mode, 'review');
-  assert.equal(session.notes.feedback.size, 1);
+  assert.equal(session.notes.tasks.length, 1);
   assert.equal(loads, 1);
 });
 

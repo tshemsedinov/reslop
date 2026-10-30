@@ -16,9 +16,9 @@ const { openSession } = sessionHelpers;
 
 test('compose arrows move by visual wrap rows', async () => {
   const stdout = uiSink();
-  stdout.columns = 10;
+  stdout.columns = 20;
   const { session } = await openSession([sampleItem('a.js')], { stdout });
-  session.dispatch('feedback');
+  session.dispatch('blockTask');
   session.pushInput('hello world');
   press(session, 'up');
   assert.equal(session.editor.cursor, 5);
@@ -29,7 +29,7 @@ test('compose arrows move by visual wrap rows', async () => {
 test('compose cursor uses the terminal blinking cursor', async () => {
   const item = sampleItem('a.js');
   const { session, stdout } = await openSession([item]);
-  session.dispatch('feedback');
+  session.dispatch('blockTask');
   session.draw();
   const on = stdout.dump();
   assert.ok(on.includes('[1 q'));
@@ -42,36 +42,73 @@ test('compose cursor uses the terminal blinking cursor', async () => {
 test('enter and escape save feedback and return to browse', async () => {
   const item = sampleItem('a.js');
   const { session } = await openSession([item]);
-  session.dispatch('feedback');
+  session.dispatch('blockTask');
   session.pushInput('note');
   press(session, 'enter');
   assert.equal(session.mode, 'review');
   assert.equal(session.done, false);
-  const key = 'a.js:1:1:0';
-  assert.equal(session.notes.feedback.get(key).text, 'note');
-  session.dispatch('feedback');
+  const key = 'a.js:1';
+  assert.equal(session.notes.blockTask(key).text, 'note');
+  session.dispatch('blockTask');
   session.pushInput(' two');
   press(session, 'escape');
   assert.equal(session.mode, 'review');
   assert.equal(session.done, false);
-  assert.equal(session.notes.feedback.get(key).text, 'note two');
+  assert.equal(session.notes.blockTask(key).text, 'note two');
   assert.equal(session.status, 'saved');
+});
+
+test('feedback is a structured task, an older note becomes one', async () => {
+  const { session } = await openSession([sampleItem('a.js')]);
+  const notes = session.notes;
+  notes.setFeedback('a.js:1:1:0', {
+    file: 'a.js',
+    oldStart: 1,
+    newStart: 1,
+    blockId: 0,
+    text: 'Improve naming',
+  });
+  session.dispatch('blockTask');
+  assert.equal(session.editor.text, 'Improve naming');
+  session.pushInput('\nthe helper reads as a verb');
+  press(session, 'escape');
+  assert.equal(notes.feedback.size, 0);
+  const task = [
+    '## Improvements',
+    '',
+    '- [ ] Improve naming',
+    '  - where: a.js:1',
+    '  - problem: the helper reads as a verb',
+  ].join('\n');
+  assert.ok(notes.doc.toString().includes(task));
+  assert.doesNotMatch(notes.doc.toString(), /## a\.js|:1:1:0/);
+  const [only] = notes.tasks;
+  notes.setTaskDone(only.id, true);
+  session.dispatch('blockTask');
+  session.pushInput('!');
+  press(session, 'escape');
+  const note = notes.blockTask('a.js:1');
+  assert.equal(note.text, 'Improve naming\nthe helper reads as a verb!');
+  assert.equal(note.done, true);
+  session.dispatch('blockTask');
+  session.editor.replace('');
+  press(session, 'escape');
+  assert.equal(notes.tasks.length, 0);
 });
 
 test('editing feedback keeps one latest version', async () => {
   const item = sampleItem('a.js');
   const { session } = await openSession([item]);
-  session.dispatch('feedback');
+  session.dispatch('blockTask');
   session.pushInput('first');
   press(session, 'ctrl-s');
-  session.dispatch('feedback');
+  session.dispatch('blockTask');
   session.pushInput(' more');
   session.autosave();
   press(session, 'ctrl-s');
-  const key = 'a.js:1:1:0';
-  assert.equal(session.notes.feedback.size, 1);
-  assert.equal(session.notes.feedback.get(key).text, 'first more');
-  session.dispatch('feedback');
+  assert.equal(session.notes.tasks.length, 1);
+  assert.equal(session.notes.blockTask('a.js:1').text, 'first more');
+  session.dispatch('blockTask');
   assert.equal(session.editor.text, 'first more');
   const view = session.view();
   assert.equal(view.compose.text, 'first more');
@@ -82,15 +119,15 @@ test('feedback templates count reuse on another hunk, not a save', async () => {
   const a = sampleItem('a.js');
   const b = sampleItem('b.js');
   const { session } = await openSession([a, b]);
-  session.dispatch('feedback');
+  session.dispatch('blockTask');
   session.pushInput('extract helper');
   press(session, 'ctrl-s');
-  session.dispatch('feedback');
+  session.dispatch('blockTask');
   press(session, 'ctrl-s');
   assert.equal(session.notes.templates.length, 1);
   assert.equal(session.notes.templates[0].count, 1);
   session.dispatch('next');
-  session.dispatch('feedback');
+  session.dispatch('blockTask');
   session.pushInput('extract helper');
   press(session, 'ctrl-s');
   assert.equal(session.notes.templates.length, 1);
@@ -107,8 +144,8 @@ test('feedback templates pick with tab arrows enter and click', async () => {
     { text: 'extract helper', count: 2 },
     { text: 'add tests', count: 1 },
   ];
-  const feedKey = 'a.js:1:1:0';
-  session.dispatch('feedback');
+  const feedKey = 'a.js:1';
+  session.dispatch('blockTask');
   assert.equal(session.mode, 'compose');
   session.draw();
   const body = stripAnsi(session.lastFrame.rows.join('\n'));
@@ -116,8 +153,8 @@ test('feedback templates pick with tab arrows enter and click', async () => {
   assert.match(body, /add tests/);
   press(session, 'tab');
   assert.equal(session.mode, 'review');
-  assert.equal(session.notes.feedback.get(feedKey).text, 'extract helper');
-  session.dispatch('feedback');
+  assert.equal(session.notes.blockTask(feedKey).text, 'extract helper');
+  session.dispatch('blockTask');
   session.editor.replace('');
   press(session, 'down');
   assert.equal(session.mode, 'compose');
@@ -125,15 +162,15 @@ test('feedback templates pick with tab arrows enter and click', async () => {
   assert.equal(session.templateIndex, 0);
   press(session, 'enter');
   assert.equal(session.mode, 'review');
-  assert.equal(session.notes.feedback.get(feedKey).text, 'extract helper');
-  session.dispatch('feedback');
+  assert.equal(session.notes.blockTask(feedKey).text, 'extract helper');
+  session.dispatch('blockTask');
   session.editor.replace('');
   session.draw();
   const hit = session.lastFrame.templateHits.find((row) => row.cursor === 1);
   assert.ok(hit);
   click(session, 2, hit.y);
   assert.equal(session.mode, 'review');
-  assert.equal(session.notes.feedback.get(feedKey).text, 'add tests');
+  assert.equal(session.notes.blockTask(feedKey).text, 'add tests');
 });
 
 test('feedback templates filter by prefix and hide if none match', async () => {
@@ -142,7 +179,7 @@ test('feedback templates filter by prefix and hide if none match', async () => {
     { text: 'extract helper', count: 2 },
     { text: 'add tests', count: 1 },
   ];
-  session.dispatch('feedback');
+  session.dispatch('blockTask');
   session.draw();
   let body = stripAnsi(session.lastFrame.rows.join('\n'));
   assert.match(body, /extract helper/);
@@ -155,8 +192,8 @@ test('feedback templates filter by prefix and hide if none match', async () => {
   assert.equal(session.lastFrame.templateHits.length, 1);
   press(session, 'tab');
   assert.equal(session.mode, 'review');
-  assert.equal(session.notes.feedback.get('a.js:1:1:0').text, 'extract helper');
-  session.dispatch('feedback');
+  assert.equal(session.notes.blockTask('a.js:1').text, 'extract helper');
+  session.dispatch('blockTask');
   session.draw();
   body = stripAnsi(session.lastFrame.rows.join('\n'));
   assert.match(body, /extract helper/);

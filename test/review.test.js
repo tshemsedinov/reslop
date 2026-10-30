@@ -641,41 +641,27 @@ test('parseReview still reads the previous block titles', () => {
 
 test('applyImportedNotes maps comments onto feedback and todos', () => {
   const store = new ReviewStore('/tmp/x.md');
+  const comment = { where: 'lib/parser.js:3', origin: 'pr', done: true };
   store.applyImportedNotes({
-    feedback: [
-      {
-        file: 'lib/parser.js',
-        oldStart: 1,
-        newStart: 1,
-        blockId: 0,
-        origin: 'pr',
-        header: '',
-        text: 'first',
-        done: true,
-      },
-      {
-        file: 'lib/parser.js',
-        oldStart: 1,
-        newStart: 1,
-        blockId: 0,
-        origin: 'pr',
-        header: '',
-        text: 'second',
-        done: true,
-      },
+    blockTasks: [
+      { ...comment, text: 'first' },
+      { ...comment, text: 'second' },
     ],
     todos: [
       { file: 'pull request', text: 'add tests', done: false },
       { file: 'lib/parser.js', text: 'types', done: true },
     ],
   });
-  const note = store.feedback.get('lib/parser.js:1:1:0');
-  assert.equal(note.text, 'first\n\nsecond');
+  const note = store.blockTask('lib/parser.js:3');
+  assert.equal(note.text, 'first\nsecond');
   assert.equal(note.done, true);
-  assert.equal(store.tasks.length, 2);
+  const kinds = store.tasks.map((task) => [task.kind, task.done]);
+  assert.deepEqual(kinds, [
+    ['features', false],
+    ['features', true],
+    ['improvements', true],
+  ]);
   assert.equal(store.tasks[0].text, 'add tests');
-  assert.equal(store.tasks[0].done, false);
-  assert.equal(store.tasks[1].done, true);
 });
 
 test('a structured issue task survives a plan round trip', () => {
@@ -761,37 +747,21 @@ test('a resumed plan imports an edited issue and skips the same one', () => {
 test('applyImportedNotes keeps feedback open if any comment is open', () => {
   const store = new ReviewStore('/tmp/x.md');
   store.applyImportedNotes({
-    feedback: [
-      {
-        file: 'a.js',
-        oldStart: 1,
-        newStart: 1,
-        blockId: 0,
-        text: 'a',
-        done: true,
-      },
-      {
-        file: 'a.js',
-        oldStart: 1,
-        newStart: 1,
-        blockId: 0,
-        text: 'b',
-        done: false,
-      },
+    blockTasks: [
+      { where: 'a.js:1', text: 'a', done: true },
+      { where: 'a.js:1', text: 'b', done: false },
     ],
   });
-  assert.equal(store.feedback.get('a.js:1:1:0').done, false);
+  assert.equal(store.blockTask('a.js:1').done, false);
 });
 
-test('imported feedback serializes reviewer and location once', () => {
+test('imported feedback is a task that names the reviewer once', () => {
   const store = new ReviewStore('/repo/.plan/2026-09-07-00.md');
+  const where = 'lib/websocket/frameParser.js:130';
   store.applyImportedNotes({
-    feedback: [
+    blockTasks: [
       {
-        file: 'lib/websocket/frameParser.js',
-        oldStart: 127,
-        newStart: 127,
-        blockId: 0,
+        where,
         origin: 'pr',
         text: '@tshemsedinov review at github: It is null by default',
         done: false,
@@ -799,14 +769,15 @@ test('imported feedback serializes reviewer and location once', () => {
     ],
   });
   const md = serializeReview(store);
-  const line =
-    '- [ ] @tshemsedinov review at github: It is null by default' +
-    ' - lib/websocket/frameParser.js:127:127:0';
-  assert.equal(md.includes(line), true);
+  const task = [
+    '## Improvements',
+    '',
+    '- [ ] @tshemsedinov review at github: It is null by default',
+    `  - where: ${where}`,
+  ].join('\n');
+  assert.ok(md.includes(task));
   assert.equal(md.split('tshemsedinov').length - 1, 1);
-  assert.doesNotMatch(md, /source:/);
-  assert.doesNotMatch(md, /reviewer:/);
-  assert.doesNotMatch(md, /line:/);
+  assert.doesNotMatch(md, /:\d+:\d+:\d+/);
 });
 
 test('serializeReview writes fenced code proposals', () => {
