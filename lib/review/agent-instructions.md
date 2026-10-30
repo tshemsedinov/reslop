@@ -7,7 +7,7 @@ Work through unchecked items.
 - Add `- result:` under each finished item: what changed and how it was verified, in a few lines
 - Edit only the lines of the item you work on and the frontmatter `status`; do not reformat, reorder, or rewrite the rest of the file
 - Text outside checkbox items is context, not a task
-- For `code` items, replace the added lines at the given location
+- A `do` with fenced code holds the lines that replace the added lines at `where`; for older `code` items, replace the added lines at the given location
 - Set `status` to `partial` if any items remain, or `done` if all are `[x]`
 - Do not redo items already marked `[x]`
 - Run `npm t` for lint and tests that do not start processes

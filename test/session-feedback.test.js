@@ -250,9 +250,44 @@ test('e on a read-only commit keeps a code proposal', async () => {
   session.pushInput('2');
   press(session, 'escape');
   assert.equal(repo.edited.length, 0);
-  const note = session.notes.code.get('a.js:1:1:0');
+  const note = session.notes.blockCode('a.js:1');
   assert.equal(note.text, 'b2');
-  assert.equal(session.view().counts.code, 1);
+  const [task] = session.notes.tasks;
+  assert.equal(task.item.title, 'Replace the added lines');
+  assert.equal(task.item.value('where'), 'a.js:1');
+  assert.equal(
+    task.item.value('do'),
+    'replace the added lines with\n```\nb2\n```',
+  );
+  assert.equal(session.view().counts.tasks, 1);
+  session.pushInput('e');
+  assert.equal(session.editor.text, 'b2');
+  session.editor.replace('b');
+  press(session, 'escape');
+  assert.equal(session.notes.tasks.length, 0);
+});
+
+test('an older code note becomes the do of the block task', async () => {
+  const item = sampleItem('a.js', 'commit');
+  const { session } = await openSession([item], { rev: 'abc1234' });
+  const notes = session.notes;
+  notes.setCode('a.js:1:1:0', {
+    file: 'a.js',
+    oldStart: 1,
+    newStart: 1,
+    blockId: 0,
+    text: 'old',
+  });
+  notes.setBlockTask('a.js:1', { text: 'Rename' });
+  session.pushInput('e');
+  assert.equal(session.editor.text, 'old');
+  session.pushInput('er');
+  press(session, 'escape');
+  assert.equal(notes.code.size, 0);
+  assert.doesNotMatch(notes.doc.toString(), /## a\.js|code `/);
+  const [task] = notes.tasks;
+  assert.equal(task.item.title, 'Rename');
+  assert.match(task.item.value('do'), /```\nolder\n```/);
 });
 
 test('code save equal to original drops the proposal', async () => {
