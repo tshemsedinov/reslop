@@ -4,6 +4,7 @@ const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
+
 const agents = require('../../lib/agents/agents.js');
 const { detectAgents, findBin, planPrompt } = agents;
 const { emptyChoice, buildLaunch, buildInstall, AGENTS } = agents;
@@ -76,13 +77,13 @@ test('the official Antigravity server uses its registry command', () => {
   const server = exe ? 'agy_acp_server.exe' : 'agy_acp_server.par';
   const helper = `localharness_external${exe}`;
   const { dir, bins, env } = fakePath(server);
-  const helperBin = makeBin(dir, helper);
+  const harness = makeBin(dir, helper);
   try {
     const row = detectAgents(env).find((item) => item.id === 'agy');
     assert.equal(row.bin, bins[server]);
     assert.deepEqual(row.args, process.platform === 'linux' ? ['--uid='] : []);
     const launch = buildLaunch(row, emptyChoice(), '/r.md', dir);
-    assert.deepEqual(launch.env, { ANTIGRAVITY_HARNESS_PATH: helperBin });
+    assert.deepEqual(launch.env, { ANTIGRAVITY_HARNESS_PATH: harness });
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
   }
@@ -309,9 +310,9 @@ test('a model id carries its settings in brackets', () => {
     context: '',
     fast: '',
   });
-  const cursor = 'gpt-5[context=272k,reasoning=medium,fast=false]';
-  assert.deepEqual(parseModelId(cursor), {
-    id: cursor,
+  const id = 'gpt-5[context=272k,reasoning=medium,fast=false]';
+  assert.deepEqual(parseModelId(id), {
+    id,
     name: 'gpt-5',
     effort: 'medium',
     context: '272k',

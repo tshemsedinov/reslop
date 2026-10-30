@@ -5,17 +5,17 @@ const assert = require('node:assert/strict');
 
 const files = require('../../lib/common/files.js');
 const { fileEntries, fileStatus, itemPath } = files;
-const format = require('../../lib/common/format.js');
-const { relativeAge, shortAge, ageSeconds } = format;
 const { TASKS_FILE, REPO_TASKS_LABEL, isTasksEntry, isTaskItem } = files;
 const { fileTotals, isTotalEntry, TOTAL_LABEL, selectableRow } = files;
+const format = require('../../lib/common/format.js');
+const { relativeAge, shortAge, ageSeconds } = format;
 const folders = require('../../lib/common/paths.js');
 const { folderTree, shownFolder, inFolder, folderOf } = folders;
 
-const item = (name, origin, indexHint) => ({
+const item = (name, origin, blockId) => ({
   origin,
   file: { newPath: name, oldPath: name },
-  blockId: indexHint,
+  blockId,
 });
 
 test('fileEntries groups blocks by path', () => {

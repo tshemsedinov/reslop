@@ -7,17 +7,56 @@ const diff = require('../../lib/diff/diff.js');
 const { diffChars, pairIndices, attachInline } = diff;
 const { displayLines, formatPatch, splitHunk } = diff;
 
-const changedText = (spans) =>
-  spans
-    .filter((span) => span.changed)
-    .map((span) => span.text)
-    .join('');
+const KEYS_FOR = [
+  '  const keys = Object.keys(delta);',
+  '  for (const key of keys) {',
+  '    const value = delta[key];',
+];
+const ENTRIES_FOR = '  for (const [key, value] of Object.entries(delta)) {';
 
-const unchangedText = (spans) =>
-  spans
-    .filter((span) => !span.changed)
-    .map((span) => span.text)
-    .join('');
+const WHERE_KEYS = '    const keys = Object.keys(where);';
+const WHERE_FOR = '    for (const key of keys) {';
+const WHERE_BODY = '      const [operator, value] = whereValue(where[key]);';
+const ENTRIES_WHERE = '    for (const [key, raw] of Object.entries(where)) {';
+const ENTRIES_BODY = '      const [operator, value] = whereValue(raw);';
+
+const changedText = (spans) => {
+  const changed = spans.filter((span) => span.changed);
+  return changed.map((span) => span.text).join('');
+};
+
+const unchangedText = (spans) => {
+  const unchanged = spans.filter((span) => !span.changed);
+  return unchanged.map((span) => span.text).join('');
+};
+
+const whereHunk = () => ({
+  oldStart: 1,
+  oldCount: 5,
+  newStart: 1,
+  newCount: 4,
+  header: '@@ -1,5 +1,4 @@',
+  lines: [
+    { type: 'ctx', text: '  applyWhere() {', noNl: false, blockId: null },
+    { type: 'del', text: WHERE_KEYS, noNl: false, blockId: 0 },
+    { type: 'del', text: WHERE_FOR, noNl: false, blockId: 0 },
+    { type: 'del', text: WHERE_BODY, noNl: false, blockId: 0 },
+    { type: 'add', text: ENTRIES_WHERE, noNl: false, blockId: 0 },
+    { type: 'add', text: ENTRIES_BODY, noNl: false, blockId: 0 },
+    { type: 'ctx', text: '  }', noNl: false, blockId: null },
+  ],
+});
+
+const rowKey = (line) => `${line.type}:${line.text}`;
+
+const sideKey = (row) => {
+  const left = row.left ? `${row.left.type}:${row.left.text}` : '';
+  const right = row.right ? `${row.right.type}:${row.right.text}` : '';
+  return `${left}|${right}`;
+};
+
+const whollyChanged = (spans) =>
+  spans.length === 1 && spans[0].changed === true;
 
 test('AC1 only w/W graphemes are marked changed', () => {
   const diff = diffChars('hello world', 'hello World');
@@ -45,10 +84,10 @@ test('identical strings have no changed spans', () => {
 });
 
 test('unrelated lines are changed whole despite shared spaces', () => {
-  const left = '      const { withoutNodeFrame, indentStack } = commands;';
+  const text = '      const { withoutNodeFrame, indentStack } = commands;';
   const right = '      const textLines = (text) => String(text).split(/\\n/);';
-  const diff = diffChars(left, right);
-  assert.deepEqual(diff.oldSpans, [{ text: left, changed: true }]);
+  const diff = diffChars(text, right);
+  assert.deepEqual(diff.oldSpans, [{ text, changed: true }]);
   assert.deepEqual(diff.newSpans, [{ text: right, changed: true }]);
 });
 
@@ -126,13 +165,6 @@ test('snake_case segment replace marks the whole segment', () => {
   );
 });
 
-const KEYS_FOR = [
-  '  const keys = Object.keys(delta);',
-  '  for (const key of keys) {',
-  '    const value = delta[key];',
-];
-const ENTRIES_FOR = '  for (const [key, value] of Object.entries(delta)) {';
-
 test('pairIndices matches for-loops, not Object.keys to for', () => {
   const paired = pairIndices(KEYS_FOR, [ENTRIES_FOR]);
   assert.deepEqual(paired, [-1, 0, -1]);
@@ -165,40 +197,6 @@ test('attachInline diffs the paired for-loop, not Object.keys', () => {
   assert.ok(unchangedText(lines[1].spans).includes('for (const '));
   assert.ok(unchangedText(lines[3].spans).includes('for (const '));
 });
-
-const WHERE_KEYS = '    const keys = Object.keys(where);';
-const WHERE_FOR = '    for (const key of keys) {';
-const WHERE_BODY = '      const [operator, value] = whereValue(where[key]);';
-const ENTRIES_WHERE = '    for (const [key, raw] of Object.entries(where)) {';
-const ENTRIES_BODY = '      const [operator, value] = whereValue(raw);';
-
-const whereHunk = () => ({
-  oldStart: 1,
-  oldCount: 5,
-  newStart: 1,
-  newCount: 4,
-  header: '@@ -1,5 +1,4 @@',
-  lines: [
-    { type: 'ctx', text: '  applyWhere() {', noNl: false, blockId: null },
-    { type: 'del', text: WHERE_KEYS, noNl: false, blockId: 0 },
-    { type: 'del', text: WHERE_FOR, noNl: false, blockId: 0 },
-    { type: 'del', text: WHERE_BODY, noNl: false, blockId: 0 },
-    { type: 'add', text: ENTRIES_WHERE, noNl: false, blockId: 0 },
-    { type: 'add', text: ENTRIES_BODY, noNl: false, blockId: 0 },
-    { type: 'ctx', text: '  }', noNl: false, blockId: null },
-  ],
-});
-
-const rowKey = (line) => `${line.type}:${line.text}`;
-
-const sideKey = (row) => {
-  const left = row.left ? `${row.left.type}:${row.left.text}` : '';
-  const right = row.right ? `${row.right.type}:${row.right.text}` : '';
-  return `${left}|${right}`;
-};
-
-const whollyChanged = (spans) =>
-  spans.length === 1 && spans[0].changed === true;
 
 test('AC16 unified layout keeps minus-then-plus order', () => {
   const lines = displayLines(whereHunk(), 0);

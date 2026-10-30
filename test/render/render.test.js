@@ -1,8 +1,9 @@
 'use strict';
 
-const { sampleHunk, reviewView } = require('../helpers.js');
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
+
+const { sampleHunk, reviewView } = require('../helpers.js');
 const render = require('../../lib/render/render.js');
 const ansi = require('../../lib/term/ansi.js');
 const { THEME, fg, bg, stripAnsi, BOLD, seq } = ansi;
@@ -242,10 +243,10 @@ test('npm history caption, columns, and scrollbar', () => {
     .map((row) => stripAnsi(row));
   assert.equal(liveBody[0].slice(leftW).trim(), '');
   assert.match(liveBody[3], /⠋/);
-  const many = [];
-  for (let i = 0; i < 20; i++) many.push(run('test'));
+  const npmRuns = [];
+  for (let i = 0; i < 20; i++) npmRuns.push(run('test'));
   const scrolled = render.renderFrame(
-    { ...view, npmRuns: many },
+    { ...view, npmRuns },
     { width: 80, height: 12, color: false },
   );
   assert.equal(scrolled.scrollBar.count, 20);
@@ -580,12 +581,12 @@ test('side layout numbers the old file left and the new file right', () => {
 });
 
 test('unit file numbers skip deleted lines', () => {
-  const current = {
+  const item = {
     origin: 'unstaged',
     file: { newPath: 'a.js', oldPath: 'a.js', isBinary: false },
     blockId: 0,
   };
-  const view = reviewView(current, {
+  const view = reviewView(item, {
     pane: 'unit',
     reviewPath: 'a.js',
     lineNumbers: true,
@@ -594,7 +595,7 @@ test('unit file numbers skip deleted lines', () => {
         type: 'del',
         text: 'old',
         blockId: 0,
-        item: current,
+        item,
         origin: 'unstaged',
       },
       {
@@ -602,7 +603,7 @@ test('unit file numbers skip deleted lines', () => {
         text: 'new',
         newNo: 1,
         blockId: 0,
-        item: current,
+        item,
         origin: 'unstaged',
       },
     ],

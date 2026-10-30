@@ -5,6 +5,8 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
+const { setImmediate: settle } = require('node:timers/promises');
+
 const agents = require('../../lib/agents/agents.js');
 const { planPrompt } = agents;
 const { emptyChoice, buildLaunch, buildInstall, AGENTS } = agents;
@@ -14,10 +16,48 @@ const { press, click, rightClick } = require('../helpers.js');
 const ansi = require('../../lib/term/ansi.js');
 const { stripAnsi, THEME, bg, RESET, seq } = ansi;
 const clipboard = require('../../lib/term/select.js');
-const { setImmediate: settle } = require('node:timers/promises');
 const agentsHelpers = require('../agents-helpers.js');
 const { labelRow, select, acpState, STATES, listed, rowOf } = agentsHelpers;
 const { specOf, openAgents, showAgents, typeInto } = agentsHelpers;
+
+const GROK_OPTIONS = [
+  select('context', 'model_config', '256k', ['256k', '500k']),
+  select('reasoning_effort', 'thought_level', 'high', ['low', 'high']),
+  select('fast', 'model_config', 'true', ['false', 'true']),
+];
+
+// An agent whose options belong to a model: only an asked model has them
+const perModelAgent = () => {
+  const base = acpState({ models: ['composer', 'grok'] });
+  const own = [select('fast', 'model_config', 'true', ['false', 'true'])];
+  base.configOptions.push(...own);
+  const asked = [];
+  const listModels = async (row, options) => {
+    asked.push(options.models);
+    const byModel = new Map([['composer', base.configOptions]]);
+    const grok = [base.configOptions[0], ...GROK_OPTIONS];
+    if (options.models.includes('grok')) byModel.set('grok', grok);
+    return { ...base, byModel };
+  };
+  return { asked, listModels };
+};
+
+// A listing that reports whether the agent let a session open
+const listedAs = (state) => async (row, options) => {
+  if (state && options.auth) options.auth.state = state;
+  if (state === 'out') return null;
+  return STATES[row.id] ?? null;
+};
+
+const accountOf = (ui) => {
+  ui.draw();
+  const text = stripAnsi(labelRow(ui.lastFrame.rows, 'account'));
+  // The left panel of an 80 column screen
+  return text
+    .slice(0, 56)
+    .trim()
+    .replace(/^account\s+/, '');
+};
 
 test('an install is the npm command and its output', async () => {
   const { startAgent } = agents;
@@ -70,28 +110,6 @@ test('a failed or stopped install leaves the agent missing', async (t) => {
   close({ status: 0, text: 'added 1 package\n' });
   assert.equal(ui.status, 'installed, but not found');
 });
-
-const GROK_OPTIONS = [
-  select('context', 'model_config', '256k', ['256k', '500k']),
-  select('reasoning_effort', 'thought_level', 'high', ['low', 'high']),
-  select('fast', 'model_config', 'true', ['false', 'true']),
-];
-
-// An agent whose options belong to a model: only an asked model has them
-const perModelAgent = () => {
-  const base = acpState({ models: ['composer', 'grok'] });
-  const own = [select('fast', 'model_config', 'true', ['false', 'true'])];
-  base.configOptions.push(...own);
-  const asked = [];
-  const listModels = async (row, options) => {
-    asked.push(options.models);
-    const byModel = new Map([['composer', base.configOptions]]);
-    const grok = [base.configOptions[0], ...GROK_OPTIONS];
-    if (options.models.includes('grok')) byModel.set('grok', grok);
-    return { ...base, byModel };
-  };
-  return { asked, listModels };
-};
 
 test('picking a model asks the agent for its settings', async (t) => {
   const { env, ui } = await openAgents(t, 'cursor-agent');
@@ -298,7 +316,7 @@ test('the install button is clicked or pressed with i', async (t) => {
   ui.nav.agentCursor = AGENTS.findIndex((spec) => spec.id === 'opencode');
   ui.color = true;
   ui.draw();
-  const hit = ui.lastFrame.fileHits.find((h) => h.field === 'install');
+  const hit = ui.lastFrame.fileHits.find((hit) => hit.field === 'install');
   assert.ok(hit);
   assert.equal(hit.x1 - hit.x0, ' install '.length);
   const row = ui.lastFrame.rows[hit.y - 1];
@@ -341,7 +359,7 @@ test('the task box types, adds lines, and starts the run', async (t) => {
   };
   press(ui, 'end', 'enter');
   assert.equal(calls.length, 1);
-  const [launch] = calls;
+  const launch = calls[0];
   // The text comes first, then the plan the agent is told to execute
   assert.match(launch.plan, /^\.plan\/.+\.md$/);
   assert.equal(launch.task, 'make a test plan is\nok');
@@ -455,12 +473,14 @@ test('agent progress stays compact with yellow and grey parts', async (t) => {
   ui.agents.planPath = path.join(reviewDir, name);
   ui.color = true;
   ui.draw();
-  for (const [width, leftW] of [
+  for (const entry of [
     [60, 42],
     [80, 56],
     [160, 112],
     [240, 168],
   ]) {
+    const width = entry[0];
+    const leftW = entry[1];
     ui.stdout.columns = width;
     for (const done of [0, 1, 2]) {
       const checks = ['one', 'two'].map(
@@ -496,16 +516,16 @@ test('agent progress stays compact with yellow and grey parts', async (t) => {
 test('the table marks hotkeys and unset settings say default', async (t) => {
   const { env, ui } = await openAgents(t, 'cursor-agent');
   // A model with every setting: effort, context size, and fast mode
-  const variants = [];
+  const models = [];
   for (const context of ['272k', '1m']) {
     for (const effort of ['low', 'high']) {
       for (const fast of ['false', 'true']) {
         const id = `context=${context},reasoning=${effort},fast=${fast}`;
-        variants.push(`gpt-5[${id}]`);
+        models.push(`gpt-5[${id}]`);
       }
     }
   }
-  const state = acpState({ models: variants });
+  const state = acpState({ models });
   ui.agents.listModels = async () => state;
   ui.agents.refresh(env);
   await ui.agents.open();
@@ -640,7 +660,7 @@ test('the prompt keeps the panel color, the sessions are black', async (t) => {
   const grey = bg(THEME.buttonBg);
   const dark = bg(THEME.ctxBg);
   ui.draw();
-  const empty = ui.lastFrame.editHits.find((h) => h.editor);
+  const empty = ui.lastFrame.editHits.find((hit) => hit.editor);
   const emptyRow = ui.lastFrame.rows[empty.y - 1];
   typeInto(ui, 'hello there');
   ui.draw();
@@ -688,17 +708,21 @@ test('the session of the last run is selected on load', async (t) => {
   ui.agents.refresh(env);
   ui.agents.loadRuns();
   await ui.agents.open();
-  ui.nav.agentCursor = ui.agents.rows().findIndex((r) => r.id === 'cursor');
+  ui.nav.agentCursor = ui.agents.rows().findIndex((row) => row.id === 'cursor');
   ui.agents.selectLastSession();
   assert.equal(ui.agents.runCursor, 1);
   assert.equal(ui.agents.selectedSession().name, 'cursor-new');
   assert.equal(ui.view().agentStartMode, 'resume');
   // An agent without sessions starts a new one
-  ui.agents.chooseAgent(ui.agents.rows().findIndex((r) => r.id === 'claude'));
+  ui.agents.chooseAgent(
+    ui.agents.rows().findIndex((row) => row.id === 'claude'),
+  );
   assert.equal(ui.agents.runCursor, 0);
   assert.equal(ui.agents.selectedSession().fresh, true);
   assert.equal(ui.view().agentStartMode, 'start');
-  ui.agents.chooseAgent(ui.agents.rows().findIndex((r) => r.id === 'cursor'));
+  ui.agents.chooseAgent(
+    ui.agents.rows().findIndex((row) => row.id === 'cursor'),
+  );
   assert.equal(ui.agents.selectedSession().name, 'cursor-new');
 });
 
@@ -729,7 +753,7 @@ test('a double click in the prompt selects a word, three a line', async (t) => {
   ui.stdout.rows = 30;
   ui.agents.task.insert('alpha beta\nsecond line');
   ui.draw();
-  const rows = ui.lastFrame.editHits.filter((h) => h.editor);
+  const rows = ui.lastFrame.editHits.filter((hit) => hit.editor);
   const first = rows.find((hit) => hit.text === 'alpha beta');
   const second = rows.find((hit) => hit.text === 'second line');
   const task = ui.agents.task;
@@ -757,7 +781,7 @@ test('the prompt has the context menu of a text area', async (t) => {
   ui.stdout.rows = 30;
   ui.agents.task.insert('hello world');
   ui.draw();
-  const hit = ui.lastFrame.editHits.find((h) => h.editor);
+  const hit = ui.lastFrame.editHits.find((hit) => hit.editor);
   click(ui, hit.textX + 8, hit.y);
   click(ui, hit.textX + 8, hit.y);
   assert.equal(ui.agents.task.selectedText(), 'world');
@@ -817,30 +841,13 @@ test('a focused combo and its selected item differ in color', async (t) => {
   const model = labelRow(ui.lastFrame.rows, 'model');
   assert.ok(model.includes(bg(THEME.popupBg)));
   assert.equal(model.includes(bg(THEME.checkBg)), false);
-  const hits = ui.lastFrame.fileHits.filter((h) => h.field === 'menu');
+  const hits = ui.lastFrame.fileHits.filter((hit) => hit.field === 'menu');
   hits.sort((left, right) => left.y - right.y);
   const first = ui.lastFrame.rows[hits[0].y - 1];
   assert.ok(first.includes(bg(THEME.checkBg)));
   assert.equal(first.includes(bg(THEME.popupBg)), false);
   assert.notDeepEqual(THEME.popupBg, THEME.checkBg);
 });
-
-// A listing that reports whether the agent let a session open
-const listedAs = (state) => async (row, options) => {
-  if (state && options.auth) options.auth.state = state;
-  if (state === 'out') return null;
-  return STATES[row.id] ?? null;
-};
-
-const accountOf = (ui) => {
-  ui.draw();
-  const text = stripAnsi(labelRow(ui.lastFrame.rows, 'account'));
-  // The left panel of an 80 column screen
-  return text
-    .slice(0, 56)
-    .trim()
-    .replace(/^account\s+/, '');
-};
 
 test('the screen shows whether the selected agent is signed in', async (t) => {
   const { env, ui } = await openAgents(t, 'claude-agent-acp');
@@ -865,7 +872,7 @@ test('the screen shows whether the selected agent is signed in', async (t) => {
   );
   // It is under the settings, where a missing agent shows its install
   const at = (label) =>
-    lines.findIndex((l) => new RegExp(`^ +${label} `).test(l));
+    lines.findIndex((line) => new RegExp(`^ +${label} `).test(line));
   assert.equal(at('account'), at('fast mode') + 2);
   assert.equal(at('plan'), at('account') + 2);
   ui.agents.reset();

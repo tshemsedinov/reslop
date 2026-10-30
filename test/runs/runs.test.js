@@ -6,42 +6,18 @@ const fs = require('node:fs');
 const path = require('node:path');
 
 const npm = require('../../lib/runs/process.js');
+const { startNpm, commandEnv } = npm;
 const { npmOpts } = require('../../lib/common/process.js');
 const { stripAnsi } = require('../../lib/term/ansi.js');
 const { tempDir } = require('../helpers.js');
-
-const {
-  listCommands,
-  saveScript,
-  removeScripts,
-  reorderScript,
-} = require('../../lib/runs/scripts.js');
+const scriptsModule = require('../../lib/runs/scripts.js');
+const { listCommands, saveScript, removeScripts } = scriptsModule;
+const { reorderScript } = scriptsModule;
 const { reduceOutput } = require('../../lib/runs/output.js');
-const {
-  logFileName,
-  nextLogFile,
-  saveLogs,
-  readSavedRuns,
-  readLogPair,
-  staleLogFiles,
-  removeStaleLogs,
-} = require('../../lib/runs/logs.js');
-const { startNpm, commandEnv } = npm;
+const logsModule = require('../../lib/runs/logs.js');
+const { logFileName, nextLogFile, saveLogs, readSavedRuns } = logsModule;
+const { readLogPair, staleLogFiles, removeStaleLogs } = logsModule;
 const { elapsedText } = require('../../lib/session/npm-history.js');
-
-test('only running commands use the current time for their duration', () => {
-  const running = { status: 'running', startedAt: 1000, endedAt: 0 };
-  assert.equal(elapsedText(running, 4000), '3s');
-  assert.equal(elapsedText(running, 65000), '1m04s');
-  for (const status of ['exited', 'stopped']) {
-    const finished = { ...running, status, endedAt: 4000 };
-    const missingEnd = { ...running, status };
-    for (const now of [10000, 70000]) {
-      assert.equal(elapsedText(finished, now), '3s');
-      assert.equal(elapsedText(missingEnd, now), '0s');
-    }
-  }
-});
 
 const writeJson = (file, body) => {
   fs.mkdirSync(path.dirname(file), { recursive: true });
@@ -70,6 +46,20 @@ const sampleRoot = () => {
   });
   return root;
 };
+
+test('only running commands use the current time for their duration', () => {
+  const running = { status: 'running', startedAt: 1000, endedAt: 0 };
+  assert.equal(elapsedText(running, 4000), '3s');
+  assert.equal(elapsedText(running, 65000), '1m04s');
+  for (const status of ['exited', 'stopped']) {
+    const finished = { ...running, status, endedAt: 4000 };
+    const missingEnd = { ...running, status };
+    for (const now of [10000, 70000]) {
+      assert.equal(elapsedText(finished, now), '3s');
+      assert.equal(elapsedText(missingEnd, now), '0s');
+    }
+  }
+});
 
 test('listCommands shows scripts and installed bins', () => {
   const root = sampleRoot();

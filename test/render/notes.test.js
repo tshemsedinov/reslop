@@ -1,13 +1,52 @@
 'use strict';
 
-const { sampleHunk, reviewView, labels } = require('../helpers.js');
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
+
+const { sampleHunk, reviewView, labels } = require('../helpers.js');
 const render = require('../../lib/render/render.js');
 const wrap = require('../../lib/term/wrap.js');
 const ansi = require('../../lib/term/ansi.js');
 const { THEME, fg, bg, stripAnsi, BOLD } = ansi;
 const { ESC, visibleWidth } = ansi;
+
+for (const entry of [
+  ['commit', 'commit', { revShort: '7ac260c' }, /commit 7ac260c {2}1 {2}tasks/],
+  [
+    'PR',
+    'pr',
+    { sourceKind: 'pr', sourceLabel: '#123' },
+    /pr #123 {2}1 {2}tasks/,
+  ],
+  [
+    'MR',
+    'pr',
+    { sourceKind: 'mr', sourceLabel: '!123' },
+    /mr !123 {2}1 {2}tasks/,
+  ],
+]) {
+  const name = entry[0];
+  const origin = entry[1];
+  const source = entry[2];
+  const label = entry[3];
+  test(`${name} review header and counts name the source`, () => {
+    const hunk = sampleHunk([
+      { type: 'add', text: 'x', noNl: false, blockId: 0 },
+    ]);
+    const file = { newPath: 'f.js', oldPath: 'f.js', isBinary: false };
+    const item = { origin, file, hunk, blockId: 0 };
+    const counts = { staged: 0, unstaged: 0, untracked: 0, [origin]: 1 };
+    const extra = { counts, repoName: 'acme/app', ...source };
+    const view = reviewView(item, extra);
+    assert.match(render.headerText(view), /reslop: acme\/app\/f\.js$/);
+    const frame = render.renderFrame(view, {
+      width: 80,
+      height: 16,
+      color: false,
+    });
+    assert.match(frame.text, label);
+  });
+}
 
 test('presentRows overwrites in place without a leading wipe', () => {
   const out = render.presentRows(['aa', 'bb'], { clear: false });
@@ -39,7 +78,7 @@ test('presentRows paints with a hidden cursor, then shows it blinking', () => {
   const sync = out.indexOf(`${ESC}[?2026h`);
   const firstRow = out.indexOf(`${ESC}[1;1H`);
   const syncEnd = out.indexOf(`${ESC}[?2026l`);
-  const pos = out.indexOf(`${ESC}[2;3H`);
+  const position = out.indexOf(`${ESC}[2;3H`);
   const style = out.indexOf(`${ESC}[1 q`);
   const blink = out.indexOf(`${ESC}[?12h`);
   const show = out.indexOf(`${ESC}[?25h`);
@@ -47,8 +86,8 @@ test('presentRows paints with a hidden cursor, then shows it blinking', () => {
   assert.ok(hide < sync);
   assert.ok(sync < firstRow);
   assert.ok(firstRow < syncEnd);
-  assert.ok(pos > syncEnd);
-  assert.ok(style > pos);
+  assert.ok(position > syncEnd);
+  assert.ok(style > position);
   assert.ok(blink > style);
   assert.ok(show > blink);
 });
@@ -60,40 +99,6 @@ test('presentCursor hides or shows at the edit cell', () => {
   assert.ok(shown.includes(`${ESC}[?25h`));
   assert.ok(!shown.includes(`${ESC}[?2026h`));
 });
-
-for (const [name, origin, source, label] of [
-  ['commit', 'commit', { revShort: '7ac260c' }, /commit 7ac260c {2}1 {2}tasks/],
-  [
-    'PR',
-    'pr',
-    { sourceKind: 'pr', sourceLabel: '#123' },
-    /pr #123 {2}1 {2}tasks/,
-  ],
-  [
-    'MR',
-    'pr',
-    { sourceKind: 'mr', sourceLabel: '!123' },
-    /mr !123 {2}1 {2}tasks/,
-  ],
-]) {
-  test(`${name} review header and counts name the source`, () => {
-    const hunk = sampleHunk([
-      { type: 'add', text: 'x', noNl: false, blockId: 0 },
-    ]);
-    const file = { newPath: 'f.js', oldPath: 'f.js', isBinary: false };
-    const item = { origin, file, hunk, blockId: 0 };
-    const counts = { staged: 0, unstaged: 0, untracked: 0, [origin]: 1 };
-    const extra = { counts, repoName: 'acme/app', ...source };
-    const view = reviewView(item, extra);
-    assert.match(render.headerText(view), /reslop: acme\/app\/f\.js$/);
-    const frame = render.renderFrame(view, {
-      width: 80,
-      height: 16,
-      color: false,
-    });
-    assert.match(frame.text, label);
-  });
-}
 
 test('compose panel sits above status and buttons', () => {
   const hunk = sampleHunk([
@@ -851,7 +856,7 @@ test('editor scrolls a long line instead of wrapping it', () => {
 });
 
 test('unit pane marks the current block and keeps other diffs', () => {
-  const current = {
+  const item = {
     origin: 'unstaged',
     file: { newPath: 'a.js', oldPath: 'a.js', isBinary: false },
     blockId: 0,
@@ -863,7 +868,7 @@ test('unit pane marks the current block and keeps other diffs', () => {
   };
   const view = {
     pane: 'unit',
-    item: current,
+    item,
     reviewPath: 'a.js',
     unitLine: 0,
     unitLines: [
@@ -871,14 +876,14 @@ test('unit pane marks the current block and keeps other diffs', () => {
         type: 'del',
         text: 'old',
         blockId: 0,
-        item: current,
+        item,
         origin: 'unstaged',
       },
       {
         type: 'add',
         text: 'new',
         blockId: 0,
-        item: current,
+        item,
         origin: 'unstaged',
       },
       { type: 'ctx', text: 'keep', blockId: null, item: null, origin: '' },
@@ -929,12 +934,12 @@ test('unit pane marks the current block and keeps other diffs', () => {
 });
 
 test('unit edit hides plus minus marks and keeps the line-end cursor', () => {
-  const current = {
+  const item = {
     origin: 'unstaged',
     file: { newPath: 'a.js', oldPath: 'a.js', isBinary: false },
     blockId: 0,
   };
-  const view = reviewView(current, {
+  const view = reviewView(item, {
     pane: 'unit',
     mode: 'compose',
     reviewPath: 'a.js',
@@ -944,14 +949,14 @@ test('unit edit hides plus minus marks and keeps the line-end cursor', () => {
         type: 'del',
         text: 'old',
         blockId: 0,
-        item: current,
+        item,
         origin: 'unstaged',
       },
       {
         type: 'add',
         text: 'hello',
         blockId: 0,
-        item: current,
+        item,
         origin: 'unstaged',
         wrap: true,
         editStart: 0,

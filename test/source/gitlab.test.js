@@ -4,12 +4,12 @@ const { test } = require('node:test');
 const assert = require('node:assert/strict');
 
 const gitlab = require('../../lib/source/gitlab.js');
-const { parseDiff, itemsFromFiles } = require('../../lib/diff/diff.js');
-const { jsonResponse, CHANGE_DIFF: MR_DIFF } = require('../helpers.js');
 const { parseGitlabMrUrl, parseGitlabIssueUrl, gitlabToken } = gitlab;
 const { parseGitlabIssueListUrl } = gitlab;
 const { loadMergeRequest, loadGitlabIssue } = gitlab;
 const { mrApiUrl, discussionToNotes } = gitlab;
+const { parseDiff, itemsFromFiles } = require('../../lib/diff/diff.js');
+const { jsonResponse, CHANGE_DIFF: MR_DIFF } = require('../helpers.js');
 
 const MR = {
   host: 'gitlab.com',
@@ -26,6 +26,29 @@ const MR_JSON = JSON.parse(`{
   "target_branch": "main",
   "source_branch": "fix-parser",
   "references": { "full": "acme/app!123" }
+}`);
+
+const expectedMr = {
+  host: 'gitlab.com',
+  project: 'acme/app',
+  number: 123,
+  origin: 'https://gitlab.com',
+};
+
+const GL_ISSUE = {
+  host: 'gitlab.com',
+  project: 'acme/app',
+  number: 12,
+  origin: 'https://gitlab.com',
+};
+
+const GL_ISSUE_JSON = JSON.parse(`{
+  "iid": 12,
+  "title": "Add import",
+  "description": "from the cli",
+  "state": "opened",
+  "web_url": "https://gitlab.com/acme/app/-/issues/12",
+  "author": { "username": "alice" }
 }`);
 
 const mockFetch = (json, diffText, status = 200, routes = {}) => {
@@ -53,11 +76,80 @@ const mockFetch = (json, diffText, status = 200, routes = {}) => {
   return fetchImpl;
 };
 
-const expectedMr = {
-  host: 'gitlab.com',
-  project: 'acme/app',
-  number: 123,
-  origin: 'https://gitlab.com',
+for (const entry of [
+  [404, '404 Not Found', /GitLab merge request not found/],
+  [429, 'Retry later', /rate limit exceeded/],
+  [401, '401 Unauthorized', /GitLab authentication failed/],
+]) {
+  const status = entry[0];
+  const message = entry[1];
+  const error = entry[2];
+  test(`loadMergeRequest maps ${status} to its error`, async () => {
+    const fetch = mockFetch({ message }, '', status);
+    const options = { fetch, token: 'tok', retry: { attempts: 1 } };
+    await assert.rejects(() => loadMergeRequest(MR, options), error);
+  });
+}
+
+const inlineDiffNote = (extra = {}) => {
+  const path = extra.path ?? 'lib/parser.js';
+  const position = {};
+  position['position_type'] = extra.positionType ?? 'text';
+  position['new_path'] = path;
+  position['old_path'] = path;
+  position['new_line'] = extra.newLine ?? 2;
+  position['old_line'] = extra.oldLine ?? null;
+  return {
+    id: extra.id ?? 10,
+    type: 'DiffNote',
+    system: false,
+    author: { username: extra.username ?? 'alice' },
+    body: extra.body ?? 'use const',
+    resolved: extra.resolved === true,
+    position,
+  };
+};
+
+const NEXT_PAGE = {
+  Link: `<${mrApiUrl(MR)}/discussions?page=2&per_page=100>; rel="next"`,
+  'x-next-page': '2',
+};
+
+for (const name in NEXT_PAGE) {
+  const value = NEXT_PAGE[name];
+  test(`loadMergeRequest paginates discussions by ${name}`, async () => {
+    const first = inlineDiffNote({ id: 1, username: 'a', body: 'first' });
+    const second = inlineDiffNote({ id: 2, username: 'b', body: 'second' });
+    let commentPages = 0;
+    const base = mockFetch(MR_JSON, MR_DIFF);
+    const fetchImpl = async (url, init) => {
+      if (`${url}`.includes('/discussions')) {
+        commentPages += 1;
+        if (commentPages === 1) {
+          return jsonResponse(200, [{ notes: [first] }], { [name]: value });
+        }
+        return jsonResponse(200, [{ notes: [second] }]);
+      }
+      return base(url, init);
+    };
+    const loaded = await loadMergeRequest(MR, { fetch: fetchImpl, token: '' });
+    assert.equal(commentPages, 2);
+    assert.equal(loaded.imported.blockTasks.length, 2);
+    assert.match(loaded.imported.blockTasks[0].text, /first/);
+    assert.match(loaded.imported.blockTasks[1].text, /second/);
+  });
+}
+
+const glIssueFetch = (json, notes, status = 200) => {
+  const calls = [];
+  const fetchImpl = async (url, init) => {
+    const headers = init.headers || {};
+    calls.push({ url: `${url}`, auth: headers['PRIVATE-TOKEN'] || '' });
+    if (`${url}`.includes('/notes')) return jsonResponse(200, notes);
+    return jsonResponse(status, json);
+  };
+  fetchImpl.calls = calls;
+  return fetchImpl;
 };
 
 test('parseGitlabMrUrl reads gitlab merge request URLs', () => {
@@ -118,15 +210,15 @@ test('gitlabToken reads GITLAB_TOKEN then GL_TOKEN', () => {
 });
 
 test('loadMergeRequest converts a GitLab patch into pr items', async () => {
-  const fetchImpl = mockFetch(MR_JSON, MR_DIFF);
+  const fetch = mockFetch(MR_JSON, MR_DIFF);
   const loaded = await loadMergeRequest(MR, {
-    fetch: fetchImpl,
+    fetch,
     token: '',
     cwd: '/tmp',
   });
-  assert.equal(fetchImpl.calls.length, 3);
+  assert.equal(fetch.calls.length, 3);
   const url = mrApiUrl(MR);
-  assert.equal(fetchImpl.calls[0].url, url);
+  assert.equal(fetch.calls[0].url, url);
   assert.equal(loaded.sourceLabel, '!123');
   assert.equal(loaded.change.title, 'Fix parser');
   assert.equal(loaded.change.author, 'alice');
@@ -160,25 +252,13 @@ test('mrApiUrl encodes nested project paths', () => {
 });
 
 test('loadMergeRequest sends a private token', async () => {
-  const fetchImpl = mockFetch(MR_JSON, MR_DIFF);
-  await loadMergeRequest(MR, { fetch: fetchImpl, token: 'secret' });
-  assert.ok(fetchImpl.calls.length >= 2);
-  for (const call of fetchImpl.calls) {
+  const fetch = mockFetch(MR_JSON, MR_DIFF);
+  await loadMergeRequest(MR, { fetch, token: 'secret' });
+  assert.ok(fetch.calls.length >= 2);
+  for (const call of fetch.calls) {
     assert.equal(call.auth, 'secret');
   }
 });
-
-for (const [status, message, error] of [
-  [404, '404 Not Found', /GitLab merge request not found/],
-  [429, 'Retry later', /rate limit exceeded/],
-  [401, '401 Unauthorized', /GitLab authentication failed/],
-]) {
-  test(`loadMergeRequest maps ${status} to its error`, async () => {
-    const fetchImpl = mockFetch({ message }, '', status);
-    const options = { fetch: fetchImpl, token: 'tok', retry: { attempts: 1 } };
-    await assert.rejects(() => loadMergeRequest(MR, options), error);
-  });
-}
 
 test('loadMergeRequest maps network failures', async () => {
   const fetchImpl = async () => {
@@ -230,25 +310,6 @@ test('loadMergeRequest rejects invalid merge request JSON', async () => {
     /invalid merge request payload/,
   );
 });
-
-const inlineDiffNote = (extra = {}) => {
-  const path = extra.path ?? 'lib/parser.js';
-  const position = {};
-  position['position_type'] = extra.positionType ?? 'text';
-  position['new_path'] = path;
-  position['old_path'] = path;
-  position['new_line'] = extra.newLine ?? 2;
-  position['old_line'] = extra.oldLine ?? null;
-  return {
-    id: extra.id ?? 10,
-    type: 'DiffNote',
-    system: false,
-    author: { username: extra.username ?? 'alice' },
-    body: extra.body ?? 'use const',
-    resolved: extra.resolved === true,
-    position,
-  };
-};
 
 test('discussionToNotes maps an inline comment onto hunk feedback', () => {
   const items = itemsFromFiles(parseDiff(MR_DIFF), 'pr');
@@ -426,7 +487,7 @@ test('discussionToNotes skips empty bodies and out of scope paths', () => {
 });
 
 test('loadMergeRequest imports review discussion', async () => {
-  const fetchImpl = mockFetch(MR_JSON, MR_DIFF, 200, {
+  const fetch = mockFetch(MR_JSON, MR_DIFF, 200, {
     discussions: [
       { notes: [inlineDiffNote({ resolved: true })] },
       {
@@ -449,41 +510,12 @@ test('loadMergeRequest imports review discussion', async () => {
       },
     ],
   });
-  const loaded = await loadMergeRequest(MR, { fetch: fetchImpl, token: '' });
+  const loaded = await loadMergeRequest(MR, { fetch, token: '' });
   assert.equal(loaded.imported.blockTasks.length, 1);
   assert.equal(loaded.imported.blockTasks[0].done, true);
   assert.match(loaded.imported.blockTasks[0].text, /use const/);
   assert.equal(loaded.imported.tasks.length, 2);
 });
-
-const NEXT_PAGE = {
-  Link: `<${mrApiUrl(MR)}/discussions?page=2&per_page=100>; rel="next"`,
-  'x-next-page': '2',
-};
-
-for (const [name, value] of Object.entries(NEXT_PAGE)) {
-  test(`loadMergeRequest paginates discussions by ${name}`, async () => {
-    const first = inlineDiffNote({ id: 1, username: 'a', body: 'first' });
-    const second = inlineDiffNote({ id: 2, username: 'b', body: 'second' });
-    let commentPages = 0;
-    const base = mockFetch(MR_JSON, MR_DIFF);
-    const fetchImpl = async (url, init) => {
-      if (`${url}`.includes('/discussions')) {
-        commentPages += 1;
-        if (commentPages === 1) {
-          return jsonResponse(200, [{ notes: [first] }], { [name]: value });
-        }
-        return jsonResponse(200, [{ notes: [second] }]);
-      }
-      return base(url, init);
-    };
-    const loaded = await loadMergeRequest(MR, { fetch: fetchImpl, token: '' });
-    assert.equal(commentPages, 2);
-    assert.equal(loaded.imported.blockTasks.length, 2);
-    assert.match(loaded.imported.blockTasks[0].text, /first/);
-    assert.match(loaded.imported.blockTasks[1].text, /second/);
-  });
-}
 
 test('discussionToNotes falls back to a todo when unmatched', () => {
   const items = itemsFromFiles(parseDiff(MR_DIFF), 'pr');
@@ -547,34 +579,6 @@ test('loadMergeRequest still opens when discussion import fails', async () => {
   assert.deepEqual(loaded.imported, { blockTasks: [], tasks: [] });
 });
 
-const GL_ISSUE = {
-  host: 'gitlab.com',
-  project: 'acme/app',
-  number: 12,
-  origin: 'https://gitlab.com',
-};
-
-const GL_ISSUE_JSON = JSON.parse(`{
-  "iid": 12,
-  "title": "Add import",
-  "description": "from the cli",
-  "state": "opened",
-  "web_url": "https://gitlab.com/acme/app/-/issues/12",
-  "author": { "username": "alice" }
-}`);
-
-const glIssueFetch = (json, notes, status = 200) => {
-  const calls = [];
-  const fetchImpl = async (url, init) => {
-    const headers = init.headers || {};
-    calls.push({ url: `${url}`, auth: headers['PRIVATE-TOKEN'] || '' });
-    if (`${url}`.includes('/notes')) return jsonResponse(200, notes);
-    return jsonResponse(status, json);
-  };
-  fetchImpl.calls = calls;
-  return fetchImpl;
-};
-
 test('parseGitlabIssueUrl reads gitlab issue URLs', () => {
   const urls = [
     'https://gitlab.com/acme/app/-/issues/12',
@@ -631,10 +635,10 @@ test('loadGitlabIssue imports the title, description, and notes', async () => {
     },
     { author: { username: 'cara' }, body: '   ', system: false },
   ];
-  const fetchImpl = glIssueFetch(GL_ISSUE_JSON, notes);
+  const fetch = glIssueFetch(GL_ISSUE_JSON, notes);
   const loaded = await loadGitlabIssue(GL_ISSUE, {
     cwd: '/repo',
-    fetch: fetchImpl,
+    fetch,
     token: 'secret',
   });
   assert.deepEqual(loaded.items, []);
@@ -658,16 +662,16 @@ test('loadGitlabIssue imports the title, description, and notes', async () => {
   assert.equal(issue.author, 'alice');
   assert.equal(issue.host, 'gitlab');
   assert.deepEqual(issue.comments, [{ author: 'bob', body: 'seen' }]);
-  const noteCall = fetchImpl.calls.find((call) => call.url.includes('/notes'));
+  const noteCall = fetch.calls.find((call) => call.url.includes('/notes'));
   assert.match(noteCall.url, /\/projects\/acme%2Fapp\/issues\/12\/notes/);
-  assert.equal(fetchImpl.calls[0].auth, 'secret');
+  assert.equal(fetch.calls[0].auth, 'secret');
 });
 
 test('loadGitlabIssue marks a closed issue done', async () => {
   const closed = { ...GL_ISSUE_JSON, state: 'closed', description: '' };
-  const fetchImpl = glIssueFetch(closed, []);
+  const fetch = glIssueFetch(closed, []);
   const loaded = await loadGitlabIssue(GL_ISSUE, {
-    fetch: fetchImpl,
+    fetch,
     token: '',
   });
   assert.equal(loaded.imported.tasks.length, 1);
@@ -787,9 +791,9 @@ test('loadGitlabIssue imports every open issue from a list', async () => {
 });
 
 test('loadGitlabIssue maps 404 to a not found error', async () => {
-  const fetchImpl = glIssueFetch({ message: '404 Not found' }, [], 404);
+  const fetch = glIssueFetch({ message: '404 Not found' }, [], 404);
   await assert.rejects(
-    () => loadGitlabIssue(GL_ISSUE, { fetch: fetchImpl, token: '' }),
+    () => loadGitlabIssue(GL_ISSUE, { fetch, token: '' }),
     /GitLab issue not found/,
   );
 });

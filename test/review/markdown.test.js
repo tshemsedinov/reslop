@@ -11,17 +11,6 @@ const { parseReview, serializeReview, ReviewStore } = review;
 
 const ROOT = path.join(__dirname, '..', '..');
 
-const markdownIn = (dir) => {
-  try {
-    return fs
-      .readdirSync(path.join(ROOT, dir))
-      .filter((name) => name.endsWith('.md'))
-      .map((name) => path.join(dir, name));
-  } catch {
-    return [];
-  }
-};
-
 // A reslop plan with a block reslop does not model, like the one an agent
 // leaves after a run
 const AGENT_PLAN = [
@@ -96,7 +85,25 @@ const SYNTHETIC = {
   mixedEnds: 'a\r\nb\nc\r\n',
 };
 
+const markdownIn = (dir) => {
+  try {
+    return fs
+      .readdirSync(path.join(ROOT, dir))
+      .filter((name) => name.endsWith('.md'))
+      .map((name) => path.join(dir, name));
+  } catch {
+    return [];
+  }
+};
+
 const roundTrip = (text) => MarkdownDoc.parse(text).toString();
+
+const changedLines = (before, after) => {
+  const a = before.split('\n');
+  const b = after.split('\n');
+  assert.equal(a.length, b.length);
+  return a.filter((line, i) => line !== b[i]).length;
+};
 
 test('MarkdownDoc prints repository Markdown back byte for byte', () => {
   const names = [
@@ -117,7 +124,8 @@ test('MarkdownDoc prints repository Markdown back byte for byte', () => {
 
 test('MarkdownDoc round-trips edge cases', () => {
   const cases = { AGENT_PLAN, FREE_FORM, ...SYNTHETIC };
-  for (const [name, text] of Object.entries(cases)) {
+  for (const name in cases) {
+    const text = cases[name];
     assert.equal(roundTrip(text), text, name);
     assert.equal(serializeReview(parseReview(text, '/x.md')), text, name);
   }
@@ -132,13 +140,6 @@ test('MarkdownDoc keeps fences, headings, and items apart', () => {
   assert.equal(doc.blocks.length, 1);
   assert.equal(doc.blocks[0].lines.length, 5);
 });
-
-const changedLines = (before, after) => {
-  const a = before.split('\n');
-  const b = after.split('\n');
-  assert.equal(a.length, b.length);
-  return a.filter((line, i) => line !== b[i]).length;
-};
 
 test('toggling one task changes exactly one line', () => {
   const store = parseReview(AGENT_PLAN, '/repo/.plan/2026-10-26-00.md');
@@ -199,7 +200,7 @@ test('editing a structured task rewrites only its changed lines', () => {
     '',
   ].join('\n');
   const store = parseReview(text, '/x.md');
-  const [first] = store.tasks;
+  const first = store.tasks[0];
   assert.equal(first.kind, 'bugs');
   const edited = first.text.replace('acquire:84', 'acquire:90');
   store.setTaskText(first.id, edited);
@@ -248,7 +249,8 @@ test('the README task example round-trips and reads as fields', () => {
   assert.equal(roundTrip(example), example);
   const store = parseReview(example, '/repo/specs/example.md');
   assert.equal(serializeReview(store), example);
-  const [task, plain] = store.tasks;
+  const task = store.tasks[0];
+  const plain = store.tasks[1];
   assert.equal(task.kind, 'bugs');
   assert.equal(task.item.id, 'B1');
   assert.equal(task.item.priority, 'high');

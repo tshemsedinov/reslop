@@ -78,7 +78,7 @@ test('the command of a call comes from its input or its title', () => {
 test('edits are allowed inside the repository only', () => {
   const edit = (...files) => ({
     kind: 'edit',
-    locations: files.map((file) => ({ path: file })),
+    locations: files.map((path) => ({ path })),
   });
   assert.equal(callAllowed(edit(path.join(ROOT, 'lib/a.js')), ROOT), true);
   assert.equal(callAllowed(edit('lib/a.js', '.plan/p.md'), ROOT), true);

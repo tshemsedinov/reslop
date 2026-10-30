@@ -25,15 +25,15 @@ test('install scripts are picked per platform and only over https', () => {
 
 test('an install script finds ~/.local/bin on PATH', () => {
   const home = path.join(path.sep, 'home', 'user');
-  const bin = path.join(home, '.local', 'bin');
-  assert.equal(localBin({ HOME: home }), bin);
+  const binDir = path.join(home, '.local', 'bin');
+  assert.equal(localBin({ HOME: home }), binDir);
   assert.equal(localBin({}), '');
   const env = scriptEnv({ HOME: home, PATH: '/usr/bin' });
-  assert.equal(env.PATH, [bin, '/usr/bin'].join(path.delimiter));
-  const kept = scriptEnv({ HOME: home, PATH: bin });
-  assert.equal(kept.PATH, bin);
+  assert.equal(env.PATH, [binDir, '/usr/bin'].join(path.delimiter));
+  const kept = scriptEnv({ HOME: home, PATH: binDir });
+  assert.equal(kept.PATH, binDir);
   const windows = scriptEnv({ USERPROFILE: home, Path: 'C:\\bin' });
-  assert.equal(windows.Path, [bin, 'C:\\bin'].join(path.delimiter));
+  assert.equal(windows.Path, [binDir, 'C:\\bin'].join(path.delimiter));
   assert.equal(windows.PATH, undefined);
 });
 

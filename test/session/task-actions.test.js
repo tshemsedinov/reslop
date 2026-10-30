@@ -5,6 +5,7 @@ const assert = require('node:assert/strict');
 const { EventEmitter } = require('node:events');
 const fs = require('node:fs');
 const path = require('node:path');
+
 const helpers = require('../helpers.js');
 const { tempDir, press, click } = helpers;
 const review = require('../../lib/review/review.js');
@@ -18,16 +19,74 @@ const { rowOf, focusedRow, saveTask, pageTo, typeTasks } = sessionHelpers;
 const { today, sampleItem, mockRepo, openSession } = sessionHelpers;
 const { clickStatusChoice, clickFooter } = sessionHelpers;
 
-// The checkbox rows of the tasks screen, without headings and text
+for (const sequence of [
+  '\x1b[13;2u',
+  '\x1b[13;5u',
+  '\x1b[13;6u',
+  '\x1b[27;2;13~',
+  '\x1b[27;5;13~',
+  '\x1b[27;6;13~',
+]) {
+  test(`fragmented ${JSON.stringify(sequence)} stays in the task`, async () => {
+    const { session } = await openSession([sampleItem('a.js')]);
+    session.dispatch('tasks');
+    session.pushInput('beforeafter');
+    saveTask(session);
+    const editor = session.editor;
+    editor.place(6);
+    for (const byte of sequence) {
+      session.pushInput(byte);
+      assert.equal(session.mode, 'compose');
+      assert.equal(session.editor, editor);
+    }
+    assert.equal(editor.text, 'before\nafter');
+    saveTask(session);
+    assert.equal(session.notes.tasks.length, 1);
+    assert.equal(session.notes.tasks[0].text, 'before\nafter');
+  });
+}
+
 const taskRows = (session) =>
   session.composer.tasks.taskTexts().filter((text) => /^\[[ xX]\] /.test(text));
 
-// The row of the nth checkbox on the tasks screen
-const taskAt = (session, n) => {
+const taskAt = (session, index) => {
   const labels = session.composer.tasks.taskTexts();
   const rows = labels.map((label, at) => (/^\[[ xX]\] /.test(label) ? at : -1));
-  return rows.filter((at) => at >= 0)[n] ?? -1;
+  return rows.filter((at) => at >= 0)[index] ?? -1;
 };
+
+for (const pair of [
+  ['kitty', '\x1b[13;2u', '\x1b[13;5u'],
+  ['xterm', '\x1b[27;2;13~', '\x1b[27;5;13~'],
+  ['line feed', '\n', '\n'],
+]) {
+  const name = pair[0];
+  const shift = pair[1];
+  const ctrl = pair[2];
+  test(`${name} adds lines inside an existing task`, async () => {
+    const { session } = await openSession([sampleItem('a.js')]);
+    session.dispatch('tasks');
+    session.pushInput('alphaomega');
+    saveTask(session);
+    const id = session.notes.tasks[0].id;
+    const editor = session.editor;
+    editor.place(5);
+    session.pushInput(`${shift}middle`);
+    session.autosave();
+    assert.equal(session.editor, editor);
+    assert.equal(session.mode, 'compose');
+    assert.equal(session.notes.tasks.length, 1);
+    assert.equal(session.notes.tasks[0].id, id);
+    session.pushInput(`${ctrl}tail`);
+    assert.equal(session.editor, editor);
+    assert.equal(session.tasksFocus, taskAt(session, 0));
+    saveTask(session);
+    assert.equal(session.notes.tasks.length, 1);
+    assert.equal(session.notes.tasks[0].text, 'alpha\nmiddle\ntailomega');
+    const saved = fs.readFileSync(session.notes.reviewPath, 'utf8');
+    assert.equal(parseReview(saved).tasks[0].text, 'alpha\nmiddle\ntailomega');
+  });
+}
 
 test('import url closes when focus leaves the field', async () => {
   const { session } = await openSession([sampleItem('a.js')]);
@@ -416,33 +475,6 @@ test('alt+enter adds lines and escape saves and leaves', async () => {
   );
 });
 
-for (const sequence of [
-  '\x1b[13;2u',
-  '\x1b[13;5u',
-  '\x1b[13;6u',
-  '\x1b[27;2;13~',
-  '\x1b[27;5;13~',
-  '\x1b[27;6;13~',
-]) {
-  test(`fragmented ${JSON.stringify(sequence)} stays in the task`, async () => {
-    const { session } = await openSession([sampleItem('a.js')]);
-    session.dispatch('tasks');
-    session.pushInput('beforeafter');
-    saveTask(session);
-    const editor = session.editor;
-    editor.place(6);
-    for (const byte of sequence) {
-      session.pushInput(byte);
-      assert.equal(session.mode, 'compose');
-      assert.equal(session.editor, editor);
-    }
-    assert.equal(editor.text, 'before\nafter');
-    saveTask(session);
-    assert.equal(session.notes.tasks.length, 1);
-    assert.equal(session.notes.tasks[0].text, 'before\nafter');
-  });
-}
-
 test('a standalone Escape still saves and leaves the task editor', async () => {
   const { session } = await openSession([sampleItem('a.js')]);
   session.dispatch('tasks');
@@ -472,36 +504,6 @@ test('one standalone Escape ends the read loop on the file list', async (t) => {
   assert.equal(stdin.listenerCount('data'), 0);
   assert.equal(session.term.timers.size, 0);
 });
-
-for (const [name, shift, ctrl] of [
-  ['kitty', '\x1b[13;2u', '\x1b[13;5u'],
-  ['xterm', '\x1b[27;2;13~', '\x1b[27;5;13~'],
-  ['line feed', '\n', '\n'],
-]) {
-  test(`${name} adds lines inside an existing task`, async () => {
-    const { session } = await openSession([sampleItem('a.js')]);
-    session.dispatch('tasks');
-    session.pushInput('alphaomega');
-    saveTask(session);
-    const id = session.notes.tasks[0].id;
-    const editor = session.editor;
-    editor.place(5);
-    session.pushInput(`${shift}middle`);
-    session.autosave();
-    assert.equal(session.editor, editor);
-    assert.equal(session.mode, 'compose');
-    assert.equal(session.notes.tasks.length, 1);
-    assert.equal(session.notes.tasks[0].id, id);
-    session.pushInput(`${ctrl}tail`);
-    assert.equal(session.editor, editor);
-    assert.equal(session.tasksFocus, taskAt(session, 0));
-    saveTask(session);
-    assert.equal(session.notes.tasks.length, 1);
-    assert.equal(session.notes.tasks[0].text, 'alpha\nmiddle\ntailomega');
-    const saved = fs.readFileSync(session.notes.reviewPath, 'utf8');
-    assert.equal(parseReview(saved).tasks[0].text, 'alpha\nmiddle\ntailomega');
-  });
-}
 
 test('todo list stays on screen while composing', async () => {
   const { session } = await openSession([sampleItem('a.js')]);

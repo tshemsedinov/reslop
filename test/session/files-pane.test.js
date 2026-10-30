@@ -4,6 +4,7 @@ const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
+
 const { hitAction } = require('../../lib/input/keys.js');
 const helpers = require('../helpers.js');
 const { tempDir, press, click } = helpers;
@@ -13,14 +14,39 @@ const sessionHelpers = require('../session-helpers.js');
 const { sampleItem, openSession, clickFooter, listCell } = sessionHelpers;
 const { shiftClick, ctrlClick } = sessionHelpers;
 
-const tallItem = (name, count) => {
+const tallItem = (name, newCount) => {
   const item = sampleItem(name);
   const lines = [];
-  for (let i = 0; i < count; i++) {
+  for (let i = 0; i < newCount; i++) {
     lines.push({ type: 'add', text: `line${i}`, noNl: false, blockId: 0 });
   }
-  const hunk = { ...item.hunk, lines, oldCount: 0, newCount: count };
+  const hunk = { ...item.hunk, lines, oldCount: 0, newCount };
   return { ...item, hunk };
+};
+
+// Each edit says read only and reaches no repository call
+const assertEditsRefused = (session, repo) => {
+  for (const action of ['add', 'revert', 'unstage', 'commit']) {
+    session.dispatch(action);
+    assert.equal(session.status, 'read only', action);
+  }
+  assert.equal(repo.added.length, 0);
+  assert.equal(repo.reverted.length, 0);
+  assert.equal(repo.unstageCalls.length, 0);
+  assert.equal(repo.commits.length, 0);
+};
+
+const laterHunk = (name) => {
+  const item = sampleItem(name);
+  item.blockId = 1;
+  item.hunk = {
+    ...item.hunk,
+    oldStart: 10,
+    newStart: 10,
+    header: '@@ -10,1 +10,1 @@',
+    blockId: 1,
+  };
+  return item;
 };
 
 test('prev at first block stays put and next reaches last', async () => {
@@ -72,8 +98,8 @@ test('add and unstage keep block order', async () => {
   );
   assert.equal(session.items[1].origin, 'staged');
   assert.equal(session.current().file.newPath, 'b.js');
-  const stagedFirst = [session.items[1], session.items[0], session.items[2]];
-  repo.load = () => ({ top: '/tmp', items: stagedFirst, branch: 'main' });
+  const items = [session.items[1], session.items[0], session.items[2]];
+  repo.load = () => ({ top: '/tmp', items, branch: 'main' });
   session.refreshFromRepo({ keepView: true });
   await session.ops.idle();
   assert.deepEqual(
@@ -118,18 +144,6 @@ test('AC28 unstage on unstaged is a no-op', async () => {
   assert.equal(repo.unstageCalls.length, 0);
   assert.equal(session.items.length, 1);
 });
-
-// Each edit says read only and reaches no repository call
-const assertEditsRefused = (session, repo) => {
-  for (const action of ['add', 'revert', 'unstage', 'commit']) {
-    session.dispatch(action);
-    assert.equal(session.status, 'read only', action);
-  }
-  assert.equal(repo.added.length, 0);
-  assert.equal(repo.reverted.length, 0);
-  assert.equal(repo.unstageCalls.length, 0);
-  assert.equal(repo.commits.length, 0);
-};
 
 test('AC21 commit add and revert are read only', async () => {
   const item = sampleItem('c.js', 'commit');
@@ -581,7 +595,8 @@ test('AC13 drag copies selected text', async () => {
     y: 5,
     press: false,
   });
-  const [, payload] = /\]52;c;([A-Za-z0-9+/=]+)/.exec(stdout.dump());
+  const pair = /\]52;c;([A-Za-z0-9+/=]+)/.exec(stdout.dump());
+  const payload = pair[1];
   const copied = Buffer.from(payload, 'base64').toString('utf8');
   assert.match(copied, /- a/);
   assert.match(copied, /\+ b/);
@@ -740,19 +755,6 @@ test('files pane add unstage revert apply to the whole file', async () => {
   assert.equal(session.fileCursor, 0);
   assert.equal(session.fileList()[0].path, 'b.js');
 });
-
-const laterHunk = (name) => {
-  const item = sampleItem(name);
-  item.blockId = 1;
-  item.hunk = {
-    ...item.hunk,
-    oldStart: 10,
-    newStart: 10,
-    header: '@@ -10,1 +10,1 @@',
-    blockId: 1,
-  };
-  return item;
-};
 
 test('file selection stages unstages and drops the chosen files', async () => {
   const { session, repo } = await openSession(
@@ -1116,7 +1118,7 @@ test('f writes feedback as a task where the block is', async () => {
   assert.equal(session.mode, 'review');
   const note = session.notes.blockTask('a.js:1');
   assert.equal(note.text, 'extract helper');
-  const [task] = session.notes.tasks;
+  const task = session.notes.tasks[0];
   assert.equal(task.kind, 'improvements');
   assert.equal(task.text, 'extract helper\n- where: a.js:1');
   assert.equal(session.view().counts.feedback, 0);

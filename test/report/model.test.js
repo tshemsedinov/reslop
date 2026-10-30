@@ -5,6 +5,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const { spawnSync } = require('node:child_process');
+
 const { tempDir } = require('../helpers.js');
 const { buildDocument } = require('../../lib/report/parse.js');
 const report = require('../../lib/report/render.js');
@@ -34,14 +35,14 @@ test('origin one', () => first());
 test('origin two', () => second());
 `;
 
-const rawRun = (root, reporter) => {
+const rawRun = (cwd, reporter) => {
   const env = { ...process.env, FORCE_COLOR: '0', NO_COLOR: '1' };
   delete env.NODE_TEST_CONTEXT;
   const result = spawnSync(
     process.execPath,
     ['--test', `--test-reporter=${reporter}`, 'failure.cjs'],
     {
-      cwd: root,
+      cwd,
       encoding: 'utf8',
       env,
       windowsHide: true,
@@ -55,11 +56,11 @@ const rawRun = (root, reporter) => {
 for (const reporter of ['tap', 'spec']) {
   const title = `raw node:test ${reporter} groups and filters in one pipeline`;
   test(title, async () => {
-    const root = tempDir();
+    const top = tempDir();
     try {
-      fs.writeFileSync(path.join(root, 'failure.cjs'), fixture);
-      const result = rawRun(root, reporter);
-      const doc = buildDocument(result.stdout, result.stderr, root, 1, 'test');
+      fs.writeFileSync(path.join(top, 'failure.cjs'), fixture);
+      const result = rawRun(top, reporter);
+      const doc = buildDocument(result.stdout, result.stderr, top, 1, 'test');
       const report = doc.reports[0];
       assert.equal(report.summary.passed, 1);
       assert.equal(report.summary.failed, 12);
@@ -80,14 +81,14 @@ for (const reporter of ['tap', 'spec']) {
       const preview = renderDocument(doc);
       assert.ok(!preview.includes('hidden pass'));
       assert.ok(!preview.includes('node:'));
-      assert.ok(!preview.includes(root));
+      assert.ok(!preview.includes(top));
       assert.match(preview, /failure\.cjs:\d+:\d+/);
       assert.match(preview, /count: 4/);
       assert.match(preview, /omitted: 1/);
       assert.ok(!preview.includes(repeated.key));
       const npm = require('../../lib/session/npm.js');
       const ui = {
-        top: root,
+        top,
         nav: { npmCursor: 0 },
         progress: { start() {}, stop() {} },
         paint() {},
@@ -106,7 +107,7 @@ for (const reporter of ['tap', 'spec']) {
       assert.equal(controller.output, output);
       assert.notEqual(controller.output, preview);
       assert.ok(!controller.output.includes('## '));
-      const logDir = path.join(root, '.log');
+      const logDir = path.join(top, '.log');
       const logs = fs.readdirSync(logDir);
       const reduced = logs.find((name) => name.endsWith('.log'));
       const rawName = logs.find((name) => name.endsWith('.raw'));
@@ -126,7 +127,7 @@ for (const reporter of ['tap', 'spec']) {
       controller.toggleVerbose();
       assert.equal(controller.output, output);
     } finally {
-      fs.rmSync(root, { recursive: true, force: true });
+      fs.rmSync(top, { recursive: true, force: true });
     }
   });
 }

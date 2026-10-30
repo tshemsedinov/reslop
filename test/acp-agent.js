@@ -20,6 +20,8 @@ const PARAMS = {
 
 const METHOD_NOT_FOUND = -32601;
 
+const at = process.argv.indexOf('--acp');
+
 const missing = (method) => {
   const error = new Error(`Method not found: ${method}`);
   return Object.assign(error, { code: METHOD_NOT_FOUND });
@@ -53,9 +55,11 @@ const serve = (scenario) => {
   const chosen = {};
   const paramOptions = () => {
     const model = config.model.currentValue;
-    const own = PARAMS[model].map(([id, category, values, initial]) =>
-      select(id, category, chosen[`${model}.${id}`] ?? initial, values),
-    );
+    const own = PARAMS[model].map((param) => {
+      const id = param[0];
+      const value = chosen[`${model}.${id}`] ?? param[3];
+      return select(id, param[1], value, param[2]);
+    });
     return [config.mode, config.model, ...own];
   };
   const options = () =>
@@ -214,5 +218,4 @@ const serve = (scenario) => {
   });
 };
 
-const at = process.argv.indexOf('--acp');
 if (at > 0) serve(process.argv[at + 1] ?? '');

@@ -3,6 +3,7 @@
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const path = require('node:path');
+
 const git = require('../../lib/git/git.js');
 const { load, addItem, unstageItem, revertItem } = git;
 const { commitChanges, hasStaged, lastMessage, createGitRepo } = git;
@@ -451,12 +452,12 @@ test('AC20 load commit patch ignores dirty worktree', async () => {
     repo.write('src/a.txt', 'A\n');
     repo.git(['add', '.']);
     repo.git(['commit', '-m', 'change a']);
-    const sha = repo.git(['rev-parse', 'HEAD']).trim();
+    const commit = repo.git(['rev-parse', 'HEAD']).trim();
     repo.write('src/a.txt', 'DIRTY\n');
     repo.write('new.txt', 'untracked\n');
     const loaded = await load(repo.dir, [], {
       deferExtras: false,
-      commit: sha,
+      commit,
     });
     assert.deepEqual(
       loaded.items.map((item) => [item.origin, item.file.newPath]),
@@ -467,7 +468,7 @@ test('AC20 load commit patch ignores dirty worktree', async () => {
     assert.equal(blob.includes('DIRTY'), false);
     const only = await load(repo.dir, ['src/a.txt'], {
       deferExtras: false,
-      commit: sha,
+      commit,
     });
     assert.deepEqual(
       only.items.map((item) => item.file.newPath),
@@ -475,7 +476,7 @@ test('AC20 load commit patch ignores dirty worktree', async () => {
     );
     const elsewhere = await load(repo.dir, ['keep.txt'], {
       deferExtras: false,
-      commit: sha,
+      commit,
     });
     assert.deepEqual(elsewhere.items, []);
     const work = await load(repo.dir, [], { deferExtras: false });
@@ -497,15 +498,15 @@ test('load root commit via diff-tree', async () => {
     repo.write('first.txt', 'hello\n');
     repo.git(['add', '.']);
     repo.git(['commit', '-m', 'root']);
-    const sha = repo.git(['rev-parse', 'HEAD']).trim();
+    const commit = repo.git(['rev-parse', 'HEAD']).trim();
     const loaded = await load(repo.dir, [], {
       deferExtras: false,
-      commit: sha,
+      commit,
     });
     assert.equal(loaded.items.length, 1);
     assert.equal(loaded.items[0].origin, 'commit');
     assert.equal(loaded.items[0].file.newPath, 'first.txt');
-    assert.ok(sha.startsWith(loaded.revShort));
+    assert.ok(commit.startsWith(loaded.revShort));
   } finally {
     repo.cleanup();
   }
@@ -531,10 +532,10 @@ test('load omits files under .plan', async () => {
     );
     repo.git(['add', '.']);
     repo.git(['commit', '-m', 'notes']);
-    const sha = repo.git(['rev-parse', 'HEAD']).trim();
+    const commit = repo.git(['rev-parse', 'HEAD']).trim();
     const committed = await load(repo.dir, [], {
       deferExtras: false,
-      commit: sha,
+      commit,
     });
     assert.deepEqual(
       committed.items.map((item) => item.file.newPath),

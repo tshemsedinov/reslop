@@ -2,22 +2,23 @@
 
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const { realpathSync } = fs;
+const path = require('node:path');
+
 const deps = require('../../lib/deps/deps.js');
+const { foldDepItems } = deps;
+const { proposeDepItems } = deps;
 const manifest = require('../../lib/deps/manifest.js');
+const { lockPackageCount } = manifest;
 const git = require('../../lib/git/git.js');
+const { load, loadExtras, addItem, unstageItem, revertItem } = git;
 const gitDeps = require('../../lib/git/deps.js');
 const { proposedNpmPlan, stagePath } = gitDeps;
 const render = require('../../lib/render/render.js');
 const { Session } = require('../../lib/session/session.js');
-const fs = require('node:fs');
-const path = require('node:path');
-const { realpathSync } = fs;
 const { makeRepo, sink, openRepoSession } = require('../helpers.js');
 const { stripAnsi, THEME, bg } = require('../../lib/term/ansi.js');
-const { load, loadExtras, addItem, unstageItem, revertItem } = git;
-const { foldDepItems } = deps;
-const { proposeDepItems } = deps;
-const { lockPackageCount } = manifest;
 const depsHelpers = require('../deps-helpers.js');
 const { pkgJson, pkgLib, noExportPkg, libPkg, lockV3, dummyItem } = depsHelpers;
 const { sidesOf, hunkTexts, assertBlankAfter, depByName } = depsHelpers;
@@ -27,6 +28,85 @@ const sessionFor = (dir) =>
   openRepoSession(dir, { stdout: sink(), startPane: 'diff' });
 
 const parseGitJson = (repo, spec) => JSON.parse(repo.git(['show', spec]));
+
+const proposedLodash = async (repo) => {
+  const oldDeps = { lodash: '^4.17.20' };
+  const extra = { description: 'keep me' };
+  repo.write('package.json', pkgJson(oldDeps, extra));
+  repo.write('package-lock.json', lockV3(oldDeps, { lodash: '4.17.20' }));
+  repo.git(['add', '.']);
+  repo.git(['commit', '-m', 'init']);
+  repo.write('notes.txt', 'unrelated\n');
+  const outdatedMap = lodashOutdated();
+  const loaded = await load(repo.dir, [], {
+    deferExtras: false,
+    audit: true,
+    outdatedMap,
+    auditMap: null,
+  });
+  const item = depByName(loaded.items, 'lodash');
+  const pkg = repo.read('package.json');
+  const lock = repo.read('package-lock.json');
+  return { loaded, item, pkg, lock };
+};
+
+const timedOut = () => {
+  const error = new Error('timed out');
+  error.code = 'ETIMEDOUT';
+  return { status: null, error };
+};
+
+for (const pair of [
+  ['nonzero', () => ({ status: 1, stderr: 'npm ERR! boom' }), /npm ERR! boom/],
+  [
+    'thrown',
+    () => {
+      throw new Error('install boom');
+    },
+    /install boom/,
+  ],
+  ['rejected', () => Promise.reject(new Error('install nope')), /install nope/],
+  ['timed out', timedOut, /timed out/],
+]) {
+  const name = pair[0];
+  const install = pair[1];
+  const message = pair[2];
+  test(`${name} npm runner restores owned dependency files`, async (t) => {
+    const repo = makeRepo();
+    t.after(repo.cleanup);
+    const { loaded, item, pkg, lock } = await proposedLodash(repo);
+    item.dep.install = install;
+    await assert.rejects(() => addItem(loaded.top, item), message);
+    assert.equal(repo.read('package.json'), pkg);
+    assert.equal(repo.read('package-lock.json'), lock);
+    assert.equal(repo.read('notes.txt'), 'unrelated\n');
+  });
+}
+
+const dependencyStagingRepo = (t) => {
+  const repo = makeRepo();
+  t.after(repo.cleanup);
+  const before = { lodash: '^4.17.20' };
+  const after = { lodash: '^4.17.21', leftpad: '1.0.0' };
+  repo.write('package.json', pkgJson(before));
+  repo.write('package-lock.json', lockV3(before, { lodash: '4.17.20' }));
+  repo.git(['add', '.']);
+  repo.git(['commit', '-m', 'init']);
+  repo.write('package.json', pkgJson(after));
+  const versions = { lodash: '4.17.21', leftpad: '1.0.0' };
+  repo.write('package-lock.json', lockV3(after, versions));
+  for (const rel of ['package.json', 'package-lock.json']) {
+    fs.utimesSync(path.join(repo.dir, rel), 1, 1);
+  }
+  return repo;
+};
+
+const dependencyFiles = (repo) =>
+  ['package.json', 'package-lock.json'].map((rel) => {
+    const file = path.join(repo.dir, rel);
+    const { mtimeMs, mode, ino } = fs.statSync(file);
+    return { text: repo.read(rel), mtimeMs, mode, ino };
+  });
 
 test('load folds local dependency files into one review item', async () => {
   const repo = makeRepo();
@@ -178,11 +258,11 @@ test('load proposes an outdated dependency with no package diffs', async () => {
     repo.write('package.json', pkgJson({ lodash: '^4.17.20' }));
     repo.git(['add', '.']);
     repo.git(['commit', '-m', 'init']);
-    const outdated = lodashOutdated();
+    const outdatedMap = lodashOutdated();
     const loaded = await load(repo.dir, [], {
       deferExtras: false,
       audit: true,
-      outdatedMap: outdated,
+      outdatedMap,
       auditMap: null,
     });
     const lodash = depByName(loaded.items, 'lodash');
@@ -205,11 +285,11 @@ test('add on a proposed update writes package.json, runs npm i', async () => {
     repo.write('package-lock.json', lockV3(oldDeps, { lodash: '4.17.20' }));
     repo.git(['add', '.']);
     repo.git(['commit', '-m', 'init']);
-    const outdated = lodashOutdated();
+    const outdatedMap = lodashOutdated();
     const loaded = await load(repo.dir, [], {
       deferExtras: false,
       audit: true,
-      outdatedMap: outdated,
+      outdatedMap,
       auditMap: null,
     });
     const item = depByName(loaded.items, 'lodash');
@@ -283,7 +363,7 @@ test('session add applies a proposed outdated update', async () => {
     repo.write('package-lock.json', lockV3(oldDeps, { lodash: '4.17.20' }));
     repo.git(['add', '.']);
     repo.git(['commit', '-m', 'init']);
-    const outdated = lodashOutdated();
+    const outdatedMap = lodashOutdated();
     const stdout = sink();
     const session = new Session({
       repo: git.createGitRepo(),
@@ -292,7 +372,7 @@ test('session add applies a proposed outdated update', async () => {
       color: false,
       startPane: 'diff',
       audit: true,
-      outdatedMap: outdated,
+      outdatedMap,
       auditMap: null,
     });
     await session.load();
@@ -323,7 +403,7 @@ test('session revert dismisses a proposed outdated update', async () => {
     repo.write('package.json', pkgJson({ lodash: '^4.17.20' }));
     repo.git(['add', '.']);
     repo.git(['commit', '-m', 'init']);
-    const outdated = lodashOutdated();
+    const outdatedMap = lodashOutdated();
     const stdout = sink();
     const session = new Session({
       repo: git.createGitRepo(),
@@ -332,7 +412,7 @@ test('session revert dismisses a proposed outdated update', async () => {
       color: false,
       startPane: 'diff',
       audit: true,
-      outdatedMap: outdated,
+      outdatedMap,
       auditMap: null,
     });
     await session.load();
@@ -345,27 +425,6 @@ test('session revert dismisses a proposed outdated update', async () => {
     repo.cleanup();
   }
 });
-
-const proposedLodash = async (repo) => {
-  const oldDeps = { lodash: '^4.17.20' };
-  const extra = { description: 'keep me' };
-  repo.write('package.json', pkgJson(oldDeps, extra));
-  repo.write('package-lock.json', lockV3(oldDeps, { lodash: '4.17.20' }));
-  repo.git(['add', '.']);
-  repo.git(['commit', '-m', 'init']);
-  repo.write('notes.txt', 'unrelated\n');
-  const outdated = lodashOutdated();
-  const loaded = await load(repo.dir, [], {
-    deferExtras: false,
-    audit: true,
-    outdatedMap: outdated,
-    auditMap: null,
-  });
-  const item = depByName(loaded.items, 'lodash');
-  const pkg = repo.read('package.json');
-  const lock = repo.read('package-lock.json');
-  return { loaded, item, pkg, lock };
-};
 
 test('proposedNpmPlan does not write the manifest', async () => {
   const repo = makeRepo();
@@ -380,36 +439,6 @@ test('proposedNpmPlan does not write the manifest', async () => {
     repo.cleanup();
   }
 });
-
-const timedOut = () => {
-  const error = new Error('timed out');
-  error.code = 'ETIMEDOUT';
-  return { status: null, error };
-};
-
-for (const [name, install, message] of [
-  ['nonzero', () => ({ status: 1, stderr: 'npm ERR! boom' }), /npm ERR! boom/],
-  [
-    'thrown',
-    () => {
-      throw new Error('install boom');
-    },
-    /install boom/,
-  ],
-  ['rejected', () => Promise.reject(new Error('install nope')), /install nope/],
-  ['timed out', timedOut, /timed out/],
-]) {
-  test(`${name} npm runner restores owned dependency files`, async (t) => {
-    const repo = makeRepo();
-    t.after(repo.cleanup);
-    const { loaded, item, pkg, lock } = await proposedLodash(repo);
-    item.dep.install = install;
-    await assert.rejects(() => addItem(loaded.top, item), message);
-    assert.equal(repo.read('package.json'), pkg);
-    assert.equal(repo.read('package-lock.json'), lock);
-    assert.equal(repo.read('notes.txt'), 'unrelated\n');
-  });
-}
 
 test('git staging failure restores owned dependency files', async () => {
   const repo = makeRepo();
@@ -598,7 +627,9 @@ test('staging a package.json diff installs its lockfile', async () => {
         return { status: 0 };
       },
     });
-    const [cwd, args] = installed.split('\0');
+    const parts = installed.split('\0');
+    const cwd = parts[0];
+    const args = parts[1];
     assert.equal(realpathSync.native(cwd), realpathSync.native(repo.dir));
     assert.equal(args, 'i');
     assert.equal(
@@ -638,7 +669,9 @@ test('staging a package.json path installs its lockfile', async () => {
         return { status: 0 };
       },
     });
-    const [cwd, args] = installed.split('\0');
+    const parts = installed.split('\0');
+    const cwd = parts[0];
+    const args = parts[1];
     assert.equal(realpathSync.native(cwd), realpathSync.native(repo.dir));
     assert.equal(args, 'i');
     assert.match(
@@ -851,23 +884,23 @@ test('render shows a readable dependency summary', () => {
 });
 
 test('render paints npm audit notes grey with separators', () => {
-  const first =
+  const title =
     'brace-expansion: DoS via exponential-time expansion of ' +
     'consecutive non-expanding groups';
   const second = 'brace-expansion: DoS via unbounded expansion length';
   const audit = new Map();
   audit.set('brace-expansion', {
     severity: 'high',
-    title: first,
-    titles: [first, second],
+    title,
+    titles: [title, second],
     range: '<=1.1.17',
   });
   const pkg = pkgJson({ eslint: '^9.39.5' });
-  const lock = lockV3(
+  const lockText = lockV3(
     { eslint: '^9.39.5' },
     { eslint: '9.39.5', 'brace-expansion': '1.1.15' },
   );
-  const proposed = proposeDepItems(pkg, null, audit, { lockText: lock });
+  const proposed = proposeDepItems(pkg, null, audit, { lockText });
   const item = proposed[0];
   const frame = render.renderFrame(
     {
@@ -909,31 +942,6 @@ test('lockPackageCount ignores the root package entry', () => {
   };
   assert.equal(lockPackageCount(lock), 1);
 });
-
-const dependencyStagingRepo = (t) => {
-  const repo = makeRepo();
-  t.after(repo.cleanup);
-  const before = { lodash: '^4.17.20' };
-  const after = { lodash: '^4.17.21', leftpad: '1.0.0' };
-  repo.write('package.json', pkgJson(before));
-  repo.write('package-lock.json', lockV3(before, { lodash: '4.17.20' }));
-  repo.git(['add', '.']);
-  repo.git(['commit', '-m', 'init']);
-  repo.write('package.json', pkgJson(after));
-  const versions = { lodash: '4.17.21', leftpad: '1.0.0' };
-  repo.write('package-lock.json', lockV3(after, versions));
-  for (const rel of ['package.json', 'package-lock.json']) {
-    fs.utimesSync(path.join(repo.dir, rel), 1, 1);
-  }
-  return repo;
-};
-
-const dependencyFiles = (repo) =>
-  ['package.json', 'package-lock.json'].map((rel) => {
-    const file = path.join(repo.dir, rel);
-    const { mtimeMs, mode, ino } = fs.statSync(file);
-    return { text: repo.read(rel), mtimeMs, mode, ino };
-  });
 
 test('partial dependency staging leaves the worktree untouched', async (t) => {
   const repo = dependencyStagingRepo(t);

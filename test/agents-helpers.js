@@ -2,15 +2,11 @@
 
 const fs = require('node:fs');
 const path = require('node:path');
+
 const agents = require('../lib/agents/agents.js');
 const { AGENTS } = agents;
-const {
-  makeRepo,
-  uiSink,
-  press,
-  tempDir,
-  openRepoSession,
-} = require('./helpers.js');
+const helpersModule = require('./helpers.js');
+const { makeRepo, uiSink, press, tempDir, openRepoSession } = helpersModule;
 const ansi = require('../lib/term/ansi.js');
 const { stripAnsi } = ansi;
 
@@ -28,7 +24,6 @@ const fakePath = (...names) => {
   return { dir, bins, env: { PATH: dir } };
 };
 
-// The row of the agents table that a caption starts
 const labelRow = (rows, label) =>
   rows.find((row) => new RegExp(`^ +${label} `).test(stripAnsi(row)));
 
@@ -106,7 +101,9 @@ const STATES = {
 const listed = async (row) => STATES[row.id] ?? null;
 
 const rowOf = (spec, catalog = null) => {
-  const [name, ...args] = spec.commands[0];
+  const pair = spec.commands[0];
+  const name = pair[0];
+  const args = pair.slice(1);
   const { id } = spec;
   return { id, name: spec.name, bin: `/usr/bin/${name}`, args, spec, catalog };
 };

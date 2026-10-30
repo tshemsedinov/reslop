@@ -4,13 +4,14 @@ const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
+const { setImmediate: settle } = require('node:timers/promises');
+
 const agents = require('../../lib/agents/agents.js');
 const { planPrompt } = agents;
 const { emptyChoice, buildLaunch, AGENTS } = agents;
 const { press, click, tempDir } = require('../helpers.js');
 const ansi = require('../../lib/term/ansi.js');
 const { stripAnsi, THEME, bg } = ansi;
-const { setImmediate: settle } = require('node:timers/promises');
 const agentsHelpers = require('../agents-helpers.js');
 const { fakePath, labelRow, STATES, listed, rowOf, specOf } = agentsHelpers;
 const { openUi, openAgents, showAgents, typeInto } = agentsHelpers;
@@ -38,7 +39,9 @@ test('the agents are asked default first, a few at a time', async () => {
       return STATES[row.id] ?? null;
     };
     ui.agents.refresh(env);
-    const installed = ui.agents.list.filter((row) => row.bin).map((r) => r.id);
+    const installed = ui.agents.list
+      .filter((row) => row.bin)
+      .map((row) => row.id);
     assert.equal(installed.length, 4);
     // Not installed agents are never asked, a duplicate call asks nothing
     const first = ui.agents.loadModels();
@@ -137,7 +140,9 @@ test('the task box moves lines, is clicked, and Escape leaves', async (t) => {
   await showAgents(ui, env);
   ui.stdout.rows = 30;
   ui.draw();
-  const empty = ui.lastFrame.editHits.find((h) => h.editor === ui.agents.task);
+  const empty = ui.lastFrame.editHits.find(
+    (hit) => hit.editor === ui.agents.task,
+  );
   assert.ok(empty);
   click(ui, empty.textX, empty.y);
   assert.equal(ui.agents.currentField(), 'task');
@@ -152,7 +157,7 @@ test('the task box moves lines, is clicked, and Escape leaves', async (t) => {
   press(ui, 'down', 'down');
   assert.equal(ui.agents.task.linePos().line, 1);
   ui.draw();
-  const second = ui.lastFrame.editHits.find((h) => h.text === 'two');
+  const second = ui.lastFrame.editHits.find((hit) => hit.text === 'two');
   click(ui, second.textX + 1, second.y);
   assert.equal(ui.agents.task.cursor, 'one\nt'.length);
   press(ui, 'escape');
@@ -493,7 +498,7 @@ test('a plan runs through an acp agent to its end', SH_ONLY, async () => {
 test('a session opens on its last run and loads older on scroll', async (t) => {
   const { env, ui, repo } = await openAgents(t, 'claude-agent-acp');
   await showAgents(ui, env);
-  const sessionId = '2fa698ba-9a19-4a84-8134-5a7cd9ec2c56';
+  const session = '2fa698ba-9a19-4a84-8134-5a7cd9ec2c56';
   const folder = path.join(repo.dir, '.log');
   fs.mkdirSync(folder, { recursive: true });
   const older = '2026-10-09-agent-01';
@@ -504,7 +509,7 @@ test('a session opens on its last run and loads older on scroll', async (t) => {
     {
       id: 1,
       cliId: 'claude',
-      session: sessionId,
+      session,
       logName: `${older}.log`,
       rawName: `${older}.raw`,
       startedAt: 1,
@@ -512,13 +517,13 @@ test('a session opens on its last run and loads older on scroll', async (t) => {
     {
       id: 2,
       cliId: 'claude',
-      session: sessionId,
+      session,
       logName: `${newer}.log`,
       rawName: `${newer}.raw`,
       startedAt: 2,
     },
   ];
-  ui.agents.openSession(sessionId);
+  ui.agents.openSession(session);
   assert.match(ui.agents.historyText, /newer line/);
   assert.equal(ui.agents.historyText.includes('older line'), false);
   ui.agents.followEnd = false;
@@ -534,12 +539,12 @@ test('a session opens on its last run and loads older on scroll', async (t) => {
 test('a completed session reopens with its captured output', async (t) => {
   const { env, ui } = await openAgents(t, 'claude-agent-acp');
   await showAgents(ui, env);
-  const sessionId = '2fa698ba-9a19-4a84-8134-5a7cd9ec2c56';
+  const session = '2fa698ba-9a19-4a84-8134-5a7cd9ec2c56';
   ui.agents.jobs = [
     {
       id: 1,
       cliId: 'claude',
-      session: sessionId,
+      session,
       logName: '2026-10-09-agent-01.log',
       output: 'completed agent output\n',
       startedAt: 1,
@@ -556,7 +561,7 @@ test('saved runs reload when the repository root changes', async (t) => {
   const { env, ui, repo } = await openAgents(t, 'claude-agent-acp');
   ui.agents.listModels = listed;
   ui.agents.refresh(env);
-  const sessionId = '2fa698ba-9a19-4a84-8134-5a7cd9ec2c56';
+  const session = '2fa698ba-9a19-4a84-8134-5a7cd9ec2c56';
   const folder = path.join(repo.dir, '.log');
   fs.mkdirSync(folder, { recursive: true });
   const stem = '2026-10-09-agent-01';
@@ -566,7 +571,7 @@ test('saved runs reload when the repository root changes', async (t) => {
     action: 'run',
     exit: 0,
     startedAt: 1,
-    session: sessionId,
+    session,
     log: `${stem}.log`,
     raw: `${stem}.raw`,
   };
@@ -577,7 +582,7 @@ test('saved runs reload when the repository root changes', async (t) => {
   await ui.agents.open();
   const rows = ui.agents.sessionRows();
   assert.equal(rows.length, 2);
-  assert.equal(rows[1].id, sessionId);
+  assert.equal(rows[1].id, session);
   ui.agents.focusRuns();
   ui.agents.move(1);
   press(ui, 'enter');

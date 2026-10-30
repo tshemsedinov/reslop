@@ -4,6 +4,8 @@ const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
+const { setImmediate: settle } = require('node:timers/promises');
+
 const { Session } = require('../../lib/session/session.js');
 const { OpsRunner } = require('../../lib/session/ops.js');
 const helpers = require('../helpers.js');
@@ -13,7 +15,6 @@ const { ReviewStore, serializeReview } = review;
 const ansi = require('../../lib/term/ansi.js');
 const { stripAnsi } = ansi;
 const { REVIEW_DIR } = require('../../lib/common/files.js');
-const { setImmediate: settle } = require('node:timers/promises');
 const sessionHelpers = require('../session-helpers.js');
 const { today, sampleItem, mockRepo, openSession } = sessionHelpers;
 const { clickStatusChoice, clickFooter } = sessionHelpers;
@@ -59,6 +60,88 @@ const hunkPair = (name) => {
     patchRevert: 'rev1',
   };
   return [first, second];
+};
+
+const openUpdating = async (extra = {}) => {
+  const cacheFile = path.join(tempDir('reslop-cache-'), 'update.json');
+  const installed = [];
+  let fetchResolve = null;
+  let fetchGate = null;
+  if (extra.gateFetch) {
+    fetchGate = new Promise((resolve) => {
+      fetchResolve = resolve;
+    });
+  }
+  const update = {
+    enabled: true,
+    current: extra.current ?? '0.1.5',
+    cacheFile,
+    fetch:
+      extra.fetch ??
+      (async () => {
+        if (fetchGate) await fetchGate;
+        return {
+          ok: true,
+          json: async () => ({ version: extra.latest ?? '0.1.6' }),
+        };
+      }),
+    install:
+      extra.install ??
+      (async (version) => {
+        installed.push(version);
+      }),
+  };
+  const { session } = await openSession(
+    [sampleItem('a.js'), sampleItem('b.js')],
+    {
+      startPane: 'files',
+      update,
+      ...extra.session,
+    },
+  );
+  session.uiOpen = true;
+  return { session, installed, fetchResolve, cacheFile, update };
+};
+
+const twoBlockFile = async () => {
+  const first = sampleItem('a.js');
+  const second = sampleItem('a.js');
+  second.blockId = 1;
+  second.hunk = {
+    oldStart: 3,
+    oldCount: 1,
+    newStart: 3,
+    newCount: 1,
+    header: '@@ -3,1 +3,1 @@',
+    lines: [
+      { type: 'del', text: 'c', noNl: false, blockId: 1 },
+      { type: 'add', text: 'd', noNl: false, blockId: 1 },
+    ],
+  };
+  const opened = await openSession([first, second], { startPane: 'files' });
+  opened.repo.fileBodies['a.js'] = 'b\nkeep\nd\n';
+  opened.session.dispatch('file');
+  await opened.session.ops.idle();
+  opened.session.dispatch('open');
+  await opened.session.ops.idle();
+  return opened;
+};
+
+const whereOf = (session) =>
+  session.notes.tasks.map((task) => task.item.value('where'));
+
+const movedItem = (name, line, text) => {
+  const item = sampleItem(name);
+  item.hunk = {
+    ...item.hunk,
+    oldStart: line,
+    newStart: line,
+    lines: [
+      { type: 'del', text: `${text}-old`, noNl: false, blockId: 0 },
+      { type: 'add', text, noNl: false, blockId: 0 },
+    ],
+  };
+  return item;
 };
 
 test('load applies imported GitHub notes on a new review', async () => {
@@ -173,14 +256,8 @@ test('openLoad paints git items before npm extras arrive', async () => {
   const pending = session.openLoad();
   await new Promise((resolve, reject) => {
     const tick = (left) => {
-      if (extrasStarted) {
-        resolve();
-        return;
-      }
-      if (left <= 0) {
-        reject(new Error('extras did not start'));
-        return;
-      }
+      if (extrasStarted) return void resolve();
+      if (left <= 0) return void reject(new Error('extras did not start'));
       setImmediate(() => tick(left - 1));
     };
     tick(50);
@@ -194,47 +271,6 @@ test('openLoad paints git items before npm extras arrive', async () => {
   assert.equal(session.items.length, 2);
   assert.equal(session.busy, '');
 });
-
-const openUpdating = async (extra = {}) => {
-  const cacheFile = path.join(tempDir('reslop-cache-'), 'update.json');
-  const installed = [];
-  let fetchResolve = null;
-  let fetchGate = null;
-  if (extra.gateFetch) {
-    fetchGate = new Promise((resolve) => {
-      fetchResolve = resolve;
-    });
-  }
-  const update = {
-    enabled: true,
-    current: extra.current ?? '0.1.5',
-    cacheFile,
-    fetch:
-      extra.fetch ??
-      (async () => {
-        if (fetchGate) await fetchGate;
-        return {
-          ok: true,
-          json: async () => ({ version: extra.latest ?? '0.1.6' }),
-        };
-      }),
-    install:
-      extra.install ??
-      (async (version) => {
-        installed.push(version);
-      }),
-  };
-  const { session } = await openSession(
-    [sampleItem('a.js'), sampleItem('b.js')],
-    {
-      startPane: 'files',
-      update,
-      ...extra.session,
-    },
-  );
-  session.uiOpen = true;
-  return { session, installed, fetchResolve, cacheFile, update };
-};
 
 test('update check does not block loading', async () => {
   const { session, fetchResolve, installed } = await openUpdating({
@@ -459,10 +495,7 @@ test('rejected push asks f to force or escape to cancel', async () => {
     startPane: 'files',
   });
   session.repo.push = (top, force) => {
-    if (force) {
-      repo.pushes.push(true);
-      return;
-    }
+    if (force) return void repo.pushes.push(true);
     const error = new Error('non-fast-forward');
     error.rejected = true;
     throw error;
@@ -764,7 +797,9 @@ test('unit view shows the file with current block marks', async () => {
 });
 
 test('unit view marks every block in the current hunk', async () => {
-  const [first, second] = hunkPair('a.js');
+  const pair = hunkPair('a.js');
+  const first = pair[0];
+  const second = pair[1];
   const { session, repo } = await openSession([first, second], {
     startPane: 'files',
   });
@@ -1275,33 +1310,6 @@ test('partial file add reloads after a later hunk fails', async () => {
   assert.equal(session.items[1].blockId, 1);
 });
 
-const twoBlockFile = async () => {
-  const first = sampleItem('a.js');
-  const second = sampleItem('a.js');
-  second.blockId = 1;
-  second.hunk = {
-    oldStart: 3,
-    oldCount: 1,
-    newStart: 3,
-    newCount: 1,
-    header: '@@ -3,1 +3,1 @@',
-    lines: [
-      { type: 'del', text: 'c', noNl: false, blockId: 1 },
-      { type: 'add', text: 'd', noNl: false, blockId: 1 },
-    ],
-  };
-  const opened = await openSession([first, second], { startPane: 'files' });
-  opened.repo.fileBodies['a.js'] = 'b\nkeep\nd\n';
-  opened.session.dispatch('file');
-  await opened.session.ops.idle();
-  opened.session.dispatch('open');
-  await opened.session.ops.idle();
-  return opened;
-};
-
-const whereOf = (session) =>
-  session.notes.tasks.map((task) => task.item.value('where'));
-
 test('ctrl+t in the file view names the line or the block', async () => {
   const { session } = await twoBlockFile();
   assert.equal(session.pane, 'unit');
@@ -1418,20 +1426,6 @@ test('tasks mark their lines and blocks in the gutter', async () => {
   assert.equal(session.pane, 'diff');
   assert.deepEqual(marked(), ['+▎b']);
 });
-
-const movedItem = (name, line, text) => {
-  const item = sampleItem(name);
-  item.hunk = {
-    ...item.hunk,
-    oldStart: line,
-    newStart: line,
-    lines: [
-      { type: 'del', text: `${text}-old`, noNl: false, blockId: 0 },
-      { type: 'add', text, noNl: false, blockId: 0 },
-    ],
-  };
-  return item;
-};
 
 test('a reload moves block tasks to where their blocks went', async () => {
   const before = [movedItem('a.js', 3, 'one'), movedItem('a.js', 9, 'two')];

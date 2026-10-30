@@ -4,21 +4,113 @@ const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
+const { setImmediate: settle } = require('node:timers/promises');
+
 const helpers = require('../helpers.js');
 const { tempDir, press, click, rightClick } = helpers;
 const ansi = require('../../lib/term/ansi.js');
 const { stripAnsi } = ansi;
 const { setTheme, themeName } = ansi;
 const clipboard = require('../../lib/term/select.js');
-const { setImmediate: settle } = require('node:timers/promises');
 const sessionHelpers = require('../session-helpers.js');
 const { saveTask, sampleItem, openSession } = sessionHelpers;
 const { clickFooter, dragBetween } = sessionHelpers;
+
+for (const pair of [
+  ['blockTask', 'diff'],
+  ['branch', 'branches'],
+  ['worktree', 'branches'],
+  ['commit', 'commits'],
+  ['package', 'packages'],
+  ['npm', 'npm'],
+  ['tasks', 'tasks'],
+]) {
+  const kind = pair[0];
+  const pane = pair[1];
+  test(`mouse and keyboard share selection in the ${kind} editor`, async () => {
+    const { session, stdout } = await openSession([sampleItem('a.js')]);
+    session.pane = pane;
+    if (kind === 'tasks') {
+      session.composer.tasks.onTasks();
+      session.editor.replace('hello world');
+    } else {
+      session.composer.openCompose(kind, 'hello world');
+    }
+    if (kind === 'npm') session.npm.editField = 'name';
+    session.editor.place(0);
+    session.draw();
+    const hit = session.lastFrame.editHits.find((entry) => entry.live);
+    assert.ok(hit, kind);
+    const before = stdout.dump().length;
+    dragBetween(
+      session,
+      { x: hit.textX, y: hit.y },
+      { x: hit.textX + 5, y: hit.y },
+    );
+    assert.equal(session.editor.selectedText(), 'hello');
+    assert.equal(session.nav.selection, null);
+    assert.equal(session.nav.editDrag, null);
+    assert.equal(stdout.dump().length, before);
+    press(session, 'shift-right');
+    assert.equal(session.editor.selectedText(), 'hello ');
+    press(session, 'ctrl-c');
+    assert.equal(session.status, 'copied');
+    assert.ok(stdout.dump().includes(Buffer.from('hello ').toString('base64')));
+    rightClick(session, hit.textX + 1, hit.y);
+    press(session, 'ctrl-c');
+    assert.equal(session.editor.selectedText(), 'hello ');
+    assert.equal(session.nav.contextMenu, null);
+    assert.equal(session.mode, 'compose');
+  });
+}
 
 const clickCaret = (session, dx, dy) => {
   const caret = session.lastFrame.cursor;
   assert.ok(caret);
   click(session, caret.x + dx, caret.y + dy);
+};
+
+const editRow = (session) => {
+  const hit = session.lastFrame.editHits[0];
+  if (!hit) return '';
+  return stripAnsi(session.lastFrame.rows[hit.y - 1] ?? '');
+};
+
+const longValue = (head, tail) => `${head}${'m'.repeat(120)}${tail}`;
+
+const editFile = async (items) => {
+  const opened = await openSession(items, { startPane: 'files' });
+  const { session } = opened;
+  session.dispatch('file');
+  await session.ops.idle();
+  session.dispatch('open');
+  session.dispatch('code');
+  await session.ops.idle();
+  assert.equal(session.composeKind, 'file');
+  return opened;
+};
+
+const heldLoad = (repo) => {
+  const { load } = repo;
+  let release = null;
+  repo.load = (...args) =>
+    new Promise((resolve) => {
+      release = () => resolve(load(...args));
+    });
+  return () => release();
+};
+
+const gatedAdds = (repo) => {
+  const gates = [];
+  const done = [];
+  repo.add = (top, item) =>
+    new Promise((resolve) => {
+      gates.push(() => {
+        done.push(item);
+        resolve();
+      });
+    });
+  return { gates, done };
 };
 
 test('click moves the caret in the code and file editors', async () => {
@@ -129,14 +221,6 @@ test('click moves the caret in commit, branch, and npm editors', async () => {
   click(session, command.textX + 5, command.y);
   assert.equal(session.editor.cursor, 5);
 });
-
-const editRow = (session) => {
-  const hit = session.lastFrame.editHits[0];
-  if (!hit) return '';
-  return stripAnsi(session.lastFrame.rows[hit.y - 1] ?? '');
-};
-
-const longValue = (head, tail) => `${head}${'m'.repeat(120)}${tail}`;
 
 test('table editors scroll long lines horizontally', async () => {
   const { session, stdout, cwd } = await openSession(
@@ -390,52 +474,6 @@ test('editors select with shift and copy cut paste', async () => {
   assert.equal(stripAnsi(taskBefore), stripAnsi(taskAfter));
   assert.notEqual(taskBefore, taskAfter);
 });
-
-for (const [kind, pane] of [
-  ['blockTask', 'diff'],
-  ['branch', 'branches'],
-  ['worktree', 'branches'],
-  ['commit', 'commits'],
-  ['package', 'packages'],
-  ['npm', 'npm'],
-  ['tasks', 'tasks'],
-]) {
-  test(`mouse and keyboard share selection in the ${kind} editor`, async () => {
-    const { session, stdout } = await openSession([sampleItem('a.js')]);
-    session.pane = pane;
-    if (kind === 'tasks') {
-      session.composer.tasks.onTasks();
-      session.editor.replace('hello world');
-    } else {
-      session.composer.openCompose(kind, 'hello world');
-    }
-    if (kind === 'npm') session.npm.editField = 'name';
-    session.editor.place(0);
-    session.draw();
-    const hit = session.lastFrame.editHits.find((entry) => entry.live);
-    assert.ok(hit, kind);
-    const before = stdout.dump().length;
-    dragBetween(
-      session,
-      { x: hit.textX, y: hit.y },
-      { x: hit.textX + 5, y: hit.y },
-    );
-    assert.equal(session.editor.selectedText(), 'hello');
-    assert.equal(session.nav.selection, null);
-    assert.equal(session.nav.editDrag, null);
-    assert.equal(stdout.dump().length, before);
-    press(session, 'shift-right');
-    assert.equal(session.editor.selectedText(), 'hello ');
-    press(session, 'ctrl-c');
-    assert.equal(session.status, 'copied');
-    assert.ok(stdout.dump().includes(Buffer.from('hello ').toString('base64')));
-    rightClick(session, hit.textX + 1, hit.y);
-    press(session, 'ctrl-c');
-    assert.equal(session.editor.selectedText(), 'hello ');
-    assert.equal(session.nav.contextMenu, null);
-    assert.equal(session.mode, 'compose');
-  });
-}
 
 test('code mouse selection spans lines and whole wide characters', async () => {
   const { session, stdout } = await openSession([sampleItem('a.js')]);
@@ -914,28 +952,6 @@ test('a package command that rejects shows the error and stops', async () => {
   assert.equal(session.busy, '');
 });
 
-const editFile = async (items) => {
-  const opened = await openSession(items, { startPane: 'files' });
-  const { session } = opened;
-  session.dispatch('file');
-  await session.ops.idle();
-  session.dispatch('open');
-  session.dispatch('code');
-  await session.ops.idle();
-  assert.equal(session.composeKind, 'file');
-  return opened;
-};
-
-const heldLoad = (repo) => {
-  const { load } = repo;
-  let release = null;
-  repo.load = (...args) =>
-    new Promise((resolve) => {
-      release = () => resolve(load(...args));
-    });
-  return () => release();
-};
-
 test('a reload does not undo an autosave that landed meanwhile', async () => {
   const { session, repo } = await editFile([sampleItem('a.js')]);
   const finishLoad = heldLoad(repo);
@@ -1009,19 +1025,6 @@ test('a code save does not wait for a running install', async () => {
   await session.ops.idle();
   assert.equal(session.busy, '');
 });
-
-const gatedAdds = (repo) => {
-  const gates = [];
-  const done = [];
-  repo.add = (top, item) =>
-    new Promise((resolve) => {
-      gates.push(() => {
-        done.push(item);
-        resolve();
-      });
-    });
-  return { gates, done };
-};
 
 test('quitting lets a running stage finish every hunk first', async () => {
   const second = sampleItem('a.js');

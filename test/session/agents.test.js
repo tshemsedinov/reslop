@@ -4,6 +4,8 @@ const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
+const { setImmediate: settle } = require('node:timers/promises');
+
 const agents = require('../../lib/agents/agents.js');
 const { emptyChoice, AGENTS } = agents;
 const { modelChange } = agents;
@@ -12,7 +14,6 @@ const render = require('../../lib/render/render.js');
 const { renderFrame } = render;
 const ansi = require('../../lib/term/ansi.js');
 const { stripAnsi, THEME, bg, RESET, seq } = ansi;
-const { setImmediate: settle } = require('node:timers/promises');
 const agentsHelpers = require('../agents-helpers.js');
 const { makeBin, labelRow, acpState, CLAUDE_STATE } = agentsHelpers;
 const { CURSOR_STATE, listed, openAgents, showAgents } = agentsHelpers;
@@ -485,7 +486,8 @@ test('clicking the model column opens the model list', async (t) => {
   const found = ui.agents.menuItems();
   assert.ok(found.length > 0);
   assert.ok(found.every((name) => name.toLowerCase().includes('so')));
-  const showsQuery = (text, q) => new RegExp(`\\s${q}(?:\\s|$)`).test(text);
+  const showsQuery = (text, query) =>
+    new RegExp(`\\s${query}(?:\\s|$)`).test(text);
   const typed = stripAnsi(ui.lastFrame.rows.join('\n'));
   assert.ok(showsQuery(typed, 'so'));
   const typedLines = typed.split('\n').map((line) => line.trim());
@@ -1091,7 +1093,7 @@ test('i proposes the npm package a missing agent needs', async (t) => {
   // The button is in the table of the screen, not among the footer buttons
   const install = () => {
     ui.draw();
-    const hit = ui.lastFrame.fileHits.find((h) => h.field === 'install');
+    const hit = ui.lastFrame.fileHits.find((hit) => hit.field === 'install');
     const footer = ui.lastFrame.buttons.map((button) => button.id);
     assert.equal(footer.includes('agentInstall'), false);
     return hit;

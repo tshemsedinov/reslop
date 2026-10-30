@@ -4,6 +4,7 @@ const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
+
 const { Dashboard } = require('../../lib/session/dashboard.js');
 const helpers = require('../helpers.js');
 const { uiSink, press, click } = helpers;
@@ -17,6 +18,77 @@ const { TABLE_KEY } = require('../../lib/runs/output.js');
 const sessionHelpers = require('../session-helpers.js');
 const { focusedRow, today, sampleItem, openSession } = sessionHelpers;
 const { clickFooter, frameBody } = sessionHelpers;
+
+for (const kind of ['script', 'command']) {
+  test(`solve saves a failed ${kind} in the current plan`, async () => {
+    const { session, cwd } = await openSession([sampleItem('a.js')], {
+      startPane: 'files',
+    });
+    const tasks = session.composer.tasks;
+    tasks.createPlan();
+    const reviewPath = session.notes.reviewPath;
+    session.notes.addTask('tasks', 'Keep existing task');
+    const raw = [
+      'TAP version 13',
+      'ok 1 passing test',
+      'not ok 2 broken parser',
+      '  ---',
+      '  error: parser exploded',
+      '  code: ERR_ASSERTION',
+      '  ...',
+      '1..2',
+      '# tests 2',
+      '# pass 1',
+      '# fail 1',
+    ].join('\n');
+    session.npm.runs.push({
+      id: 1,
+      name: 'test',
+      kind,
+      command: kind === 'command' ? 'node --test test/parser.test.js' : '',
+      label: 'npm run test',
+      status: 'exited',
+      exit: 1,
+      raw: kind === 'command' ? `\x1b[31m${cwd}/app.js:4: boom\x1b[0m` : raw,
+      top: cwd,
+    });
+    session.npm.open();
+    session.npm.openView(1);
+    session.npm.verbose = true;
+    session.draw();
+    const ids = session.lastFrame.buttons.map((hit) => hit.id);
+    assert.ok(ids.includes('npmTask'));
+    assert.ok(!ids.includes('npmStop'));
+    if (kind === 'command') clickFooter(session, 'npmTask');
+    else press(session, 'ctrl-t');
+    assert.equal(session.pane, 'tasks');
+    assert.equal(session.mode, 'compose');
+    assert.equal(session.notes.reviewPath, reviewPath);
+    const bug = session.notes.tasks.find((task) => task.kind === 'bugs');
+    assert.ok(bug);
+    assert.equal(bug.done, false);
+    assert.equal(tasks.rowAt(session.tasksFocus).task.id, bug.id);
+    const command = kind === 'command' ? 'node --test test/parser.test.js' : '';
+    if (kind === 'command') {
+      assert.deepEqual(bug.text.split('\n'), [
+        `\`${command}\` fails`,
+        '- where: app.js:4',
+        '- problem: app.js:4: boom',
+        `- check: \`${command}\` passes`,
+      ]);
+      assert.ok(!bug.text.includes(cwd));
+    } else {
+      assert.deepEqual(bug.text.split('\n'), [
+        'broken parser',
+        '- problem: parser exploded',
+        '- check: `npm run test` passes',
+      ]);
+    }
+    const disk = parseReview(fs.readFileSync(reviewPath, 'utf8'), reviewPath);
+    assert.equal(disk.tasks.length, 2);
+    assert.ok(disk.tasks.some((task) => task.kind === 'bugs'));
+  });
+}
 
 test('ctrl+d and a checkbox click toggle a task', async () => {
   const { session, stdout } = await openSession([sampleItem('a.js')]);
@@ -239,7 +311,7 @@ test('package operations refresh installed versions and rows', async () => {
     fs.writeFileSync(lock, JSON.stringify({ packages }));
   };
   write('1.0.0');
-  session.dashboard.runNpm = Dashboard.prototype.runNpm.bind(session.dashboard);
+  session.dashboard.runNpm = Dashboard.prototype.runNpm;
   await session.dashboard.runNpm(true);
   session.dashboard.openPackages();
   session.outdatedMap = new Map([
@@ -254,10 +326,12 @@ test('package operations refresh installed versions and rows', async () => {
     }
     return { status: 0 };
   };
-  for (const [key, version] of [
+  for (const entry of [
     ['w', '1.1.0'],
     ['l', '2.0.0'],
   ]) {
+    const key = entry[0];
+    const version = entry[1];
     press(session, key);
     await session.packages.job;
     await session.ops.idle();
@@ -428,10 +502,10 @@ test('npm output v toggles raw text until the screen closes', async () => {
     path.join(cwd, 'package.json'),
     `${JSON.stringify({ scripts: { test: 'node --test' } })}\n`,
   );
-  const raw = ['✔ passes', `${cwd}/lib/app.js:4`, '✖ fails'].join('\n');
+  const text = ['✔ passes', `${cwd}/lib/app.js:4`, '✖ fails'].join('\n');
   repo.runNpmCommand = (root, entry, onData, onClose) => {
-    onData(raw);
-    onClose({ status: 1, text: raw });
+    onData(text);
+    onClose({ status: 1, text });
     return { kill() {} };
   };
   session.pushInput('r');
@@ -467,77 +541,6 @@ test('npm output v toggles raw text until the screen closes', async () => {
   assert.ok(!body.includes('✔'));
   assert.match(body, /exit 1/);
 });
-
-for (const kind of ['script', 'command']) {
-  test(`solve saves a failed ${kind} in the current plan`, async () => {
-    const { session, cwd } = await openSession([sampleItem('a.js')], {
-      startPane: 'files',
-    });
-    const tasks = session.composer.tasks;
-    tasks.createPlan();
-    const reviewPath = session.notes.reviewPath;
-    session.notes.addTask('tasks', 'Keep existing task');
-    const raw = [
-      'TAP version 13',
-      'ok 1 passing test',
-      'not ok 2 broken parser',
-      '  ---',
-      '  error: parser exploded',
-      '  code: ERR_ASSERTION',
-      '  ...',
-      '1..2',
-      '# tests 2',
-      '# pass 1',
-      '# fail 1',
-    ].join('\n');
-    session.npm.runs.push({
-      id: 1,
-      name: 'test',
-      kind,
-      command: kind === 'command' ? 'node --test test/parser.test.js' : '',
-      label: 'npm run test',
-      status: 'exited',
-      exit: 1,
-      raw: kind === 'command' ? `\x1b[31m${cwd}/app.js:4: boom\x1b[0m` : raw,
-      top: cwd,
-    });
-    session.npm.open();
-    session.npm.openView(1);
-    session.npm.verbose = true;
-    session.draw();
-    const ids = session.lastFrame.buttons.map((hit) => hit.id);
-    assert.ok(ids.includes('npmTask'));
-    assert.ok(!ids.includes('npmStop'));
-    if (kind === 'command') clickFooter(session, 'npmTask');
-    else press(session, 'ctrl-t');
-    assert.equal(session.pane, 'tasks');
-    assert.equal(session.mode, 'compose');
-    assert.equal(session.notes.reviewPath, reviewPath);
-    const bug = session.notes.tasks.find((task) => task.kind === 'bugs');
-    assert.ok(bug);
-    assert.equal(bug.done, false);
-    assert.equal(tasks.rowAt(session.tasksFocus).task.id, bug.id);
-    const command = kind === 'command' ? 'node --test test/parser.test.js' : '';
-    if (kind === 'command') {
-      assert.deepEqual(bug.text.split('\n'), [
-        `\`${command}\` fails`,
-        '- where: app.js:4',
-        '- problem: app.js:4: boom',
-        `- check: \`${command}\` passes`,
-      ]);
-      assert.ok(!bug.text.includes(cwd));
-    } else {
-      assert.deepEqual(bug.text.split('\n'), [
-        'broken parser',
-        '- problem: parser exploded',
-        '- check: `npm run test` passes',
-      ]);
-    }
-    const disk = parseReview(fs.readFileSync(reviewPath, 'utf8'), reviewPath);
-    assert.equal(disk.tasks.length, 2);
-    assert.ok(disk.tasks.some((task) => task.kind === 'bugs'));
-  });
-}
 
 test('solve bounds output, skips passed runs, adds no duplicate', async () => {
   const { session } = await openSession([sampleItem('a.js')]);
@@ -774,16 +777,16 @@ test('npm history keeps the newest 50 runs', async () => {
     `${JSON.stringify({ scripts: { test: 'node --test' } })}\n`,
   );
   session.pushInput('r');
-  for (let i = 0; i < 51; i++) {
+  for (let exit = 0; exit < 51; exit++) {
     session.npm.runs.push({
-      id: i + 1,
+      id: exit + 1,
       name: 'test',
       kind: 'script',
       command: 'node --test',
       status: 'exited',
-      exit: i,
-      startedAt: i + 1,
-      endedAt: i + 2,
+      exit,
+      startedAt: exit + 1,
+      endedAt: exit + 2,
     });
   }
   const rows = session.npm.sessionRows();

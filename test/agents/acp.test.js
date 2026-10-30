@@ -5,13 +5,8 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 
-const {
-  startAgent,
-  listModels,
-  signIn,
-  signOut,
-  catalogOf,
-} = require('../../lib/agents/agents.js');
+const agentsModule = require('../../lib/agents/agents.js');
+const { startAgent, listModels, signIn, signOut, catalogOf } = agentsModule;
 const { AcpConnection, authMethod } = require('../../lib/agents/acp.js');
 const { Transcript } = require('../../lib/agents/transcript.js');
 const { tempDir, removeTree } = require('../helpers.js');
@@ -42,6 +37,29 @@ const inTemp = async (body) => {
     await body(dir);
   } finally {
     await removeTree(dir);
+  }
+};
+
+const logOf = (file) => {
+  const text = fs.existsSync(file) ? fs.readFileSync(file, 'utf8') : '';
+  return text.split('\n').filter(Boolean);
+};
+
+const until = (ready) =>
+  new Promise((resolve) => {
+    const check = () => {
+      if (ready()) resolve();
+      else setTimeout(check, 5);
+    };
+    check();
+  });
+
+const alive = (pid) => {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch {
+    return false;
   }
 };
 
@@ -89,14 +107,14 @@ test('a run leaves the settings it was not asked to change', async () => {
 });
 
 test('a setting the agent rejects fails the run', async () => {
-  await inTemp(async (dir) => {
+  await inTemp(async (cwd) => {
     const state = await listModels(
       { bin: process.execPath, args: [FIXTURE, '--acp'] },
-      { cwd: dir },
+      { cwd },
     );
     assert.deepEqual(catalogOf(state).names, ['opus', 'sonnet']);
     const launch = launchOf('strict', { choice: { model: 'sonnet' } });
-    const result = await runToEnd(dir, launch);
+    const result = await runToEnd(cwd, launch);
     assert.equal(result.status, 1);
     assert.match(result.text, /✖ Invalid value: sonnet/);
     assert.equal(result.text.includes('got:'), false);
@@ -139,35 +157,12 @@ test('a run fails when the agent refuses, dies or cannot start', async () => {
     assert.equal(crashed.status, 1);
     assert.match(crashed.text, /✖ agent exited with code 3\nagent blew up/);
     assert.equal(crashed.stats.session, 'session-1');
-    const missing = path.join(dir, 'no-such-agent');
-    const absent = await runToEnd(dir, launchOf('', { cmd: missing }));
+    const cmd = path.join(dir, 'no-such-agent');
+    const absent = await runToEnd(dir, launchOf('', { cmd }));
     assert.equal(absent.status, 1);
     assert.match(absent.text, /ENOENT/);
   });
 });
-
-const logOf = (file) => {
-  const text = fs.existsSync(file) ? fs.readFileSync(file, 'utf8') : '';
-  return text.split('\n').filter(Boolean);
-};
-
-const until = (ready) =>
-  new Promise((resolve) => {
-    const check = () => {
-      if (ready()) resolve();
-      else setTimeout(check, 5);
-    };
-    check();
-  });
-
-const alive = (pid) => {
-  try {
-    process.kill(pid, 0);
-    return true;
-  } catch {
-    return false;
-  }
-};
 
 test('a stopped run ends its agent and reports nothing more', async () => {
   await inTemp(async (dir) => {
@@ -175,8 +170,8 @@ test('a stopped run ends its agent and reports nothing more', async () => {
     const onClose = () => {
       closed += 1;
     };
-    const file = path.join(dir, 'agent.log');
-    const launch = launchOf('hang', { env: { ACP_AGENT_LOG: file } });
+    const agentLog = path.join(dir, 'agent.log');
+    const launch = launchOf('hang', { env: { ACP_AGENT_LOG: agentLog } });
     const run = startAgent(dir, launch, () => {}, onClose);
     await until(() => run.raw().includes('thinking it over'));
     assert.equal(run.stats().session, 'session-1');
@@ -186,7 +181,7 @@ test('a stopped run ends its agent and reports nothing more', async () => {
     assert.equal(run.closed, true);
     await until(() => !alive(pid));
     assert.equal(closed, 0);
-    const log = logOf(file);
+    const log = logOf(agentLog);
     assert.ok(log.includes('cancel'));
     assert.ok(log.indexOf('cancel') > log.indexOf('model=sonnet'));
     assert.equal(log.at(-1), 'model=opus');
@@ -195,8 +190,8 @@ test('a stopped run ends its agent and reports nothing more', async () => {
 
 test('a run sets what its model offers and puts the session back', async () => {
   await inTemp(async (dir) => {
-    const file = path.join(dir, 'agent.log');
-    const env = { ACP_AGENT_LOG: file };
+    const agentLog = path.join(dir, 'agent.log');
+    const env = { ACP_AGENT_LOG: agentLog };
     const choice = {
       model: 'sonnet',
       effort: 'low',
@@ -219,30 +214,30 @@ test('a run sets what its model offers and puts the session back', async () => {
       'reasoning_effort=medium',
       'model=opus',
     ];
-    await until(() => logOf(file).length === sets.length + back.length);
-    assert.deepEqual(logOf(file), [...sets, ...back]);
+    await until(() => logOf(agentLog).length === sets.length + back.length);
+    assert.deepEqual(logOf(agentLog), sets.concat(back));
   });
 });
 
 test('fast mode is switched in the words of the agent', async () => {
   await inTemp(async (dir) => {
-    const file = path.join(dir, 'agent.log');
-    const env = { ACP_AGENT_LOG: file };
+    const agentLog = path.join(dir, 'agent.log');
+    const env = { ACP_AGENT_LOG: agentLog };
     const choice = { model: 'opus', effort: 'high', fast: false };
     const launch = launchOf('params', { choice, env, mode: '' });
     const result = await runToEnd(dir, launch);
     assert.equal(result.status, 0);
     assert.match(result.text, /settings: default opus high false\n/);
-    await until(() => logOf(file).length === 2);
-    assert.deepEqual(logOf(file), ['fast=false', 'fast=true']);
+    await until(() => logOf(agentLog).length === 2);
+    assert.deepEqual(logOf(agentLog), ['fast=false', 'fast=true']);
   });
 });
 
 test('the settings of a model are read by asking about it', async () => {
-  await inTemp(async (dir) => {
-    const file = path.join(dir, 'agent.log');
+  await inTemp(async (cwd) => {
+    const agentLog = path.join(cwd, 'agent.log');
     const row = { bin: process.execPath, args: [FIXTURE, '--acp', 'params'] };
-    const options = { cwd: dir, env: { ACP_AGENT_LOG: file } };
+    const options = { cwd, env: { ACP_AGENT_LOG: agentLog } };
     const first = catalogOf(await listModels(row, options));
     assert.deepEqual(first.names, ['opus', 'sonnet']);
     assert.equal(first.unknown('opus'), false);
@@ -250,7 +245,7 @@ test('the settings of a model are read by asking about it', async () => {
     assert.deepEqual(first.fasts('opus'), ['off', 'on']);
     assert.equal(first.unknown('sonnet'), true);
     assert.deepEqual(first.efforts('sonnet'), []);
-    assert.deepEqual(logOf(file), []);
+    assert.deepEqual(logOf(agentLog), []);
     const asked = { ...options, models: ['sonnet', 'opus', 'gone'] };
     const second = catalogOf(await listModels(row, asked));
     assert.equal(second.unknown('sonnet'), false);
@@ -259,7 +254,7 @@ test('the settings of a model are read by asking about it', async () => {
     assert.deepEqual(second.fasts('sonnet'), []);
     assert.deepEqual(second.contexts('opus'), []);
     assert.equal(second.current, 'opus');
-    assert.deepEqual(logOf(file), ['model=sonnet', 'model=opus']);
+    assert.deepEqual(logOf(agentLog), ['model=sonnet', 'model=opus']);
     const picked = { effort: 'high', context: '1m', fast: true };
     assert.deepEqual(second.resolve('sonnet', picked), {
       id: 'sonnet',
@@ -277,14 +272,14 @@ test('the settings of a model are read by asking about it', async () => {
 });
 
 test('listing models tells whether the agent is signed in', async () => {
-  await inTemp(async (dir) => {
+  await inTemp(async (cwd) => {
     const row = (scenario) => ({
       bin: process.execPath,
       args: [FIXTURE, '--acp', scenario],
     });
     const probe = async (scenario) => {
       const auth = {};
-      await listModels(row(scenario), { cwd: dir, auth });
+      await listModels(row(scenario), { cwd, auth });
       return auth;
     };
     const open = await probe('');
@@ -297,22 +292,19 @@ test('listing models tells whether the agent is signed in', async () => {
     const locked = await probe('locked');
     assert.equal(locked.state, 'out');
     assert.equal(locked.method, null);
-    const gone = {};
-    await listModels(
-      { bin: path.join(dir, 'missing'), args: [] },
-      { auth: gone },
-    );
-    assert.equal(gone.state, undefined);
+    const auth = {};
+    await listModels({ bin: path.join(cwd, 'missing'), args: [] }, { auth });
+    assert.equal(auth.state, undefined);
   });
 });
 
 test('an agent is signed in and out over the protocol', async () => {
-  await inTemp(async (dir) => {
+  await inTemp(async (cwd) => {
     const row = (scenario) => ({
       bin: process.execPath,
       args: [FIXTURE, '--acp', scenario],
     });
-    const options = { cwd: dir };
+    const options = { cwd };
     assert.deepEqual(await signIn(row('auth'), options), { ok: true });
     const locked = await signIn(row('locked'), options);
     assert.equal(locked.ok, false);
@@ -389,12 +381,12 @@ test('a connection matches answers and serves requests', async () => {
   connection.read('not json\n{"jsonrpc":"2.0","id":2,"res');
   connection.read('ult":{"ok":true}}\n\n');
   assert.deepEqual(await second, { ok: true });
-  const failure = {
+  const error = {
     code: -32000,
     message: 'Auth',
     data: { message: 'Sign in' },
   };
-  connection.read(`${JSON.stringify({ id: 1, error: failure })}\n`);
+  connection.read(`${JSON.stringify({ id: 1, error })}\n`);
   await assert.rejects(first, { message: 'Sign in', code: -32000 });
   connection.read('{"method":"session/update","params":{"x":1}}\n');
   assert.deepEqual(notes, [['session/update', { x: 1 }]]);
@@ -412,13 +404,13 @@ test('a connection matches answers and serves requests', async () => {
 });
 
 test('signing in skips the methods that need a secret', () => {
-  const methods = [
+  const authMethods = [
     { id: 'api-key', name: 'API Key', _meta: { 'api-key': {} } },
     { id: 'env', name: 'Env', type: 'env_var' },
     { id: 'chat', name: 'Chat login' },
   ];
-  assert.equal(authMethod({ authMethods: methods }).id, 'chat');
-  assert.equal(authMethod({ authMethods: methods.slice(0, 2) }), null);
+  assert.equal(authMethod({ authMethods }).id, 'chat');
+  assert.equal(authMethod({ authMethods: authMethods.slice(0, 2) }), null);
   assert.equal(authMethod({}), null);
 });
 

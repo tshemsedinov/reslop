@@ -4,6 +4,7 @@ const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
+
 const runs = require('../../lib/runs/runs.js');
 const { Tracker, RunRecorder, readRuns, settleRecord } = runs;
 const { summarizeDocument, isRunsRel, commandLabel } = runs;
@@ -25,6 +26,42 @@ const { makeRepo, tempDir, waitUntil } = helpers;
 const { openDashboard, frameText } = helpers;
 
 const PASS = '✔ ok (1ms)';
+
+const scriptEnv = (name) => {
+  const env = {};
+  env['npm_lifecycle_event'] = name;
+  return env;
+};
+
+const quietDashboard = () => {
+  const started = [];
+  const stopped = [];
+  const timers = [];
+  const ui = {
+    uiOpen: true,
+    nav: { pane: 'dashboard' },
+    npm: { lastRun: null },
+    progress: {
+      start: (id) => started.push(id),
+      stop: (id) => stopped.push(id),
+    },
+    term: {
+      later: (name, fn, ms) => timers.push({ name, fn, ms }),
+      cancel: () => {},
+    },
+  };
+  const dash = new Dashboard(ui);
+  dash.active = true;
+  return { dash, started, stopped, timers };
+};
+
+const sampleTiles = () =>
+  ['a', 'b', 'c', 'd', 'e', 'f', 'g'].map((id, rank) => ({
+    id,
+    key: id,
+    title: id,
+    rank,
+  }));
 
 test('the tracker counts passing and failing test lines', () => {
   const tracker = new Tracker();
@@ -51,7 +88,7 @@ test('a run record is written, updated, finished and read back', () => {
     const startedAt = now;
     const clock = () => now;
     const run = new RunRecorder(dir, 'node --test', { now: clock });
-    const [live] = readRuns(dir);
+    const live = readRuns(dir)[0];
     assert.equal(live.status, 'running');
     assert.equal(live.command, 'node --test');
     now += 500;
@@ -59,7 +96,7 @@ test('a run record is written, updated, finished and read back', () => {
     assert.equal(readRuns(dir)[0].progress.done, 2);
     now += 500;
     run.finish(0, { tests: 2 });
-    const [done] = readRuns(dir);
+    const done = readRuns(dir)[0];
     assert.equal(done.status, 'passed');
     assert.equal(done.exit, 0);
     assert.equal(done.result.tests, 2);
@@ -67,7 +104,7 @@ test('a run record is written, updated, finished and read back', () => {
     now += 1000;
     const second = new RunRecorder(dir, 'node --test', { now: clock });
     assert.ok(second.record.id);
-    const expected = readRuns(dir).find((r) => r.status === 'running');
+    const expected = readRuns(dir).find((run) => run.status === 'running');
     assert.equal(expected.progress.expected, 2);
     second.finish(0);
   } finally {
@@ -117,12 +154,6 @@ test('an interrupted run ends at its last heartbeat across reads', () => {
   assert.equal(record.endedAt, 0);
 });
 
-const scriptEnv = (name) => {
-  const env = {};
-  env['npm_lifecycle_event'] = name;
-  return env;
-};
-
 test('a run records the npm script that started it', () => {
   const dir = tempDir('reslop-runs-');
   try {
@@ -146,7 +177,7 @@ test('a failed run keeps its exit code', () => {
   try {
     const run = new RunRecorder(dir, 'eslint .');
     run.finish(2);
-    const [record] = readRuns(dir);
+    const record = readRuns(dir)[0];
     assert.equal(record.status, 'failed');
     assert.equal(record.exit, 2);
   } finally {
@@ -193,12 +224,12 @@ test('FileIndex sizes files per folder and per extension', async () => {
     await index.rescan();
     const { total, dirs, exts } = index.summary();
     assert.equal(total.files, 4);
-    const lib = dirs.find((d) => d.key === 'lib');
+    const lib = dirs.find((dir) => dir.key === 'lib');
     assert.equal(lib.files, 2);
     assert.equal(lib.lines, 3);
-    const js = exts.find((e) => e.key === '.js');
+    const js = exts.find((ext) => ext.key === '.js');
     assert.equal(js.files, 2);
-    assert.ok(!dirs.some((d) => d.key === 'skip'));
+    assert.ok(!dirs.some((dir) => dir.key === 'skip'));
     assert.equal(index.entries.get('lib/a.js').size, 8);
   } finally {
     repo.cleanup();
@@ -445,28 +476,6 @@ test('the age label refreshes slower as commits get older', () => {
   assert.equal(ageDelay(5 * 3600000), 600000);
 });
 
-const quietDashboard = () => {
-  const started = [];
-  const stopped = [];
-  const timers = [];
-  const ui = {
-    uiOpen: true,
-    nav: { pane: 'dashboard' },
-    npm: { lastRun: null },
-    progress: {
-      start: (id) => started.push(id),
-      stop: (id) => stopped.push(id),
-    },
-    term: {
-      later: (name, fn, ms) => timers.push({ name, fn, ms }),
-      cancel: () => {},
-    },
-  };
-  const dash = new Dashboard(ui);
-  dash.active = true;
-  return { dash, started, stopped, timers };
-};
-
 test('the current minute blinks for three seconds after activity', () => {
   const { dash } = quietDashboard();
   const now = 5_000_000;
@@ -503,14 +512,6 @@ test('the blink timer stops the current cell after three seconds', () => {
   assert.equal(started.includes('dashboard'), false);
 });
 
-const sampleTiles = () =>
-  ['a', 'b', 'c', 'd', 'e', 'f', 'g'].map((id, rank) => ({
-    id,
-    key: id,
-    title: id,
-    rank,
-  }));
-
 test('layoutTiles fills the width and keeps the gaps', () => {
   const bands = layoutTiles(120, 40, sampleTiles());
   const shown = bands.flatMap((band) => band.tiles);
@@ -519,7 +520,8 @@ test('layoutTiles fills the width and keeps the gaps', () => {
   const first = bands[0];
   const last = first.tiles.at(-1);
   assert.equal(last.x + last.w, 120);
-  const [left, right] = first.tiles;
+  const left = first.tiles[0];
+  const right = first.tiles[1];
   assert.equal(right.x - (left.x + left.w), GAP_X);
   assert.equal(bands[1].y - (first.y + first.h), GAP_Y);
 });
@@ -554,7 +556,8 @@ test('wide tiles take half a row instead of a third', () => {
     mid.tiles.map((place) => place.id),
     ['branches', 'commits'],
   );
-  const [left, right] = mid.tiles;
+  const left = mid.tiles[0];
+  const right = mid.tiles[1];
   assert.equal(right.x - (left.x + left.w), GAP_X);
   assert.ok(left.w >= 50);
   assert.ok(right.w >= 50);
@@ -577,7 +580,8 @@ test('dashboard hotkeys map to their blocks', () => {
     t: 'tasks',
     a: 'agents',
   };
-  for (const [key, block] of Object.entries(pairs)) {
+  for (const key in pairs) {
+    const block = pairs[key];
     assert.equal(DASH_BLOCKS[actionFromKey(key, 'dashboard')], block);
   }
 });
@@ -636,7 +640,7 @@ test('the dashboard shows a run by script name', async () => {
     assert.ok(await waitUntil(seen));
     run.finish(0, null);
     const finished = () => {
-      const [shown] = ui.dashboard.view().runs;
+      const shown = ui.dashboard.view().runs[0];
       return shown.name === 'test' && shown.status === 'passed';
     };
     assert.ok(await waitUntil(finished));
@@ -649,7 +653,7 @@ test('the dashboard run panel shows a newly started command', async () => {
   const { ui, close } = await openDashboard();
   try {
     assert.ok(await waitUntil(() => /first commit/.test(frameText(ui))));
-    const now = Date.now();
+    const startedAt = Date.now();
     ui.npm.runs.push({
       id: 1,
       name: 'test',
@@ -658,7 +662,7 @@ test('the dashboard run panel shows a newly started command', async () => {
       label: 'npm run test',
       status: 'running',
       exit: '',
-      startedAt: now,
+      startedAt,
       endedAt: 0,
       progress: { done: 2, failed: 1, expected: 6 },
       result: null,
@@ -675,7 +679,7 @@ test('the dashboard run panel shows a newly started command', async () => {
       label: 'npm run lint',
       status: 'running',
       exit: '',
-      startedAt: now + 5,
+      startedAt: startedAt + 5,
       endedAt: 0,
       progress: null,
       result: null,

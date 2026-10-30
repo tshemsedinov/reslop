@@ -9,26 +9,16 @@ const { PassThrough } = require('node:stream');
 
 const { buildDocument } = require('../../lib/report/parse.js');
 const render = require('../../lib/report/render.js');
-
 const { renderDocument, notice, NOTICE_HEAD, displayMessage } = render;
 const { run } = require('../../lib/cli.js');
 const { collect } = require('../../lib/report/run.js');
 const { winCommand } = require('../../lib/common/process.js');
 const { readRuns } = require('../../lib/runs/runs.js');
 const { tempDir, fakeProc } = require('../helpers.js');
-
 const model = require('../../lib/report/model.js');
 const { problem, groupReport } = model;
 
 const ROOT = '/repo';
-
-const rendered = (stdout, stderr, exit) => {
-  const doc = buildDocument(stdout, stderr, ROOT, exit, '');
-  return {
-    doc,
-    md: renderDocument(doc),
-  };
-};
 
 const tap = [
   'TAP version 13',
@@ -55,6 +45,28 @@ const tap = [
   '# duration_ms 12.5',
   '1..2',
 ].join('\n');
+
+const rendered = (stdout, stderr, exit) => {
+  const doc = buildDocument(stdout, stderr, ROOT, exit, '');
+  return {
+    doc,
+    md: renderDocument(doc),
+  };
+};
+
+// The cli reads what reslop t sets for its child, so the test drops it
+const reportProc = (cwd, extra = {}) => {
+  const env = { ...process.env };
+  delete env.RESLOP_CAPTURE;
+  delete env.RESLOP_OUTPUT;
+  return fakeProc(cwd, { ...extra, env: { ...env, ...extra.env } });
+};
+
+const savedLogs = (dir) => {
+  const logDir = path.join(dir, '.log');
+  if (!fs.existsSync(logDir)) return [];
+  return fs.readdirSync(logDir).filter((name) => !name.startsWith('.'));
+};
 
 test('TAP keeps failures, fields, and a user trace', () => {
   const view = rendered(tap, '', 1);
@@ -212,7 +224,7 @@ test('tsc, eslint stylish, and prettier stay separate', () => {
 test('message drops a parsed diff and a trailing colon', () => {
   const quote = String.fromCharCode(39);
   const actual = `${quote}error: patch failed: f.txt:1${quote}`;
-  const diff = [
+  const message = [
     'Expected values to be strictly equal:',
     '+ actual - expected',
     '',
@@ -222,7 +234,7 @@ test('message drops a parsed diff and a trailing colon', () => {
   const shown = displayMessage({
     expected: 'staged',
     actual: 'error: patch failed: f.txt:1',
-    message: diff,
+    message,
   });
   assert.equal(shown, 'Expected values to be strictly equal');
   const colored = [
@@ -487,20 +499,6 @@ test('capture stops waiting for inherited output pipes', async () => {
   assert.equal(child.stderr.destroyed, true);
 });
 
-// The cli reads what reslop t sets for its child, so the test drops it
-const reportProc = (cwd, extra = {}) => {
-  const env = { ...process.env };
-  delete env.RESLOP_CAPTURE;
-  delete env.RESLOP_OUTPUT;
-  return fakeProc(cwd, { ...extra, env: { ...env, ...extra.env } });
-};
-
-const savedLogs = (dir) => {
-  const logDir = path.join(dir, '.log');
-  if (!fs.existsSync(logDir)) return [];
-  return fs.readdirSync(logDir).filter((name) => !name.startsWith('.'));
-};
-
 test('a pipe prints markdown and writes a log', async () => {
   const dir = tempDir('reslop-report-');
   const script = [
@@ -622,7 +620,7 @@ test('raw mode records test counts and passes the output through', async () => {
     assert.ok(rawName);
     const rawText = fs.readFileSync(path.join(dir, '.log', rawName), 'utf8');
     assert.match(rawText, /✔ one/);
-    const [record] = readRuns(dir);
+    const record = readRuns(dir)[0];
     assert.equal(record.progress.done, 1);
     assert.equal(record.result.tests, 1);
     assert.equal(record.result.passed, 1);
@@ -685,7 +683,7 @@ test('a captured run leaves a finished run record', async () => {
       argv: ['node', 'reslop', 't', '--', 'node', '-e', script],
     });
     assert.equal(await run(proc), 0);
-    const [record] = readRuns(dir);
+    const record = readRuns(dir)[0];
     assert.equal(record.status, 'passed');
     assert.equal(record.exit, 0);
     assert.equal(record.progress.done, 2);
@@ -702,7 +700,7 @@ test('a failing command leaves a failed run record', async () => {
       argv: ['node', 'reslop', 't', '--', 'node', '-e', 'process.exit(3)'],
     });
     assert.equal(await run(proc), 3);
-    const [record] = readRuns(dir);
+    const record = readRuns(dir)[0];
     assert.equal(record.status, 'failed');
     assert.equal(record.exit, 3);
   } finally {

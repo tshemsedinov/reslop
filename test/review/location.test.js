@@ -103,7 +103,9 @@ test('symbolLine finds a symbol, a dotted path, or a heading anchor', () => {
 });
 
 test('parseLocations reads a range of lines', () => {
-  const [range, one] = parseLocations('a.js:12-15, b.js:7:3');
+  const pair = parseLocations('a.js:12-15, b.js:7:3');
+  const range = pair[0];
+  const one = pair[1];
   assert.deepEqual([range.path, range.line, range.end], ['a.js', 12, 15]);
   assert.deepEqual([one.path, one.line, one.end], ['b.js', 7, 7]);
 });

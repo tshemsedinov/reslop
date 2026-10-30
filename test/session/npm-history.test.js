@@ -4,6 +4,7 @@ const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
+
 const helpers = require('../helpers.js');
 const { press, click } = helpers;
 const ansi = require('../../lib/term/ansi.js');
@@ -12,6 +13,12 @@ const { logViewRows } = require('../../lib/render/log.js');
 const { dateStamp } = require('../../lib/common/utilities.js');
 const sessionHelpers = require('../session-helpers.js');
 const { sampleItem, openSession, shiftClick, frameBody } = sessionHelpers;
+
+const daysAgoStamp = (ago) => {
+  const date = new Date();
+  date.setDate(date.getDate() - ago);
+  return dateStamp(date);
+};
 
 test('the run screen follows an outside reslop t', async () => {
   const { session, cwd } = await openSession([sampleItem('a.js')], {
@@ -83,8 +90,8 @@ test('an interrupted run keeps its duration after a restart', async (t) => {
   const { session, cwd, repo } = await openSession([sampleItem('a.js')], {
     startPane: 'files',
   });
-  let now = Date.now();
-  t.mock.method(Date, 'now', () => now);
+  let activeAt = Date.now();
+  t.mock.method(Date, 'now', () => activeAt);
   const dir = path.join(cwd, '.log');
   fs.mkdirSync(dir);
   const record = {
@@ -93,8 +100,8 @@ test('an interrupted run keeps its duration after a restart', async (t) => {
     pid: process.pid,
     command: 'node --test',
     script: 'test',
-    startedAt: now - 4000,
-    activeAt: now,
+    startedAt: activeAt - 4000,
+    activeAt,
     endedAt: 0,
     status: 'running',
     exit: null,
@@ -103,13 +110,13 @@ test('an interrupted run keeps its duration after a restart', async (t) => {
   fs.writeFileSync(path.join(dir, 'interrupted.json'), JSON.stringify(record));
   session.pushInput('r');
   assert.equal(session.npm.sessionRows()[0].live, true);
-  now += 10000;
+  activeAt += 10000;
   session.npm.refreshRecorded();
-  const [stopped] = session.npm.sessionRows();
+  const stopped = session.npm.sessionRows()[0];
   assert.equal(stopped.live, false);
   assert.equal(stopped.mark, 'stop');
   assert.equal(stopped.elapsed, '4s');
-  now += 60000;
+  activeAt += 60000;
   session.npm.refreshRecorded();
   assert.equal(session.npm.sessionRows()[0].elapsed, '4s');
   const again = await openSession([sampleItem('a.js')], {
@@ -118,7 +125,7 @@ test('an interrupted run keeps its duration after a restart', async (t) => {
     startPane: 'files',
   });
   again.session.pushInput('r');
-  const [restored] = again.session.npm.sessionRows();
+  const restored = again.session.npm.sessionRows()[0];
   assert.equal(restored.live, false);
   assert.equal(restored.elapsed, '4s');
 });
@@ -578,7 +585,7 @@ test('dragging the scroller of a list moves its rows and cursor', async () => {
   const items = Array.from({ length: 40 }, (_, at) => sampleItem(`f${at}.js`));
   const { session } = await openSession(items, { startPane: 'files' });
   session.draw();
-  const [bar] = session.lastFrame.scrollBars;
+  const bar = session.lastFrame.scrollBars[0];
   assert.equal(bar.target, 'list');
   assert.equal(bar.start, 0);
   const mouse = (kind, y) =>
@@ -589,7 +596,7 @@ test('dragging the scroller of a list moves its rows and cursor', async () => {
   session.draw();
   mouse('release', bar.y + bar.height - 1);
   session.draw();
-  const [moved] = session.lastFrame.scrollBars;
+  const moved = session.lastFrame.scrollBars[0];
   assert.equal(moved.start, 40 - moved.rows);
   assert.equal(session.fileCursor, moved.start);
   const picked = session.fileList()[moved.start].path;
@@ -615,7 +622,7 @@ test('dragging the packages scroller moves the package cursor', async () => {
   };
   session.dashboard.openPackages();
   session.draw();
-  const [bar] = session.lastFrame.scrollBars;
+  const bar = session.lastFrame.scrollBars[0];
   assert.equal(bar.target, 'list');
   assert.equal(bar.start, 0);
   const mouse = (kind, y) =>
@@ -626,7 +633,7 @@ test('dragging the packages scroller moves the package cursor', async () => {
   session.draw();
   mouse('release', bar.y + bar.height - 1);
   session.draw();
-  const [moved] = session.lastFrame.scrollBars;
+  const moved = session.lastFrame.scrollBars[0];
   assert.equal(moved.start, 40 - moved.rows);
   assert.equal(session.nav.packagesCursor, moved.start);
 });
@@ -720,12 +727,6 @@ test('npm and run lists select a range', async () => {
   press(session, 'down');
   assert.deepEqual(session.view().listSelection, []);
 });
-
-const daysAgoStamp = (ago) => {
-  const date = new Date();
-  date.setDate(date.getDate() - ago);
-  return dateStamp(date);
-};
 
 test('npm screen deletes logs older than 5 days', async () => {
   const { session, cwd } = await openSession([sampleItem('a.js')], {

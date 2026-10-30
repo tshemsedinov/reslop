@@ -5,6 +5,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const { spawnSync } = require('node:child_process');
+
 const git = require('../../lib/git/git.js');
 const { load } = git;
 const { hasStaged, createGitRepo } = git;
@@ -17,6 +18,27 @@ const { Session } = require('../../lib/session/session.js');
 const helpers = require('../helpers.js');
 const { makeRepo, sink, configureRepo, tempDir, sessionFor } = helpers;
 
+const OLD_DATE = '2001-01-01T00:00:00Z';
+
+for (const first of ['git', 'branches', 'deps']) {
+  test(`Git repository works when ${first} is imported first`, () => {
+    const script = `
+      const assert = require('node:assert/strict');
+      require('./lib/git/' + process.argv[1] + '.js');
+      const repo = require('./lib/git/git.js').createGitRepo();
+      for (const name of ['load', 'add', 'revertFile', 'commit', 'rebase']) {
+        assert.equal(typeof repo[name], 'function', name);
+      }
+    `;
+    const result = spawnSync(process.execPath, ['-e', script, first], {
+      cwd: path.resolve(__dirname, '..', '..'),
+      encoding: 'utf8',
+      windowsHide: true,
+    });
+    assert.equal(result.status, 0, result.stderr);
+  });
+}
+
 const makeBare = () => {
   const dir = tempDir('reslop-bare-');
   const result = spawnSync('git', ['init', '--bare', '-b', 'main'], {
@@ -25,11 +47,58 @@ const makeBare = () => {
     windowsHide: true,
   });
   if (result.status !== 0) {
-    const msg = result.stderr || result.stdout || 'git init failed';
-    throw new Error(msg.trim());
+    const message = result.stderr || result.stdout || 'git init failed';
+    throw new Error(message.trim());
   }
   const cleanup = () => fs.rmSync(dir, { recursive: true, force: true });
   return { dir, cleanup };
+};
+
+const conflictingRepo = async () => {
+  const repo = makeRepo();
+  repo.write('f.txt', 'base\n');
+  repo.git(['add', 'f.txt']);
+  repo.git(['commit', '-m', 'init']);
+  await createBranch(repo.dir, 'feat');
+  repo.write('f.txt', 'feat\n');
+  repo.git(['add', 'f.txt']);
+  repo.git(['commit', '-m', 'feat']);
+  await checkoutBranch(repo.dir, 'main');
+  repo.write('f.txt', 'main\n');
+  repo.git(['add', 'f.txt']);
+  repo.git(['commit', '-m', 'on-main']);
+  await checkoutBranch(repo.dir, 'feat');
+  return repo;
+};
+
+const authorYear = (repo, rev) =>
+  repo.git(['log', '-1', '--format=%ad', '--date=format:%Y', rev]).trim();
+
+const commitNamed = (repo, name) => {
+  repo.write(`${name}.txt`, `${name}\n`);
+  repo.git(['add', `${name}.txt`]);
+  repo.git(['commit', '-m', `${name}\n\nbody ${name}`]);
+};
+
+const namesAt = (repo, rev) =>
+  repo.git(['ls-tree', '--name-only', rev]).trim().split('\n').sort();
+
+const mockSignal = () => {
+  const listeners = new Set();
+  return {
+    aborted: false,
+    listeners,
+    addEventListener(type, fn) {
+      if (type === 'abort') listeners.add(fn);
+    },
+    removeEventListener(type, fn) {
+      listeners.delete(fn);
+    },
+    abort() {
+      this.aborted = true;
+      for (const fn of [...listeners]) fn();
+    },
+  };
 };
 
 test('listBranches createBranch and checkoutBranch', async () => {
@@ -102,23 +171,6 @@ test('rebaseBranch replays onto the selected branch', async () => {
     repo.cleanup();
   }
 });
-
-const conflictingRepo = async () => {
-  const repo = makeRepo();
-  repo.write('f.txt', 'base\n');
-  repo.git(['add', 'f.txt']);
-  repo.git(['commit', '-m', 'init']);
-  await createBranch(repo.dir, 'feat');
-  repo.write('f.txt', 'feat\n');
-  repo.git(['add', 'f.txt']);
-  repo.git(['commit', '-m', 'feat']);
-  await checkoutBranch(repo.dir, 'main');
-  repo.write('f.txt', 'main\n');
-  repo.git(['add', 'f.txt']);
-  repo.git(['commit', '-m', 'on-main']);
-  await checkoutBranch(repo.dir, 'feat');
-  return repo;
-};
 
 test('rebaseBranch merges a conflicting rebase', async () => {
   const repo = await conflictingRepo();
@@ -483,11 +535,6 @@ test('rewordCommit rewrites an older message', async () => {
   }
 });
 
-const OLD_DATE = '2001-01-01T00:00:00Z';
-
-const authorYear = (repo, rev) =>
-  repo.git(['log', '-1', '--format=%ad', '--date=format:%Y', rev]).trim();
-
 test('rewordCommit with now resets the author date of HEAD', async () => {
   const repo = makeRepo();
   try {
@@ -699,15 +746,6 @@ test('commit selection writes leave an existing rebase alone', async () => {
   }
 });
 
-const commitNamed = (repo, name) => {
-  repo.write(`${name}.txt`, `${name}\n`);
-  repo.git(['add', `${name}.txt`]);
-  repo.git(['commit', '-m', `${name}\n\nbody ${name}`]);
-};
-
-const namesAt = (repo, rev) =>
-  repo.git(['ls-tree', '--name-only', rev]).trim().split('\n').sort();
-
 test('squashCommits folds a range into one message', async () => {
   const repo = makeRepo();
   try {
@@ -910,8 +948,8 @@ test('pushChanges sets upstream then push and pull update', async () => {
         windowsHide: true,
       });
       if (result.status !== 0) {
-        const msg = result.stderr || result.stdout || 'git failed';
-        throw new Error(msg.trim());
+        const message = result.stderr || result.stdout || 'git failed';
+        throw new Error(message.trim());
       }
       return result.stdout;
     };
@@ -961,24 +999,6 @@ test('pushChanges force-with-lease after a rewritten commit', async () => {
     bare.cleanup();
   }
 });
-
-const mockSignal = () => {
-  const listeners = new Set();
-  return {
-    aborted: false,
-    listeners,
-    addEventListener(type, fn) {
-      if (type === 'abort') listeners.add(fn);
-    },
-    removeEventListener(type, fn) {
-      listeners.delete(fn);
-    },
-    abort() {
-      this.aborted = true;
-      for (const fn of [...listeners]) fn();
-    },
-  };
-};
 
 test('runProc finish removes abort listener on success', async () => {
   const signal = mockSignal();
@@ -1152,25 +1172,6 @@ test('file edit save stages the whole file', async () => {
     repo.cleanup();
   }
 });
-
-for (const first of ['git', 'branches', 'deps']) {
-  test(`Git repository works when ${first} is imported first`, () => {
-    const script = `
-      const assert = require('node:assert/strict');
-      require('./lib/git/' + process.argv[1] + '.js');
-      const repo = require('./lib/git/git.js').createGitRepo();
-      for (const name of ['load', 'add', 'revertFile', 'commit', 'rebase']) {
-        assert.equal(typeof repo[name], 'function', name);
-      }
-    `;
-    const result = spawnSync(process.execPath, ['-e', script, first], {
-      cwd: path.resolve(__dirname, '..', '..'),
-      encoding: 'utf8',
-      windowsHide: true,
-    });
-    assert.equal(result.status, 0, result.stderr);
-  });
-}
 
 test('repo reads answer through promises', async () => {
   const repo = makeRepo();

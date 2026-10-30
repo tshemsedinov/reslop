@@ -1,8 +1,9 @@
 'use strict';
 
-const { sampleHunk, labels } = require('../helpers.js');
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
+
+const { sampleHunk, labels } = require('../helpers.js');
 const render = require('../../lib/render/render.js');
 const { REPO_TASKS_LABEL } = require('../../lib/common/files.js');
 const ansi = require('../../lib/term/ansi.js');
@@ -687,10 +688,10 @@ test('AC26 file list status and counts are column-aligned', () => {
     return { addEnd, delEnd, statusEnd, slashAt };
   };
   const marks = rows.map(columnMarks);
-  assert.equal(new Set(marks.map((m) => m.addEnd)).size, 1);
-  assert.equal(new Set(marks.map((m) => m.delEnd)).size, 1);
-  assert.equal(new Set(marks.map((m) => m.statusEnd)).size, 1);
-  assert.equal(new Set(marks.map((m) => m.slashAt)).size, 1);
+  assert.equal(new Set(marks.map((mark) => mark.addEnd)).size, 1);
+  assert.equal(new Set(marks.map((mark) => mark.delEnd)).size, 1);
+  assert.equal(new Set(marks.map((mark) => mark.statusEnd)).size, 1);
+  assert.equal(new Set(marks.map((mark) => mark.slashAt)).size, 1);
   assert.ok(marks[0].addEnd < marks[0].delEnd);
   assert.ok(marks[0].delEnd < marks[0].statusEnd);
   assert.ok(marks[0].statusEnd < marks[0].slashAt);
@@ -990,10 +991,10 @@ test('long lists show a one column scroller', () => {
   const thumbRows = (frame) =>
     frame.rows.slice(1, -2).filter((row) => row.includes(`${thumb} `));
   const entry = { status: 'unstaged', remaining: 1, staged: 0 };
-  const files = Array.from({ length: 30 }, (_, at) => ({
+  const files = Array.from({ length: 30 }, (_, firstIndex) => ({
     ...entry,
-    path: `f${at}.js`,
-    firstIndex: at,
+    path: `f${firstIndex}.js`,
+    firstIndex,
   }));
   const flat = render.renderFrame(
     { ...base, pane: 'files', files, fileCursor: 0 },
@@ -1101,7 +1102,7 @@ test('list screens keep two spaces at both sides of a row', () => {
   const edged = (text) => /^ {2}\S(.*\S)? {2}$/.test(text);
   const entry = { status: 'unstaged', remaining: 1, staged: 0, added: 1 };
   const files = [{ ...entry, path: 'lib/a.js', removed: 0, date: '1h' }];
-  const [flat] = rowsOf({ pane: 'files', files, fileCursor: 0 });
+  const flat = rowsOf({ pane: 'files', files, fileCursor: 0 })[0];
   assert.ok(edged(flat), flat);
   const folders = [
     {
@@ -1115,7 +1116,7 @@ test('list screens keep two spaces at both sides of a row', () => {
     },
   ];
   const tree = { pane: 'files', files, folders, folderCursor: 0 };
-  const [split] = rowsOf({ ...tree, fileCursor: 0 });
+  const split = rowsOf({ ...tree, fileCursor: 0 })[0];
   assert.ok(edged(split.slice(0, 24)), split);
   assert.ok(edged(split.slice(24)), split);
   const commit = {
@@ -1125,11 +1126,11 @@ test('list screens keep two spaces at both sides of a row', () => {
     subject: 'land',
     head: true,
   };
-  const [commitRow] = rowsOf({
+  const commitRow = rowsOf({
     pane: 'commits',
     commits: [commit],
     commitCursor: 0,
-  });
+  })[0];
   assert.ok(edged(commitRow), commitRow);
   const runs = rowsOf({
     pane: 'npm',
@@ -1145,7 +1146,7 @@ test('list screens keep two spaces at both sides of a row', () => {
   const listed = rowsOf({ pane: 'packages', packages, packagesCursor: 0 });
   for (const row of listed) assert.ok(edged(row), row);
   const branches = [{ name: 'main', current: true, subject: 'x', date: '1h' }];
-  const [branch] = rowsOf({ pane: 'branches', branches, branchCursor: 0 });
+  const branch = rowsOf({ pane: 'branches', branches, branchCursor: 0 })[0];
   assert.ok(edged(branch), branch);
 });
 
@@ -1231,7 +1232,7 @@ test('find marks path matches and the active one is stronger', () => {
     height: 12,
     color: true,
   });
-  const rows = frame.rows.map((row) => ({ raw: row, text: stripAnsi(row) }));
+  const rows = frame.rows.map((raw) => ({ raw, text: stripAnsi(raw) }));
   const filesRow = rows.find((row) => row.text.includes('lib/files.js'));
   const findRow = rows.find((row) => row.text.includes('lib/find.js'));
   assert.ok(filesRow.raw.includes(bg(THEME.searchBg)));

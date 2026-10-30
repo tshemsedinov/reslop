@@ -8,6 +8,16 @@ const { parseReview, serializeReview } = require('../../lib/review/review.js');
 
 const HEAD = ['---', 'status: partial', '---', '', '## Improvements', ''];
 
+const AGENT_BASE = [
+  ...HEAD,
+  '- [ ] B1: pool hands out a connection twice',
+  '  - check:',
+  '    - [ ] no shared connection',
+  '    - [ ] tests pass',
+  '- [ ] B2: timeout names the pool',
+  '',
+].join('\n');
+
 const plan = (...items) => [...HEAD, ...items, ''].join('\n');
 
 const item = (text, done = false) => `- [${done ? 'x' : ' '}] ${text}`;
@@ -17,6 +27,9 @@ const storeWith = (text) => parseReview(text, '/repo/.plan/x.md');
 const texts = (store) => store.tasks.map((task) => [task.text, task.done]);
 
 const find = (store, text) => store.tasks.find((task) => task.text === text);
+
+const taskRows = (store) =>
+  store.tasks.map((task) => [task.item.title, task.done]);
 
 test('mergeReview keeps our done change when disk deleted the todo', () => {
   const store = storeWith(plan(item('a'), item('b')));
@@ -70,16 +83,6 @@ test('mergeReview inserts new disk todos next to their neighbours', () => {
   );
 });
 
-const AGENT_BASE = [
-  ...HEAD,
-  '- [ ] B1: pool hands out a connection twice',
-  '  - check:',
-  '    - [ ] no shared connection',
-  '    - [ ] tests pass',
-  '- [ ] B2: timeout names the pool',
-  '',
-].join('\n');
-
 test('an agent result and block survive a human edit elsewhere', () => {
   const store = storeWith(AGENT_BASE);
   const b2 = store.tasks[1];
@@ -105,7 +108,7 @@ test('check items ticked on both sides merge item by item', () => {
   store.editTask(b1.id, (item) => item.setField('where', '`lib/pool.js`'));
   const theirs = AGENT_BASE.replace('- [ ] tests pass', '- [x] tests pass');
   mergeReview(store, theirs);
-  const [merged] = store.tasks;
+  const merged = store.tasks[0];
   assert.deepEqual(
     merged.item.checks.map((check) => check.done),
     [true, true],
@@ -133,13 +136,10 @@ test('the frontmatter status merges like any other block', () => {
   assert.equal(store.tasks.length, 3);
 });
 
-const taskRows = (store) =>
-  store.tasks.map((task) => [task.item.title, task.done]);
-
 test('mergeReview keeps tasks of one ID apart when ours move', () => {
   const text = plan(item('f1: alpha'), item('f1: beta'));
   const store = storeWith(text);
-  const [alpha] = store.tasks;
+  const alpha = store.tasks[0];
   store.moveBlock(alpha.block, 1);
   mergeReview(store, plan(item('f1: alpha', true), item('f1: beta')));
   assert.deepEqual(taskRows(store), [
