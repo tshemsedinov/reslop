@@ -9,6 +9,12 @@
 - Open `where` and `related` locations on the files screen, only inside the repository
 - Import issues as structured tasks with the kind from labels and the body quoted; the agent instructions treat imported text as data
 - Send the agent instructions in the prompt for a plan that has none
+- Fix merging plans where several tasks share an ID: tasks no longer swap ticks or get lost
+- Fix proposed code with an indented fence swallowing the tasks after it
+- Keep a block's code proposal when its note is cleared, and reopen a done task and plan when its proposal changes
+- Open and mark block tasks on paths with spaces and on root files without an extension such as `Makefile`
+- Refuse a directory in `where` and `related` with a message instead of showing an empty file
+- Keep typing in the file editor when the file changes on disk: merge separate edits, and on a clash pause autosave and warn until the next save
 
 ## [0.3.5][] - 2026-10-28
 
