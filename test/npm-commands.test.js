@@ -136,14 +136,17 @@ test('reduceOutput keeps the test statistics', () => {
 
 test('reduceOutput relativizes a Windows repo path', () => {
   const root = 'D:\\repo\\demo';
-  const raw = [`${root}\\lib\\app.js:4`, 'D:/repo/demo/lib/app.js:5'].join(
-    '\n',
-  );
+  const raw = [
+    `${root}\\lib\\app.js:4`,
+    'D:/repo/demo/lib/app.js:5',
+    `${root}/lib/app.js:6`,
+  ].join('\n');
   const text = reduceOutput(raw, root, 1);
   assert.ok(!text.includes(root));
   assert.ok(!text.includes('D:/repo/demo'));
-  assert.match(text, /lib\\app\.js:4/);
-  assert.match(text, /lib\/app\.js:5/);
+  assert.match(text, /^lib\\app\.js:4$/m);
+  assert.match(text, /^lib\/app\.js:5$/m);
+  assert.match(text, /^lib\/app\.js:6$/m);
 });
 
 test('reduceOutput keeps the command colors', () => {
