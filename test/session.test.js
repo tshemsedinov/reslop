@@ -5978,16 +5978,21 @@ for (const kind of ['script', 'command']) {
     assert.ok(bug);
     assert.equal(bug.done, false);
     assert.equal(tasks.rowAt(session.tasksFocus).task.id, bug.id);
+    const command = kind === 'command' ? 'node --test test/parser.test.js' : '';
     if (kind === 'command') {
-      assert.match(bug.text, /node --test test\/parser.test.js failed/);
-      assert.match(bug.text, /app.js:4: boom/);
+      assert.deepEqual(bug.text.split('\n'), [
+        `\`${command}\` fails`,
+        '- where: app.js:4',
+        '- problem: app.js:4: boom',
+        `- check: \`${command}\` passes`,
+      ]);
       assert.ok(!bug.text.includes(cwd));
-      assert.ok(!bug.text.includes('\x1b'));
     } else {
-      assert.match(bug.text, /npm run test failed/);
-      assert.match(bug.text, /broken parser/);
-      assert.match(bug.text, /parser exploded/);
-      assert.ok(!bug.text.includes('passing test'));
+      assert.deepEqual(bug.text.split('\n'), [
+        'broken parser',
+        '- problem: parser exploded',
+        '- check: `npm run test` passes',
+      ]);
     }
     const disk = parseReview(fs.readFileSync(reviewPath, 'utf8'), reviewPath);
     assert.equal(disk.tasks.length, 2);
@@ -5995,7 +6000,7 @@ for (const kind of ['script', 'command']) {
   });
 }
 
-test('solve bounds output and ignores passed and stopped runs', async () => {
+test('solve bounds output, skips passed runs, adds no duplicate', async () => {
   const { session } = await openSession([sampleItem('a.js')]);
   session.npm.runs.push({
     id: 1,
@@ -6020,9 +6025,16 @@ test('solve bounds output and ignores passed and stopped runs', async () => {
   session.pushInput('s');
   assert.equal(session.pane, 'tasks');
   const bug = session.notes.tasks[0];
-  assert.match(bug.text, /build failed/);
-  assert.match(bug.text, /truncated/);
-  assert.ok(bug.text.length < 6200);
+  assert.equal(bug.item.title, '`npm run build` fails');
+  assert.equal(bug.item.value('problem'), 'build failed …');
+  assert.ok(bug.text.length < 400);
+  session.composer.tasks.closeEditor();
+  session.npm.open();
+  session.npm.openView(1);
+  session.pushInput('s');
+  assert.equal(session.pane, 'tasks');
+  assert.equal(session.notes.tasks.length, 1);
+  assert.ok(focusedRow(session).startsWith(`[ ] ${bug.item.title}`));
 });
 
 test('a saved test run shows the styled report, not Markdown', async () => {
