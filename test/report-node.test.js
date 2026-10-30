@@ -85,7 +85,7 @@ for (const reporter of ['tap', 'spec']) {
       assert.match(preview, /count: 4/);
       assert.match(preview, /omitted: 1/);
       assert.ok(!preview.includes(repeated.key));
-      const npm = require('../lib/session/npm/npm.js');
+      const npm = require('../lib/session/npm.js');
       const ui = {
         top: root,
         nav: { npmCursor: 0 },

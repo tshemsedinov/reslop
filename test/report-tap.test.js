@@ -282,7 +282,7 @@ test('TUI groups and saves TAP without a version header', async () => {
     ]
       .join('\n')
       .replaceAll('/repo', root);
-    const { NpmController } = require('../lib/session/npm/npm.js');
+    const { NpmController } = require('../lib/session/npm.js');
     const ui = {
       top: root,
       nav: { npmCursor: 0 },

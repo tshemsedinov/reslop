@@ -6,6 +6,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 
 const npm = require('../lib/runs/process.js');
+const { npmOpts } = require('../lib/common/process.js');
 const { stripAnsi } = require('../lib/term/ansi.js');
 const { tempDir } = require('./helpers.js');
 
@@ -26,7 +27,7 @@ const {
   removeStaleLogs,
 } = require('../lib/runs/logs.js');
 const { startNpm, commandEnv } = npm;
-const { elapsedText } = require('../lib/session/npm/history.js');
+const { elapsedText } = require('../lib/session/npm-history.js');
 
 test('only running commands use the current time for their duration', () => {
   const running = { status: 'running', startedAt: 1000, endedAt: 0 };
@@ -376,4 +377,14 @@ test('startNpm drops output after the command is stopped', async () => {
     if (handle) handle.kill();
     fs.rmSync(root, { recursive: true, force: true });
   }
+});
+
+test('npmOpts uses a shell only on Windows', () => {
+  const win = npmOpts({ cwd: 'C:\\repo' }, 'win32');
+  assert.equal(win.shell, true);
+  assert.equal(win.windowsHide, true);
+  assert.equal(win.cwd, 'C:\\repo');
+  const unix = npmOpts({ cwd: '/tmp' }, 'linux');
+  assert.equal(unix.shell, false);
+  assert.equal(unix.windowsHide, true);
 });

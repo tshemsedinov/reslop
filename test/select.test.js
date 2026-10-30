@@ -4,6 +4,7 @@ const { test } = require('node:test');
 const assert = require('node:assert/strict');
 
 const select = require('../lib/term/select.js');
+const { osc52 } = select;
 const {
   ESC,
   stripAnsi,
@@ -64,4 +65,8 @@ test('extractText reads overlay rows', () => {
     end: { x: 4, y: 1 },
   });
   assert.equal(text, 'cd');
+});
+
+test('osc52 encodes UTF-8 as base64', () => {
+  assert.equal(osc52('hé'), `${ESC}]52;c;aMOp\x07`);
 });
