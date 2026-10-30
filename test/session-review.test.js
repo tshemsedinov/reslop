@@ -151,13 +151,13 @@ test('PR add and revert are read only and feedback attaches', async () => {
   assertEditsRefused(session, repo);
   const files = session.fileList();
   assert.equal(files[0].status, '#12');
-  session.dispatch('feedback');
+  session.dispatch('blockTask');
   session.pushInput('prefer const');
   press(session, 'ctrl-s');
-  const note = session.notes.feedback.get('lib/a.js:1:1:0');
+  const note = session.notes.blockTask('lib/a.js:1');
   assert.equal(note.text, 'prefer const');
   assert.equal(session.view().counts.pr, 1);
-  assert.equal(session.view().counts.feedback, 1);
+  assert.equal(session.view().counts.tasks, 1);
   session.dispatch('next');
   assert.equal(session.status, 'saved');
   session.dispatch('prev');
@@ -177,10 +177,10 @@ test('-r blocks add unstage revert and still takes feedback', async () => {
   assert.equal(session.status, 'read only');
   assert.equal(repo.added.length, 0);
   session.pane = 'diff';
-  session.dispatch('feedback');
+  session.dispatch('blockTask');
   session.pushInput('keep this');
   press(session, 'ctrl-s');
-  const note = session.notes.feedback.get('a.js:1:1:0');
+  const note = session.notes.blockTask('a.js:1');
   assert.equal(note.text, 'keep this');
 });
 
@@ -200,7 +200,7 @@ test('AC9 hotkeys dispatch add revert next prev quit', async () => {
   await session.ops.idle();
   assert.equal(repo.added.length, 1);
   assert.equal(repo.added[0].file.newPath, 'a.js');
-  session.pushInput('d');
+  press(session, 'delete');
   await session.ops.idle();
   assert.equal(repo.reverted.length, 1);
   session.pushInput('m');
@@ -610,7 +610,7 @@ test('escape from diff opens the file list, then quits', async () => {
 
 test('escape from files with notes quits and keeps the status', async () => {
   const { session } = await openSession([sampleItem('a.js')]);
-  session.dispatch('feedback');
+  session.dispatch('blockTask');
   session.pushInput('nits');
   press(session, 'ctrl-s', 'escape');
   assert.equal(session.pane, 'files');
@@ -919,7 +919,7 @@ test('diff selection stages unstages and drops the chosen blocks', async () => {
   const ids = session.lastFrame.buttons.map((hit) => hit.id);
   assert.ok(ids.includes('add'));
   assert.ok(!ids.includes('code'));
-  session.dispatch('feedback');
+  session.dispatch('blockTask');
   assert.equal(session.pane, 'diff');
   session.dispatch('add');
   await session.ops.idle();
@@ -968,7 +968,7 @@ test('files pane disables mode and feedback', async () => {
   session.dispatch('layout');
   assert.equal(session.layout, 'unified');
   assert.equal(session.status, '');
-  session.dispatch('feedback');
+  session.dispatch('blockTask');
   assert.equal(session.mode, 'review');
   assert.equal(session.pane, 'files');
   session.dispatch('code');
@@ -999,13 +999,7 @@ test('reload picks up disk changes and keeps the current hunk', async () => {
   session.dispatch('next');
   await session.ops.idle();
   assert.equal(session.current().file.newPath, 'b.js');
-  session.notes.feedback.set('b.js:1:1:0', {
-    file: 'b.js',
-    oldStart: 1,
-    newStart: 1,
-    blockId: 0,
-    text: 'keep me',
-  });
+  session.notes.setBlockTask('b.js:1', { text: 'keep me' });
   repo.load = () => ({ top: '/tmp', items: [a, b, c] });
   session.dispatch('reload');
   await session.ops.idle();
@@ -1013,7 +1007,7 @@ test('reload picks up disk changes and keeps the current hunk', async () => {
   assert.equal(session.pane, 'diff');
   assert.equal(session.current().file.newPath, 'b.js');
   assert.equal(session.items.length, 3);
-  assert.equal(session.notes.feedback.get('b.js:1:1:0').text, 'keep me');
+  assert.equal(session.notes.blockTask('b.js:1').text, 'keep me');
 });
 
 test('reload brings back dismissed hunks', async () => {
@@ -1053,7 +1047,7 @@ test('compose r inserts a letter and does not reload', async () => {
     loads += 1;
     return orig(...args);
   };
-  session.dispatch('feedback');
+  session.dispatch('blockTask');
   press(session, 'r');
   assert.equal(session.mode, 'compose');
   assert.equal(session.editor.text, 'r');
@@ -1085,10 +1079,10 @@ test('files pane unstage on an unstaged file still moves down', async () => {
   assert.equal(session.fileList()[1].path, 'b.js');
 });
 
-test('q quotes a diff and insert adds an npm command', async () => {
+test('ctrl+t adds a task on a diff and insert an npm command', async () => {
   const diff = await openSession([sampleItem('a.js')]);
-  press(diff.session, 'q');
-  assert.equal(diff.session.composeKind, 'feedback');
+  press(diff.session, 'ctrl-t');
+  assert.equal(diff.session.composeKind, 'blockTask');
   const npm = await openSession([sampleItem('a.js')], { startPane: 'files' });
   fs.writeFileSync(
     path.join(npm.cwd, 'package.json'),
@@ -1100,20 +1094,21 @@ test('q quotes a diff and insert adds an npm command', async () => {
   assert.equal(npm.session.npm.editField, 'name');
 });
 
-test('f maps feedback to the hunk location', async () => {
+test('f writes feedback as a task where the block is', async () => {
   const item = sampleItem('a.js');
   const { session } = await openSession([item]);
-  session.dispatch('feedback');
+  session.dispatch('blockTask');
   assert.equal(session.mode, 'compose');
-  assert.equal(session.composeKind, 'feedback');
+  assert.equal(session.composeKind, 'blockTask');
   session.pushInput('extract helper');
   press(session, 'ctrl-s');
   assert.equal(session.mode, 'review');
-  const note = session.notes.feedback.get('a.js:1:1:0');
+  const note = session.notes.blockTask('a.js:1');
   assert.equal(note.text, 'extract helper');
-  assert.equal(note.file, 'a.js');
-  assert.equal(note.newStart, 1);
-  assert.equal(session.view().counts.feedback, 1);
-  assert.equal(session.view().counts.tasks, 0);
-  assert.equal(session.composer.idleNoteText(), '[ ] extract helper');
+  const [task] = session.notes.tasks;
+  assert.equal(task.kind, 'improvements');
+  assert.equal(task.text, 'extract helper\n- where: a.js:1');
+  assert.equal(session.view().counts.feedback, 0);
+  assert.equal(session.view().counts.tasks, 1);
+  assert.equal(session.composer.idleNoteText(), 'task: [ ] extract helper');
 });

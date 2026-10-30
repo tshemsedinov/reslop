@@ -8,7 +8,7 @@ const clipboard = require('../lib/term/select.js');
 const { Composer } = require('../lib/session/compose.js');
 
 const EDIT_KINDS = [
-  'feedback',
+  'blockTask',
   'code',
   'file',
   'tasks',

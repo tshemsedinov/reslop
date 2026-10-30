@@ -262,7 +262,7 @@ const mockIssueLoad =
       url: 'https://github.com/acme/app/issues/12',
     },
     imported: extra.imported ?? {
-      feedback: [],
+      blockTasks: [],
       tasks: [
         {
           file: 'issue',
@@ -333,7 +333,7 @@ for (const [url, loaders] of [
   });
 }
 
-const NO_NOTES = { imported: { feedback: [], tasks: [] } };
+const NO_NOTES = { imported: { blockTasks: [], tasks: [] } };
 
 for (const [url, loaders] of [
   [PR_URL, (dir) => ({ loadPullRequest: mockPrLoad(dir, { items: [] }) })],

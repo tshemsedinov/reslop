@@ -84,7 +84,7 @@ test('page home and end move in a multiline compose editor', () => {
 });
 
 test('ctrl arrows move by word in compose editors', () => {
-  const kinds = ['feedback', 'code', 'task', 'commit', 'branch'];
+  const kinds = ['blockTask', 'code', 'task', 'commit', 'branch'];
   for (const kind of kinds) {
     const { composer } = setup();
     composer.openCompose(kind, 'hello world');
@@ -102,7 +102,7 @@ test('ctrl arrows move by word in compose editors', () => {
 
 test('ctrl backspace deletes the previous word in compose editors', () => {
   const { composer } = setup();
-  composer.openCompose('feedback', 'hello world');
+  composer.openCompose('blockTask', 'hello world');
   composer.handleKey('ctrl-backspace');
   assert.equal(composer.editor.text, 'hello ');
   assert.equal(composer.editor.cursor, 6);

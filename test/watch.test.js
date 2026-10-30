@@ -349,7 +349,7 @@ test('compose defers disk reload until the editor closes', async () => {
   const b = sampleItem('b.js');
   const { session, repo } = await openWatched([a]);
   session.uiOpen = true;
-  session.dispatch('feedback');
+  session.dispatch('blockTask');
   repo.setItems([a, b]);
   session.lifecycle.onDiskChange();
   await session.ops.idle();

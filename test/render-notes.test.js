@@ -108,7 +108,7 @@ test('compose panel sits above status and buttons', () => {
     },
     {
       pane: 'diff',
-      compose: { kind: 'feedback', text: 'extract helper', cursor: 14 },
+      compose: { kind: 'blockTask', text: 'extract helper', cursor: 14 },
     },
   );
   const frame = render.renderFrame(view, {
@@ -145,7 +145,7 @@ test('feedback compose paints templates above the input', () => {
     },
     {
       pane: 'diff',
-      compose: { kind: 'feedback', text: 'new note', cursor: 0 },
+      compose: { kind: 'blockTask', text: 'new note', cursor: 0 },
       templates: [
         { text: 'extract helper', count: 2 },
         { text: 'add tests', count: 1 },
@@ -223,15 +223,24 @@ test('compose and idle notes keep one-char side margins', () => {
   );
   const opt = { width: 80, height: 16, color: false };
   const compose = render.renderFrame(
-    { ...base, compose: { kind: 'feedback', text: 'hi', cursor: 0 } },
+    { ...base, compose: { kind: 'blockTask', text: 'hi', cursor: 0 } },
     opt,
   );
   const composeRow = compose.rows.find((row) => row.includes('hi'));
   assert.match(stripAnsi(composeRow), /^ hi /);
   assert.equal(compose.cursor.x, 2);
-  const idle = render.renderFrame({ ...base, noteText: 'hi' }, opt);
-  const idleRow = idle.rows.find((row) => row.includes('feedback: hi'));
-  assert.match(stripAnsi(idleRow), /^ feedback: hi /);
+  const prompt = 'task: [ ] ';
+  const asked = render.renderFrame(
+    { ...base, compose: { kind: 'blockTask', prompt, text: 'hi', cursor: 0 } },
+    opt,
+  );
+  const askedRow = asked.rows.find((row) => row.includes('hi'));
+  assert.match(stripAnsi(askedRow), /^ task: \[ \] hi /);
+  assert.equal(asked.cursor.x, 2 + prompt.length);
+  const noteText = 'task: [ ] hi';
+  const idle = render.renderFrame({ ...base, noteText }, opt);
+  const idleRow = idle.rows.find((row) => row.includes(noteText));
+  assert.match(stripAnsi(idleRow), /^ task: \[ \] hi /);
 });
 
 test('idle feedback note sits above the footer', () => {
@@ -252,7 +261,7 @@ test('idle feedback note sits above the footer', () => {
     status: 'copied',
     counts: { staged: 0, unstaged: 1, untracked: 0 },
     repoName: 'demo',
-    noteText: '[ ] extract helper',
+    noteText: 'task: [ ] extract helper',
   };
   const frame = render.renderFrame(view, {
     width: 80,
@@ -262,8 +271,8 @@ test('idle feedback note sits above the footer', () => {
   const statusRow = frame.rows[frame.rows.length - 2];
   assert.match(statusRow, /copied /);
   const joined = frame.rows.join('\n');
-  assert.match(joined, /feedback: \[ \] extract helper/);
-  const noteAt = joined.indexOf('feedback: [ ] extract helper');
+  assert.match(joined, /task: \[ \] extract helper/);
+  const noteAt = joined.indexOf('task: [ ] extract helper');
   assert.ok(noteAt >= 0 && noteAt < joined.indexOf(statusRow));
 });
 
@@ -285,7 +294,7 @@ test('note panel is lighter than the status line', () => {
   const compose = render.renderFrame(
     {
       ...base,
-      compose: { kind: 'feedback', text: 'rewrite loop', cursor: 0 },
+      compose: { kind: 'blockTask', text: 'rewrite loop', cursor: 0 },
     },
     opt,
   );
@@ -664,7 +673,7 @@ test('compose and idle notes wrap on word boundaries', () => {
     {
       ...base,
       compose: {
-        kind: 'feedback',
+        kind: 'blockTask',
         text: 'outstanding example',
         cursor: 12,
       },
@@ -684,18 +693,19 @@ test('compose and idle notes wrap on word boundaries', () => {
       (row) => row.includes('example') && !row.includes('outstanding'),
     ),
   );
-  const idle = render.renderFrame({ ...base, noteText: 'outstanding' }, opt);
+  const noteText = 'task: [ ] outstanding';
+  const idle = render.renderFrame({ ...base, noteText }, opt);
   const idleNote = idle.rows
     .map(stripAnsi)
-    .filter((row) => row.includes('feedback') || row.includes('outstanding'));
+    .filter((row) => row.includes('task') || row.includes('outstanding'));
   assert.ok(
     idleNote.some(
-      (row) => row.includes('feedback') && !row.includes('outstanding'),
+      (row) => row.includes('task') && !row.includes('outstanding'),
     ),
   );
   assert.ok(
     idleNote.some(
-      (row) => row.includes('outstanding') && !row.includes('feedback:'),
+      (row) => row.includes('outstanding') && !row.includes('task:'),
     ),
   );
   const todo = render.renderFrame(
@@ -902,7 +912,7 @@ test('unit pane marks the current block and keeps other diffs', () => {
   const footer = frame.rows[frame.rows.length - 1];
   assert.match(
     footer,
-    /🢐esc {2}add {2}unstage {2}drop {2}quote {2}edit.*files/,
+    /🢐esc {2}add {2}unstage {2}delete {2}\^task {2}edit.*files/,
   );
   assert.ok(!footer.includes('ignore'));
   assert.ok(!footer.includes('mode'));

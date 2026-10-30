@@ -8,7 +8,7 @@ const assert = require('node:assert/strict');
 const diff = require('../lib/diff/diff.js');
 const { parseDiff, splitHunk, formatPatch, flattenBlock } = diff;
 const { displayLines, itemsFromFiles, DISPLAY_CONTEXT } = diff;
-const { replaceBlockAdds, addBlockRange } = diff;
+const { replaceBlockAdds, addBlockRange, blockWhere } = diff;
 
 const SAMPLE = `diff --git a/n.js b/n.js
 index 1111111..2222222 100644
@@ -165,4 +165,23 @@ test('replaceBlockAdds rewrites added lines in file text', () => {
   assert.equal(next, 'alpha\nBETA-edited\ngamma\n');
   const extra = replaceBlockAdds('alpha\nBETA\ngamma\n', hunk, 0, 'one\ntwo');
   assert.equal(extra, 'alpha\none\ntwo\ngamma\n');
+});
+
+test('blockWhere names the line a change block starts at', () => {
+  const line = (type, blockId = null) => ({ type, text: type, blockId });
+  const hunk = {
+    oldStart: 10,
+    newStart: 10,
+    lines: [
+      line('ctx'),
+      line('ctx'),
+      line('add', 0),
+      line('ctx'),
+      line('del', 1),
+      line('ctx'),
+    ],
+  };
+  assert.equal(blockWhere('a.js', hunk, 0), 'a.js:12');
+  assert.equal(blockWhere('a.js', hunk, 1), 'a.js:14');
+  assert.equal(blockWhere('a.js', null, 0), 'a.js');
 });

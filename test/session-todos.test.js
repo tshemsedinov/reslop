@@ -65,7 +65,7 @@ test('tasks import asks for a url and applies the pull request', async () => {
   const { session } = await openSession([sampleItem('a.js')], {
     loadPullRequest: async () => ({
       imported: {
-        feedback: [],
+        blockTasks: [],
         tasks: [
           {
             file: 'pull request',
@@ -131,7 +131,7 @@ test('tasks import accepts a github or gitlab issue url', async () => {
   const { session } = await openSession([sampleItem('a.js')], {
     loadGithubIssue: async () => ({
       imported: {
-        feedback: [],
+        blockTasks: [],
         tasks: [
           {
             file: 'issue',
@@ -143,7 +143,7 @@ test('tasks import accepts a github or gitlab issue url', async () => {
     }),
     loadGitlabIssue: async () => ({
       imported: {
-        feedback: [],
+        blockTasks: [],
         tasks: [
           {
             file: 'issue',
@@ -177,7 +177,7 @@ test('tasks import accepts a github or gitlab issue list', async () => {
       githubTarget = issue;
       return {
         imported: {
-          feedback: [],
+          blockTasks: [],
           tasks: [
             {
               file: 'issue',
@@ -192,7 +192,7 @@ test('tasks import accepts a github or gitlab issue list', async () => {
       gitlabTarget = issue;
       return {
         imported: {
-          feedback: [],
+          blockTasks: [],
           tasks: [
             {
               file: 'issue',
@@ -718,7 +718,7 @@ test('todo save recovers if the stub was dropped', async () => {
 test('quit with notes keeps the review status', async () => {
   const item = sampleItem('a.js');
   const { session } = await openSession([item]);
-  session.dispatch('feedback');
+  session.dispatch('blockTask');
   session.pushInput('nits');
   press(session, 'ctrl-s');
   session.notes.status = 'partial';
