@@ -42,6 +42,7 @@
     "warnFg": "#9a6700",
     "mutedFg": "#6e7781",
     "shaFg": "#0550ae",
+    "taskIdFg": "#8a3d87",
     "pkgDepFg": "#3ca85a",
     "pkgDevFg": "#3d7ec8",
     "pkgFg": "#9aa2ac",

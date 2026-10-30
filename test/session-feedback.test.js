@@ -326,6 +326,7 @@ test('right click opens task operations with their hotkeys', async () => {
     'taskNew',
     'taskDone',
     'taskPriority',
+    'taskGroup',
     'taskField',
     'taskOpen',
     'taskDrop',
