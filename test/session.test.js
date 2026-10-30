@@ -2094,7 +2094,7 @@ test('tasks plan hotkey opens the combo and can start a new plan', async () => {
   press(session, 'escape');
   session.draw();
   const footer = stripAnsi(session.lastFrame.rows.at(-1));
-  assert.match(footer, /🢐esc {2}plan {2}import/);
+  assert.match(footer, /🢐esc {2}insert {2}plan {2}import/);
   assert.match(footer, /ctrl\+up\/dn/);
   const nudge = `${BOLD}${seq(THEME.buttonHotFg, THEME.buttonBg)}up/dn`;
   assert.ok(session.lastFrame.rows.at(-1).includes(nudge));
@@ -2480,7 +2480,7 @@ test('enter and click edit the focused todo', async () => {
 test('Return edits a task and Escape saves it without advancing', async () => {
   const { session } = await openSession([sampleItem('a.js')]);
   session.dispatch('tasks');
-  session.pushInput('first\rsecond');
+  session.pushInput('first\x1b\rsecond');
   assert.equal(session.mode, 'compose');
   assert.equal(session.tasksFocus, taskAt(session, 0));
   assert.equal(session.editor.text, 'first\nsecond');
@@ -2493,7 +2493,7 @@ test('Return edits a task and Escape saves it without advancing', async () => {
   session.pushInput('\r');
   const editor = session.editor;
   editor.place(2);
-  assert.match(session.view().status, /Enter: new line; Esc: save/);
+  assert.match(session.view().status, /Enter at the end: new task; Alt/);
   session.pushInput('\rA\rB');
   assert.equal(session.editor, editor);
   assert.equal(session.editor.text, 'fi\nA\nBrst\nsecond');
@@ -2832,20 +2832,26 @@ test('todo edit page keys jump across todos', async () => {
   assert.equal(session.editor.text, 'third');
 });
 
-test('enter adds task lines and escape stays on the saved task', async () => {
+test('enter at the end of a task starts a new one below', async () => {
   const { session } = await openSession([sampleItem('a.js')]);
   session.dispatch('tasks');
   session.pushInput('first');
   press(session, 'enter');
   assert.equal(session.mode, 'compose');
-  assert.equal(session.tasksFocus, taskAt(session, 0));
-  assert.equal(session.editor.text, 'first\n');
+  assert.equal(session.editor.text, '');
+  assert.deepEqual(taskRows(session), ['[ ] first', '[ ] ']);
+  assert.equal(session.tasksFocus, taskAt(session, 1));
   session.pushInput('second');
-  press(session, 'escape');
+  press(session, 'enter', 'escape');
   assert.equal(session.mode, 'review');
-  assert.equal(session.tasksFocus, taskAt(session, 0));
-  assert.deepEqual(taskRows(session), ['[ ] first']);
-  assert.equal(session.notes.tasks[0].text, 'first\nsecond');
+  assert.deepEqual(taskRows(session), ['[ ] first', '[ ] second']);
+  assert.equal(focusedRow(session), '[ ] second');
+  press(session, 'up', 'enter', 'home');
+  session.pushInput('very ');
+  press(session, 'enter');
+  assert.equal(session.editor.text, 'very \nfirst');
+  press(session, 'escape');
+  assert.equal(session.notes.tasks[0].text, 'very \nfirst');
 });
 
 test('todo save recovers if the stub was dropped', async () => {
@@ -5501,8 +5507,11 @@ test('x and a checkbox click toggle a todo and the file keeps it', async () => {
   assert.equal(loaded.tasks[0].done, true);
   assert.equal(loaded.tasks[0].text, 'ship it');
   press(session, 'insert');
-  assert.equal(session.mode, 'review');
-  assert.equal(session.notes.tasks[0].text, 'ship it');
+  assert.equal(session.mode, 'compose');
+  assert.equal(session.editor.text, '');
+  press(session, 'escape');
+  assert.equal(session.notes.tasks.length, 1);
+  assert.equal(focusedRow(session), '[x] ship it');
   press(session, 'enter', 'x', ' ', 'insert');
   assert.equal(session.mode, 'compose');
   assert.equal(session.editor.text, 'ship itx ');
@@ -8302,4 +8311,112 @@ test('tasks screen snapshot of a free-form Markdown file', async () => {
 test('tasks screen snapshot of an empty file', async () => {
   const { lines } = await planScreen('empty.md', '');
   assert.deepEqual(lines, ['', '   Insert task · s section · e markdown']);
+});
+
+const SECTIONS = [
+  '## Bug Reports and Fixes',
+  '',
+  '- [ ] B1: pool hands a connection out twice',
+  '- [ ] B2: timeout names the pool',
+  '',
+  '## Notes',
+  '',
+  'Context for the agent.',
+  '',
+  '## Security and Compliance',
+  '',
+  '- [ ] S1: keep paths inside the root',
+  '',
+].join('\n');
+
+test('insert adds a task below the focused one in its section', async () => {
+  const { session } = await planScreen('sections.md', SECTIONS);
+  session.tasksFocus = rowOf(session, 'B1:');
+  press(session, 'insert');
+  assert.equal(session.mode, 'compose');
+  session.pushInput('B3: retry the handshake');
+  press(session, 'escape');
+  const texts = session.notes.tasks.map((task) => [task.text, task.kind]);
+  assert.deepEqual(texts, [
+    ['B1: pool hands a connection out twice', 'bugs'],
+    ['B3: retry the handshake', 'bugs'],
+    ['B2: timeout names the pool', 'bugs'],
+    ['S1: keep paths inside the root', 'security'],
+  ]);
+  assert.equal(focusedRow(session), '[ ] B3: retry the handshake');
+  session.tasksFocus = rowOf(session, 'Context for');
+  press(session, 'insert');
+  session.pushInput('read the notes');
+  press(session, 'escape');
+  const notes = session.notes.tasks.find(
+    (task) => task.text === 'read the notes',
+  );
+  assert.equal(notes.kind, '');
+});
+
+test('ctrl+up and ctrl+down move a section or a task across them', async () => {
+  const { session } = await planScreen('sections.md', SECTIONS);
+  const s1 = session.notes.tasks.find((task) => task.item.id === 'S1');
+  session.tasksFocus = rowOf(session, 'S1:');
+  press(session, 'ctrl-up');
+  const moved = session.notes.tasks.find((task) => task.id === s1.id);
+  assert.equal(moved.kind, '');
+  assert.equal(moved.item.id, 'S1');
+  assert.equal(focusedRow(session), '[ ] S1: keep paths inside the root');
+  press(session, 'ctrl-down');
+  assert.equal(session.notes.tasks.at(-1).kind, 'security');
+  session.tasksFocus = rowOf(session, 'Security and Compliance');
+  press(session, 'ctrl-up', 'ctrl-up');
+  const text = serializeReview(session.notes);
+  assert.ok(text.startsWith('## Security and Compliance\n\n- [ ] S1'));
+  assert.match(text, /S1: keep paths inside the root\n\n## Bug Reports/);
+  assert.match(text, /\n\nContext for the agent\.\n$/);
+  assert.equal(focusedRow(session), 'Security and Compliance');
+});
+
+test('delete on a heading with blocks under it asks first', async () => {
+  const { session } = await planScreen('sections.md', SECTIONS);
+  session.tasksFocus = rowOf(session, 'Bug Reports and Fixes');
+  press(session, 'delete');
+  assert.equal(session.mode, 'confirmDrop');
+  session.draw();
+  const status = stripAnsi(session.lastFrame.rows.at(-2));
+  assert.match(status, /drop section Bug Reports and Fixes\?/);
+  press(session, 'n');
+  assert.equal(session.mode, 'review');
+  assert.equal(session.notes.tasks.length, 3);
+  press(session, 'delete', 'y');
+  assert.equal(session.notes.tasks.length, 1);
+  assert.ok(serializeReview(session.notes).startsWith('## Notes\n'));
+  session.notes.addTask('TODOs', 'x', false, 'features');
+  session.tasksFocus = rowOf(session, 'Notes');
+  press(session, 'delete');
+  assert.equal(session.mode, 'confirmDrop');
+  press(session, 'escape');
+  const empty = '## Empty\n\n## Notes\n\ntext\n';
+  const { session: other } = await planScreen('empty-section.md', empty);
+  other.tasksFocus = rowOf(other, 'Empty');
+  press(other, 'delete');
+  assert.equal(other.mode, 'review');
+  assert.equal(serializeReview(other.notes), '## Notes\n\ntext\n');
+});
+
+test('ctrl+enter leaves a task alone and enter edits a heading', async () => {
+  const { session } = await planScreen('sections.md', SECTIONS);
+  session.tasksFocus = rowOf(session, 'B2:');
+  press(session, 'ctrl-enter');
+  assert.equal(session.notes.tasks[1].done, false);
+  assert.equal(session.mode, 'review');
+  session.tasksFocus = rowOf(session, 'Notes');
+  press(session, 'enter', 'end');
+  session.pushInput(' and links');
+  press(session, 'escape');
+  assert.match(serializeReview(session.notes), /^## Notes and links$/m);
+  press(session, 'enter', 'enter');
+  assert.equal(session.mode, 'compose');
+  assert.equal(session.editor.text, '');
+  session.pushInput('a task under notes');
+  press(session, 'escape');
+  const text = serializeReview(session.notes);
+  assert.match(text, /## Notes and links\n\n- \[ \] a task under notes\n\n/);
 });
