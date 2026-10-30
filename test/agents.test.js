@@ -141,6 +141,8 @@ test('findBin returns the first executable on PATH', () => {
     assert.equal(findBin('claude', env), bins.claude);
     assert.equal(findBin('missing', env), '');
     assert.equal(findBin('claude', { PATH: '' }), '');
+    const added = makeBin(dir, 'missing');
+    assert.equal(findBin('missing', env), added);
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
   }
