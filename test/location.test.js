@@ -2,9 +2,13 @@
 
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const os = require('node:os');
+const path = require('node:path');
 
 const location = require('../lib/review/location.js');
-const { parseLocations, symbolLine } = location;
+const { parseLocations, resolveLocation, symbolLine } = location;
+const { tempDir } = require('./helpers.js');
 
 const shape = (found) =>
   found.map((one) => one.url ?? `${one.path}|${one.line}|${one.symbol}`);
@@ -29,6 +33,56 @@ test('parseLocations reads paths, lines, symbols, and URLs', () => {
     'file:///etc/passwd',
   ]);
   assert.deepEqual(parseLocations('other task IDs, F2'), []);
+});
+
+test('resolveLocation keeps every location inside the root', () => {
+  const root = tempDir('reslop-where-');
+  const outside = fs.mkdtempSync(path.join(os.tmpdir(), 'reslop-out-'));
+  try {
+    fs.mkdirSync(path.join(root, 'lib'));
+    fs.writeFileSync(path.join(root, 'lib', 'a.js'), 'x\n');
+    fs.writeFileSync(path.join(outside, 'secret'), 'key\n');
+    let linked = true;
+    try {
+      fs.symlinkSync(outside, path.join(root, 'out'), 'dir');
+    } catch {
+      linked = false;
+    }
+    const at = (text) => resolveLocation(root, parseLocations(text)[0]);
+    assert.deepEqual(at('lib/a.js:3'), {
+      ok: true,
+      rel: 'lib/a.js',
+      line: 3,
+      symbol: '',
+    });
+    assert.equal(at('lib/../lib/a.js').rel, 'lib/a.js');
+    const refused = [
+      '../../.ssh/id_rsa',
+      'lib/../../x.js',
+      '/etc/passwd',
+      '~/.ssh/id_rsa',
+      'C:\\Windows\\win.ini',
+      'file:///etc/passwd',
+      'https://example.com/a.js',
+    ];
+    for (const text of refused) {
+      const found = at(text);
+      assert.equal(found.ok, false, text);
+      assert.match(found.error, /outside the repository|not opened/, text);
+    }
+    if (linked) {
+      const found = at('out/secret');
+      assert.equal(found.ok, false);
+      assert.match(found.error, /outside the repository/);
+    }
+    assert.deepEqual(at('lib/missing.js'), {
+      ok: false,
+      error: 'not found: lib/missing.js',
+    });
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+    fs.rmSync(outside, { recursive: true, force: true });
+  }
 });
 
 test('symbolLine finds a symbol, a dotted path, or a heading anchor', () => {
