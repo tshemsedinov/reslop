@@ -476,15 +476,11 @@ test('editing a todo applies a deferred reload on exit', async () => {
   const { session, repo } = await openWatched([a]);
   session.uiOpen = true;
   session.composer.tasks.openTasksPage();
-  session.composer.tasks.editFocusedTask();
+  session.composer.tasks.newTask();
   assert.equal(session.mode, 'compose');
   repo.setItems([a, b]);
   session.lifecycle.onDiskChange();
   await session.ops.idle();
-  assert.equal(session.items.length, 1);
-  session.handleEvent({ type: 'key', key: 'escape' });
-  await session.ops.idle();
-  assert.equal(session.tasksOpen, true);
   assert.equal(session.items.length, 1);
   session.handleEvent({ type: 'key', key: 'escape' });
   await session.ops.idle();

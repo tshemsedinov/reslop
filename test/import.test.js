@@ -50,28 +50,31 @@ test('the body of issue #86 imports as fields', () => {
   assert.equal(task.item.title, 'Structured feedback/todo');
   assert.deepEqual(
     task.item.fields.map((field) => field.key),
-    [
-      'where',
-      'problem',
-      'evidence',
-      'expected',
-      'do',
-      'constraints',
-      'check',
-      'related',
-    ],
+    ['where', 'problem', 'expected', 'do', 'check', 'related'],
   );
   assert.equal(task.item.value('where'), 'src/pool.js#acquire:84');
   assert.equal(
-    task.item.value('evidence'),
-    '- test: test/pool-concurrency.js\n- fails about 1 of 20 runs',
+    task.item.value('problem'),
+    [
+      'Released connection can be assigned to two consumers.',
+      '- test: test/pool-concurrency.js',
+      '- fails about 1 of 20 runs',
+    ].join('\n'),
+  );
+  assert.equal(
+    task.item.value('do'),
+    [
+      'make the ownership transfer atomic',
+      'keep the public API; no new dependencies',
+    ].join('\n'),
   );
   assert.deepEqual(
     task.item.checks.map((check) => [check.done, check.text]),
-    [
-      [false, '100 concurrent acquires never share a connection'],
-      [true, 'all pool tests pass'],
-    ],
+    [[true, 'all pool tests pass']],
+  );
+  assert.match(
+    task.item.value('check'),
+    /^- 100 concurrent acquires never share a connection\n- \[x\] all/,
   );
   assert.equal(task.item.value('related'), `${URL_86}, lib/review/task.js`);
   const text = serializeReview(store);
@@ -104,13 +107,14 @@ test('labels give the kind and the priority', () => {
   assert.equal(issueKind(['docs']), 'improvements');
   assert.equal(issueKind([]), 'improvements');
   assert.equal(issuePriority(['priority: high']), 'high');
-  assert.equal(issuePriority(['critical']), 'critical');
+  assert.equal(issuePriority(['critical']), 'high');
+  assert.equal(issuePriority(['urgent']), 'high');
   assert.equal(issuePriority(['bug']), '');
   const store = new ReviewStore('/tmp/x.md');
   const bug = issue86({ labels: ['bug', 'priority/critical'], body: 'x' });
   store.applyImportedNotes({ tasks: [{ file: 'issue', issue: bug }] });
   assert.equal(store.tasks[0].kind, 'bugs');
-  assert.equal(store.tasks[0].item.priority, 'critical');
+  assert.equal(store.tasks[0].item.priority, 'high');
 });
 
 test('parseIssueBody keeps lines that are not known fields', () => {

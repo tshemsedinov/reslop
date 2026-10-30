@@ -7,7 +7,7 @@ const path = require('node:path');
 
 const { MarkdownDoc } = require('../lib/review/markdown.js');
 const review = require('../lib/review/review.js');
-const { parseReview, serializeReview } = review;
+const { parseReview, serializeReview, ReviewStore } = review;
 
 const ROOT = path.join(__dirname, '..');
 
@@ -22,7 +22,7 @@ const markdownIn = (dir) => {
   }
 };
 
-// A reslop plan with a section reslop does not model, like the one an agent
+// A reslop plan with a block reslop does not model, like the one an agent
 // leaves after a run
 const AGENT_PLAN = [
   '---',
@@ -209,7 +209,7 @@ test('editing a structured task rewrites only its changed lines', () => {
   assert.match(out, /^ {6}- \[ \] no shared connection$/m);
 });
 
-test('a task in a custom section has no kind and stays in place', () => {
+test('a task in a custom block has no kind and stays in place', () => {
   const store = parseReview(
     FREE_FORM.replace('Blocks:', '- [ ] add blocks'),
     '/x.md',
@@ -230,16 +230,15 @@ test('removing a task leaves one blank line between blocks', () => {
   assert.match(out, /## Improvements\n\n## Verification/);
 });
 
-test('reslop plans that are open get the current instructions', () => {
+test('edited instructions are kept when the plan is saved', () => {
   const open = AGENT_PLAN.replace('status: done', 'status: editing');
   const store = parseReview(open, '/repo/.plan/2026-10-26-00.md');
   store.addTask('TODOs', 'more', false, 'improvements');
   const out = serializeReview(store);
-  assert.match(out, /Tick each `check` item when it holds/);
-  assert.match(out, /## Verification/);
-  const other = parseReview(open, '/repo/specs/plan.md');
-  other.addTask('TODOs', 'more', false, 'improvements');
-  assert.doesNotMatch(serializeReview(other), /Tick each `check` item/);
+  assert.match(out, /- Run reviews with status `editing` or `partial`\n/);
+  assert.doesNotMatch(out, /Tick each `check` item/);
+  const fresh = new ReviewStore('/repo/.plan/2026-10-27-00.md');
+  assert.match(serializeReview(fresh), /Tick each `check` item/);
 });
 
 test('the README task example round-trips and reads as fields', () => {

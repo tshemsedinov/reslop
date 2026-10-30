@@ -53,6 +53,14 @@ const KEY_SEQUENCES = [
   ['\x1b[27;5;13~', 'ctrl-enter'],
   ['\x1b[27;6;13~', 'ctrl-shift-enter'],
   ['\x1b[13~', 'f3'],
+  ['\x1b[9;2u', 'shift-tab'],
+  ['\x1b[27;2;9~', 'shift-tab'],
+  ['\x1b[27;2;35~', '#'],
+  ['\x1b[35u', '#'],
+  ['\x1b[2;2~', 'insert'],
+  ['\x1b[105;5u', 'ctrl-i'],
+  ['\x1b[27;5;105~', 'ctrl-i'],
+  ['\t', 'tab'],
 ];
 
 test('decodeChunk maps letters, control codes, and escape sequences', () => {
@@ -104,20 +112,6 @@ test('decodeChunk maps kitty reports of plain keys', () => {
 
 // The keys of the tasks screen as kitty, xterm, GNOME Terminal, Windows
 // Terminal, iTerm2, and tmux send them
-test('decodeChunk reads the tasks screen keys from common terminals', () => {
-  const keys = (text) => decodeChunk(text).events.map((event) => event.key);
-  const ctrlEnter = ['\x1b[13;5u', '\x1b[27;5;13~', '\n'];
-  for (const text of ctrlEnter) assert.deepEqual(keys(text), ['ctrl-enter']);
-  const shiftTab = ['\x1b[Z', '\x1b[9;2u', '\x1b[27;2;9~'];
-  for (const text of shiftTab) assert.deepEqual(keys(text), ['shift-tab']);
-  for (const text of ['#', '\x1b[27;2;35~', '\x1b[35u']) {
-    assert.deepEqual(keys(text), ['#']);
-  }
-  assert.deepEqual(keys('\x1b[2~'), ['insert']);
-  assert.deepEqual(keys('\x1b[2;2~'), ['insert']);
-  assert.deepEqual(keys(' '), [' ']);
-});
-
 test('decodeChunk parses SGR mouse press', () => {
   const event = decodeChunk('\x1b[<0;4;12M').events[0];
   assert.equal(event.type, 'mouse');
@@ -170,7 +164,7 @@ const KEY_ACTIONS = [
   ['c', undefined, 'commit'],
   ['l', undefined, 'theme'],
   ['x', undefined, null],
-  [' ', undefined, 'check'],
+  [' ', undefined, null],
   ['g', undefined, null],
   ['r', undefined, null],
   ['backspace', undefined, 'removeTask'],
@@ -256,7 +250,14 @@ const KEY_ACTIONS = [
   ['w', 'packages', 'packageWanted'],
   ['l', 'packages', 'packageLatest'],
   ['c', 'npm', 'dashCommits'],
-  ['delete', 'tasks', 'drop'],
+  ['ctrl-r', 'tasks', 'taskDrop'],
+  ['ctrl-i', 'tasks', 'taskImport'],
+  ['tab', 'tasks', null],
+  ['insert', 'tasks', 'taskNew'],
+  ['ctrl-b', 'tasks', 'blockMenu'],
+  ['ctrl-l', 'tasks', 'taskPriority'],
+  ['ctrl-d', 'tasks', 'taskDone'],
+  ['ctrl-p', 'tasks', 'plan'],
   ['j', 'files', 'next'],
   ['k', 'files', 'prev'],
   ['a', 'files', 'add'],

@@ -25,7 +25,7 @@ Work through unchecked items, one commit per ID.
 - [x] B2: Ignore editor swap files in the disk watcher
   - where: lib/dashboard/watch.js#ignoredName
   - result: `.swp` and `.swo` are skipped; watch tests pass
-- [ ] critical: Watcher misses a review written through a symlink
+- [ ] high: Watcher misses a review written through a symlink
 
 ## Refactoring and Technical debt
 

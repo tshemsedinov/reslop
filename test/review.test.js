@@ -505,7 +505,7 @@ test('flushReview skips write when there are no notes', () => {
   }
 });
 
-test('parseReview keeps tasks from the previous section names', () => {
+test('parseReview keeps tasks from the previous block names', () => {
   const md = [
     '## Backlog',
     '',
@@ -608,7 +608,7 @@ test('serializeReview places improvements after feature requests', () => {
   assert.ok(improvements < bugs);
 });
 
-test('parseReview still reads the previous section titles', () => {
+test('parseReview still reads the previous block titles', () => {
   const md = [
     '## Feature requests',
     '',

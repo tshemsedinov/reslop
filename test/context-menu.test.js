@@ -29,7 +29,7 @@ test('context menu uses a contrasting background without a border', () => {
           x: 79,
           y: 23,
           cursor: 0,
-          actions: ['import', 'drop'],
+          actions: ['taskImport', 'drop'],
           disabled: ['drop'],
         },
         80,
@@ -63,10 +63,10 @@ test('regular popups use inline shortcut labels like the hint panel', () => {
       x: 0,
       y: 2,
       actions: [
-        'import',
+        'taskImport',
         'drop',
         'open',
-        'check',
+        'taskDone',
         'newBranch',
         'worktreeBranch',
         'code',
@@ -78,7 +78,7 @@ test('regular popups use inline shortcut labels like the hint panel', () => {
   );
   assert.deepEqual(
     menu.lines.map((line) => line.text.trim()),
-    ['import', 'delete', 'enter open', 'space', 'insert', 'worktree', 'edit'],
+    ['^import', 'delete', 'enter open', '^done', 'insert', 'worktree', 'edit'],
   );
   const colored = contextMenu({ actions: ['rebase'] }, 80, 24, true);
   const hot = paint('e', THEME.buttonHotFg, THEME.popupHotBg, true, true);

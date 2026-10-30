@@ -25,21 +25,62 @@ const { showFile } = require('../lib/session/unit.js');
 
 // The checkbox rows of the tasks screen, without headings and text
 const taskRows = (session) =>
-  session.view().tasks.filter((text) => /^\[[ xX]\] /.test(text));
+  session.composer.tasks.taskTexts().filter((text) => /^\[[ xX]\] /.test(text));
 
 // The row of the tasks screen whose label includes a text
 const rowOf = (session, text) =>
-  session.view().tasks.findIndex((label) => label.includes(text));
+  session.composer.tasks.taskTexts().findIndex((label) => label.includes(text));
 
 // The row of the nth checkbox on the tasks screen
 const taskAt = (session, n) => {
-  const labels = session.view().tasks;
+  const labels = session.composer.tasks.taskTexts();
   const rows = labels.map((label, at) => (/^\[[ xX]\] /.test(label) ? at : -1));
   return rows.filter((at) => at >= 0)[n] ?? -1;
 };
 
 // The label of the focused row of the tasks screen
-const focusedRow = (session) => session.view().tasks[session.tasksFocus];
+const focusedRow = (session) =>
+  session.composer.tasks.taskTexts()[session.tasksFocus];
+
+// Focus on a row of the tasks screen; the block in the editor is written
+// back first, as moving the focus does
+const focusTask = (session, at) => {
+  session.composer.tasks.closeEditor();
+  session.tasksFocus = at;
+};
+
+// The editor of the focused block, with the cursor at a text in it
+const cursorAt = (session, text) => {
+  session.composer.tasks.settle();
+  const at = session.editor.text.indexOf(text);
+  assert.ok(at >= 0, text);
+  session.editor.place(at);
+  return session.editor;
+};
+
+// Writes the edited task back and edits it again, as a move away and back
+const saveTask = (session) => {
+  session.composer.tasks.closeEditor();
+  session.composer.tasks.settle();
+};
+
+// Page Down until a row has the focus, as many times as the list needs
+const pageTo = (session, label) => {
+  for (let at = 0; at < 10 && focusedRow(session) !== label; at++) {
+    press(session, 'pageDown');
+  }
+};
+
+// Types tasks one below another on the tasks screen; the focus stays on
+// the last one, out of the editor until the next key
+const typeTasks = (session, ...texts) => {
+  session.dispatch('tasks');
+  texts.forEach((text, at) => {
+    if (at) press(session, 'insert');
+    session.pushInput(text);
+  });
+  session.composer.tasks.closeEditor();
+};
 const clipboard = require('../lib/term/clipboard.js');
 
 const { dateStamp } = require('../lib/common/utilities.js');
@@ -1646,13 +1687,12 @@ test('code save equal to original drops the proposal', async () => {
 test('todos screen ignores commit and todo hotkeys', async () => {
   const { session } = await openSession([sampleItem('a.js')]);
   session.dispatch('tasks');
-  press(session, 'escape');
   assert.equal(session.tasksOpen, true);
-  assert.equal(session.mode, 'review');
+  assert.equal(session.composeKind, 'tasks');
   session.dispatch('commit');
-  assert.equal(session.mode, 'review');
+  assert.equal(session.composeKind, 'tasks');
   session.dispatch('tasks');
-  assert.equal(session.mode, 'review');
+  assert.equal(session.composeKind, 'tasks');
 });
 
 test('right click opens task operations with their hotkeys', async () => {
@@ -1660,27 +1700,44 @@ test('right click opens task operations with their hotkeys', async () => {
   session.notes.addTask('a.js', 'context target');
   session.composer.tasks.openTasksPage();
   session.draw();
+  const at = rowOf(session, 'context target');
   const hit = session.lastFrame.taskHits.find(
-    (entry) => entry.cursor === 0 && !entry.check,
+    (entry) => entry.cursor === at && !entry.check,
   );
-  assert.ok(hit);
   rightClick(session, 10, hit.y);
-  assert.equal(session.tasksFocus, 0);
+  assert.equal(session.tasksFocus, at);
   assert.deepEqual(session.nav.contextMenu.actions, [
-    'open',
-    'check',
-    'import',
-    'drop',
+    'taskNew',
+    'taskDone',
+    'taskPriority',
+    'taskField',
+    'taskOpen',
+    'taskDrop',
   ]);
-  const menuRows = session.lastFrame.contextHits.map((entry) =>
-    stripAnsi(session.lastFrame.rows[entry.y - 1]).trim(),
+  const shown = session.lastFrame.contextHits.map((entry) =>
+    stripAnsi(session.lastFrame.rows[entry.y - 1]),
   );
-  assert.ok(menuRows.some((row) => row.includes('import')));
-  assert.ok(menuRows.some((row) => row.includes('delete')));
-  press(session, 'i');
-  assert.equal(session.mode, 'import');
+  assert.ok(shown.some((row) => row.includes('ins  new task below')));
+  assert.ok(shown.some((row) => row.includes('^d   done')));
+  assert.ok(shown.some((row) => row.includes('^l   priority…')));
+  assert.ok(shown.some((row) => row.includes('^r   delete')));
+  press(session, 'ctrl-l', 'h');
+  assert.equal(focusedRow(session), '[ ] high: context target');
+  focusTask(session, rowOf(session, 'Feature requests'));
+  session.draw();
+  const head = session.lastFrame.taskHits.find(
+    (entry) => entry.cursor === session.tasksFocus,
+  );
+  rightClick(session, 10, head.y);
+  assert.deepEqual(session.nav.contextMenu.actions, [
+    'taskNew',
+    'blockMenu',
+    'taskExpand',
+    'taskDrop',
+  ]);
+  press(session, 'tab');
   assert.equal(session.nav.contextMenu, null);
-  press(session, 'escape');
+  assert.equal(rowOf(session, 'context target'), -1);
 });
 
 test('blank branch space offers screen commands', async () => {
@@ -1794,7 +1851,7 @@ test('editor context commands preserve and edit selected text', async () => {
 test('import textbox context paste keeps the textbox focused', async (t) => {
   const { session } = await openSession([sampleItem('a.js')]);
   session.composer.tasks.openTasksPage();
-  session.dispatch('import');
+  session.dispatch('taskImport');
   session.draw();
   const statusY = session.lastFrame.height - 1;
   t.mock.method(clipboard, 'pasteText', () => 'https://example.com/a\n');
@@ -1813,7 +1870,7 @@ test('todo list scrolls the focused row into view', async () => {
   stdout.rows = 12;
   for (let i = 0; i < 30; i++) session.notes.addTask('a.js', `item ${i}`);
   session.composer.tasks.openTasksPage();
-  session.tasksFocus = rowOf(session, 'item 0');
+  focusTask(session, rowOf(session, 'item 0'));
   session.draw();
   const top = stripAnsi(session.lastFrame.rows.join('\n'));
   assert.match(top, /item 0(?!\d)/);
@@ -1850,19 +1907,18 @@ test('scrolling to the top shows the first header and blank line', async () => {
   stdout.rows = 12;
   for (let i = 0; i < 30; i++) session.notes.addTask('a.js', `item ${i}`);
   session.composer.tasks.openTasksPage();
-  session.tasksFocus = 0;
+  focusTask(session, 0);
   for (let i = 0; i < 25; i++) session.dispatch('scrollDown');
   session.draw();
   assert.ok(session.scroll > 0);
-  press(session, 'home');
+  session.dispatch('home');
   session.draw();
   assert.equal(session.tasksFocus, 0);
   assert.equal(session.scroll, 0);
   const rows = session.lastFrame.rows.map((row) => stripAnsi(row));
   assert.equal(rows[1].trim(), '');
-  assert.match(rows[2], /▸ Agent instructions/);
-  assert.equal(rows[3].trim(), '');
-  assert.match(rows[4], /Feature requests and Enhancements/);
+  assert.match(rows[2], /Agent instructions/);
+  assert.match(rows[3], /Work through unchecked items/);
 });
 
 test('tasks list ends with a blank line after the blocks', async () => {
@@ -1875,13 +1931,13 @@ test('tasks list ends with a blank line after the blocks', async () => {
   const plain = () => session.lastFrame.rows.map((row) => stripAnsi(row));
   assert.ok(session.lastFrame.scrollMax > 0);
   assert.notEqual(plain()[statusAt - 1].trim(), '');
-  press(session, 'end');
+  session.dispatch('end');
   session.draw();
   assert.equal(session.scroll, session.lastFrame.scrollMax);
   const endRows = plain();
   assert.equal(endRows[statusAt - 1].trim(), '');
   assert.notEqual(endRows[statusAt - 2].trim(), '');
-  press(session, 'home');
+  session.dispatch('home');
   session.draw();
   assert.equal(session.scroll, 0);
   assert.notEqual(plain()[statusAt - 1].trim(), '');
@@ -1897,14 +1953,12 @@ test('a short tasks list does not scroll for a trailing blank', async () => {
 
 test('ctrl+up and ctrl+down reorder tasks and stay inside a file', async () => {
   const { session, stdout } = await openSession([sampleItem('a.js')]);
-  stdout.columns = 100;
+  stdout.columns = 140;
   session.dispatch('tasks');
   session.pushInput('first');
-  press(session, 'escape');
-  session.composer.tasks.newTask();
+  press(session, 'insert');
   session.pushInput('second');
-  press(session, 'escape');
-  session.tasksFocus = rowOf(session, 'first');
+  focusTask(session, rowOf(session, 'first'));
   press(session, 'ctrl-down');
   assert.deepEqual(
     session.notes.tasks.map((task) => task.text),
@@ -1933,13 +1987,13 @@ test('ctrl+up and ctrl+down reorder tasks and stay inside a file', async () => {
   const security = rows.findIndex(
     (row) => row.task && row.task.text === 'only',
   );
-  session.tasksFocus = security;
+  focusTask(session, security);
   press(session, 'ctrl-down');
   assert.equal(session.notes.tasks[0].kind, 'security');
   const quote = session.composer.tasks
     .rows()
     .findIndex((row) => row.quote && row.note.text === 'quote one');
-  session.tasksFocus = quote;
+  focusTask(session, quote);
   press(session, 'ctrl-down');
   const quoted = [];
   for (const note of session.notes.feedback.values()) quoted.push(note.text);
@@ -1968,14 +2022,12 @@ test('quoted feedback can be edited from the tasks screen', async () => {
   });
   session.composer.tasks.openTasksPage();
   const quote = session.composer.tasks.rows().findIndex((row) => row.quote);
-  session.tasksFocus = quote;
-  press(session, 'enter');
+  focusTask(session, quote);
   session.pushInput(' more');
-  press(session, 'escape');
+  press(session, 'ctrl-d');
   const note = session.notes.feedback.get('a.js:1:1:0');
   assert.equal(note.text, 'quote more');
-  press(session, ' ');
-  assert.equal(session.notes.feedback.get('a.js:1:1:0').done, true);
+  assert.equal(note.done, true);
 });
 
 test('tasks status switches plan files, defaults to the last', async () => {
@@ -1996,7 +2048,6 @@ test('tasks status switches plan files, defaults to the last', async () => {
     ].join('\n'),
   );
   session.dispatch('tasks');
-  press(session, 'escape');
   session.draw();
   const status = stripAnsi(session.lastFrame.rows.at(-2));
   const current = session.composer.tasks.planName();
@@ -2005,9 +2056,9 @@ test('tasks status switches plan files, defaults to the last', async () => {
   assert.ok(names.includes('2020-01-01-00.md'));
   assert.ok(status.includes(current));
   assert.equal(status.includes('▾'), false);
-  assert.match(status, /tasks \d+\/\d+\s*$/);
+  assert.match(status, /open \d+ · done \d+\/\d+\s*$/);
   const ratios = status.match(/\d+\/\d+/g);
-  assert.deepEqual(ratios, [status.match(/tasks (\d+\/\d+)/)[1]]);
+  assert.deepEqual(ratios, [status.match(/done (\d+\/\d+)/)[1]]);
   session.composer.tasks.togglePlanMenu();
   session.draw();
   const menu = stripAnsi(session.lastFrame.rows.join('\n'));
@@ -2035,8 +2086,7 @@ test('tasks plan combo filters in place and keeps the agent menu', async () => {
   fs.writeFileSync(path.join(dir, 'beta-plan.md'), '# beta\n');
   fs.writeFileSync(path.join(dir, 'main-plan.md'), '# main\n');
   session.dispatch('tasks');
-  press(session, 'escape');
-  session.composer.tasks.togglePlanMenu();
+  press(session, 'ctrl-p');
   session.draw();
   const menuRows = () =>
     session.lastFrame.rows.filter(
@@ -2063,7 +2113,7 @@ test('tasks plan combo filters in place and keeps the agent menu', async () => {
   session.draw();
   const status = stripAnsi(session.lastFrame.rows.at(-2));
   const afterBranch = status.slice(status.indexOf('main') + 'main'.length);
-  assert.match(afterBranch, /^ {2}Plan file: m/);
+  assert.match(afterBranch, /^ {2}\^plan file: m/);
   const hit = session.lastFrame.statusHits.find(
     (entry) => entry.id === 'plan-item',
   );
@@ -2093,29 +2143,36 @@ test('tasks plan combo filters in place and keeps the agent menu', async () => {
 test('tasks plan hotkey opens the combo and can start a new plan', async () => {
   const opened = await openSession([sampleItem('a.js')], { color: true });
   const { session } = opened;
-  opened.stdout.columns = 100;
+  opened.stdout.columns = 120;
   session.dispatch('tasks');
-  press(session, 'escape');
   session.draw();
   const footer = stripAnsi(session.lastFrame.rows.at(-1));
-  assert.match(footer, /🢐esc {2}insert {2}section {2}plan {2}import/);
+  assert.match(
+    footer,
+    /🢐esc {2}insert {2}\^remove {2}tab {2}\^block {2}\^done {2}\^level/,
+  );
+  assert.doesNotMatch(footer, /space|files/);
   assert.match(footer, /ctrl\+up\/dn/);
   const nudge = `${BOLD}${seq(THEME.buttonHotFg, THEME.buttonBg)}up/dn`;
   assert.ok(session.lastFrame.rows.at(-1).includes(nudge));
+  const priority = `${BOLD}${seq(THEME.buttonHotFg, THEME.buttonBg)}t`;
+  assert.ok(session.lastFrame.rows.at(-1).includes(priority));
   const closed = session.lastFrame.rows.at(-2);
   const name = session.composer.tasks.planName();
   const mark = `${BOLD}${seq(THEME.shaFg, THEME.chromeBg)}${name}`;
-  const lead = `${seq(THEME.mutedFg, THEME.chromeBg)}  Plan file: `;
-  assert.ok(closed.includes(lead));
+  const key = `${BOLD}${seq(THEME.buttonHotFg, THEME.chromeBg)}^p`;
+  assert.ok(closed.includes(key));
+  assert.match(stripAnsi(closed), / {2}\^plan file: /);
   assert.ok(closed.includes(mark));
   assert.equal(closed.includes('▾'), false);
   const hits = session.lastFrame.statusHits;
   const place = hits.find((entry) => entry.id === 'plan');
   assert.ok(place);
-  const mid = place.x0 + Math.floor((place.x1 - place.x0) / 2);
-  click(session, mid + 1, place.y);
+  const row = stripAnsi(closed);
+  assert.equal(row.slice(place.x0, place.x0 + 12), '^plan file: ');
+  click(session, place.x0 + 1, place.y);
   assert.equal(session.composer.tasks.planOpen, true);
-  press(session, 'escape', 'p');
+  press(session, 'escape', 'ctrl-p');
   assert.equal(session.composer.tasks.planOpen, true);
   session.draw();
   const menu = stripAnsi(session.lastFrame.rows.join('\n'));
@@ -2131,7 +2188,7 @@ test('import url closes when focus leaves the field', async () => {
   const { session } = await openSession([sampleItem('a.js')]);
   const begin = () => {
     session.dispatch('tasks');
-    press(session, 'escape', 'i');
+    press(session, 'ctrl-i');
     session.pushInput('https://example.com');
     session.draw();
   };
@@ -2154,8 +2211,8 @@ test('import url closes when focus leaves the field', async () => {
   press(session, 'ctrl-down');
   closed();
   begin();
-  clickFooter(session, 'dashFiles');
-  assert.equal(session.pane, 'files');
+  clickFooter(session, 'back');
+  assert.notEqual(session.pane, 'tasks');
   closed();
 });
 
@@ -2175,16 +2232,16 @@ test('tasks import asks for a url and applies the pull request', async () => {
     }),
   });
   session.dispatch('tasks');
-  press(session, 'escape', 'i');
+  press(session, 'ctrl-i');
   assert.equal(session.mode, 'import');
   session.draw();
   const asking = stripAnsi(session.lastFrame.rows.at(-2));
   assert.match(asking, /^ url /);
   session.pushInput('notaurl');
   press(session, 'enter');
-  assert.equal(session.mode, 'review');
+  assert.notEqual(session.mode, 'import');
   assert.equal(session.status, 'bad url');
-  press(session, 'i');
+  press(session, 'ctrl-i');
   session.pushInput('https://github.com/acme/demo/pull/7');
   session.draw();
   const typed = stripAnsi(session.lastFrame.rows.at(-2));
@@ -2199,7 +2256,7 @@ test('tasks import asks for a url and applies the pull request', async () => {
 test('an empty import url stays focused after backspace', async () => {
   const { session } = await openSession([sampleItem('a.js')]);
   session.dispatch('tasks');
-  press(session, 'escape', 'i');
+  press(session, 'ctrl-i');
   session.pushInput('x');
   press(session, 'backspace');
   assert.equal(session.nav.import.url, '');
@@ -2219,7 +2276,7 @@ test('tasks import prefills an editable repository url', async () => {
   });
   const { session } = await openSession([item], { cwd, repo });
   session.dispatch('tasks');
-  press(session, 'escape', 'i');
+  press(session, 'ctrl-i');
   assert.equal(session.nav.import.url, 'https://github.com/acme/demo');
   session.pushInput('/issues/4');
   assert.equal(session.nav.import.url, 'https://github.com/acme/demo/issues/4');
@@ -2253,13 +2310,13 @@ test('tasks import accepts a github or gitlab issue url', async () => {
     }),
   });
   session.dispatch('tasks');
-  press(session, 'escape', 'i');
+  press(session, 'ctrl-i');
   session.pushInput('https://github.com/acme/demo/issues/4');
   press(session, 'enter');
   await session.importPromise;
   assert.equal(session.status, 'imported');
   assert.match(session.notes.tasks[0].text, /add the flag/);
-  press(session, 'i');
+  press(session, 'ctrl-i');
   session.pushInput('https://gitlab.com/acme/demo/-/issues/8');
   press(session, 'enter');
   await session.importPromise;
@@ -2303,7 +2360,7 @@ test('tasks import accepts a github or gitlab issue list', async () => {
     },
   });
   session.dispatch('tasks');
-  press(session, 'escape', 'i');
+  press(session, 'ctrl-i');
   session.pushInput('https://github.com/tshemsedinov/reslop/issues');
   press(session, 'enter');
   await session.importPromise;
@@ -2314,7 +2371,7 @@ test('tasks import accepts a github or gitlab issue list', async () => {
     list: true,
   });
   assert.match(session.notes.tasks[0].text, /@ScriptHound at github:/);
-  press(session, 'i');
+  press(session, 'ctrl-i');
   session.pushInput('https://gitlab.com/acme/demo');
   press(session, 'enter');
   await session.importPromise;
@@ -2385,93 +2442,92 @@ test('t opens the repo todo page and lets you edit it', async () => {
   assert.equal(session.mode, 'compose');
   assert.equal(session.items[0].origin, 'unstaged');
   session.pushInput('rewrite loop');
-  press(session, 'ctrl-s');
+  press(session, 'insert');
   assert.equal(session.items[0].file.newPath, 'a.js');
   assert.equal(session.items[1].file.newPath, 'b.js');
   assert.equal(session.current().origin, 'task');
-  assert.deepEqual(taskRows(session), ['[ ] rewrite loop']);
+  assert.deepEqual(taskRows(session), ['[ ] rewrite loop', '[ ] ']);
   assert.equal(session.view().total, 2);
   assert.equal(session.view().counts.tasks, 1);
   assert.equal(session.view().counts.feedback, 0);
-  assert.equal(focusedRow(session), '[ ] rewrite loop');
-  press(session, 'enter');
-  assert.equal(session.mode, 'compose');
-  assert.equal(session.editor.text, 'rewrite loop');
-  press(session, 'escape');
-  assert.equal(session.mode, 'review');
-  assert.equal(focusedRow(session), '[ ] rewrite loop');
-  assert.equal(session.composer.idleNoteText(), '');
-  session.composer.tasks.newTask();
   assert.equal(session.mode, 'compose');
   assert.equal(session.editor.text, '');
-  assert.deepEqual(taskRows(session), ['[ ] rewrite loop', '[ ] ']);
+  assert.equal(session.composer.idleNoteText(), '');
   session.pushInput('add tests');
-  press(session, 'ctrl-s');
-  assert.equal(session.tasksOpen, true);
+  press(session, 'up');
+  assert.equal(session.editor.text, 'rewrite loop');
   assert.deepEqual(taskRows(session), ['[ ] rewrite loop', '[ ] add tests']);
-  assert.equal(focusedRow(session), '[ ] add tests');
+  assert.equal(focusedRow(session), '[ ] rewrite loop');
   press(session, 'escape');
   assert.equal(session.pane, 'files');
   assert.equal(session.current().file.newPath, 'a.js');
 });
 
-test('an empty plan shows a hint row that starts a task', async () => {
+test('an empty plan has a new task to type into', async () => {
   const { session } = await openSession([sampleItem('a.js')]);
   session.composer.tasks.openTasksPage();
-  assert.deepEqual(session.view().tasks, [
-    'Agent instructions',
-    'Insert task · s section · e markdown',
-  ]);
-  assert.equal(session.tasksFocus, 1);
-  press(session, 'enter');
+  assert.deepEqual(session.composer.tasks.taskTexts(), ['Agent instructions']);
+  session.pushInput('write tests');
   assert.equal(session.mode, 'compose');
   assert.equal(session.composeTaskId, null);
-  assert.equal(session.editor.text, '');
-  press(session, 'escape');
-  assert.equal(focusedRow(session), 'Insert task · s section · e markdown');
-  session.draw();
-  const hint = session.lastFrame.taskHits.find((row) => row.cursor === 1);
-  assert.ok(hint);
-  click(session, 2, hint.y);
-  assert.equal(session.mode, 'compose');
-  session.pushInput('first note');
-  press(session, 'escape');
-  assert.deepEqual(session.view().tasks, [
+  press(session, 'insert');
+  assert.deepEqual(session.composer.tasks.taskTexts(), [
     'Agent instructions',
     'Feature requests and Enhancements',
-    '[ ] first note',
+    '[ ] write tests',
+    '[ ] ',
   ]);
-  assert.equal(session.mode, 'review');
-  assert.equal(focusedRow(session), '[ ] first note');
-  assert.equal(session.editor, null);
+  press(session, 'backspace');
+  assert.equal(focusedRow(session), '[ ] write tests');
+  assert.equal(session.editor.text, 'write tests');
 });
 
-test('enter and click edit the focused todo', async () => {
+test('the agent instructions open on focus to read and edit', async () => {
+  const { session } = await openSession([sampleItem('a.js')]);
+  session.composer.tasks.openTasksPage();
+  session.draw();
+  const plain = () => session.lastFrame.rows.map((row) => stripAnsi(row));
+  const open = () =>
+    session.composer.tasks
+      .taskTexts()
+      .some((row) => row.includes('Read the fields'));
+  assert.equal(open(), false);
+  press(session, 'up');
+  session.draw();
+  assert.equal(open(), true);
+  assert.match(focusedRow(session), /^- A task with a quoted/);
+  assert.equal(session.mode, 'compose');
+  session.dispatch('home');
+  assert.equal(focusedRow(session), 'Agent instructions');
+  assert.equal(session.mode, 'review');
+  press(session, 'down');
+  assert.match(focusedRow(session), /^Work through unchecked/);
+  assert.equal(session.mode, 'compose');
+  session.pushInput(' Ask first.');
+  press(session, 'up');
+  const text = fs.readFileSync(session.notes.reviewPath, 'utf8');
+  assert.match(text, /^Work through unchecked items\. Ask first\.$/m);
+  press(session, 'tab');
+  session.draw();
+  assert.equal(open(), false);
+  const peek = plain().filter((row) => row.includes('Work through unchecked'));
+  assert.deepEqual(
+    peek.map((row) => row.trim()),
+    ['Work through unchecked items. Ask first.'],
+  );
+});
+
+test('a click on a task edits it at once', async () => {
   const { session } = await openSession([sampleItem('a.js')]);
   session.dispatch('tasks');
   session.pushInput('first note');
-  press(session, 'ctrl-s');
-  session.composer.tasks.newTask();
+  press(session, 'insert');
   session.pushInput('second note');
-  press(session, 'ctrl-s');
-  assert.equal(session.mode, 'review');
+  press(session, 'up');
   const first = rowOf(session, 'first note');
   const second = rowOf(session, 'second note');
-  assert.equal(session.tasksFocus, second);
-  press(session, 'enter');
-  assert.equal(session.mode, 'compose');
-  assert.equal(session.editor.text, 'second note');
-  press(session, 'escape');
-  session.dispatch('scrollUp');
   assert.equal(session.tasksFocus, first);
-  session.draw();
-  const hit = session.lastFrame.taskHits.find((row) => row.cursor === first);
-  assert.ok(hit);
-  click(session, 8, hit.y);
-  assert.equal(session.tasksFocus, first);
-  assert.equal(session.mode, 'compose');
   assert.equal(session.editor.text, 'first note');
-  press(session, 'escape');
   session.draw();
   const other = session.lastFrame.taskHits.find((row) => row.cursor === second);
   assert.ok(other);
@@ -2481,31 +2537,28 @@ test('enter and click edit the focused todo', async () => {
   assert.equal(session.editor.text, 'second note');
 });
 
-test('Return edits a task and Escape saves it without advancing', async () => {
+test('alt+enter adds lines and escape saves and leaves', async () => {
   const { session } = await openSession([sampleItem('a.js')]);
   session.dispatch('tasks');
   session.pushInput('first\x1b\rsecond');
   assert.equal(session.mode, 'compose');
   assert.equal(session.tasksFocus, taskAt(session, 0));
   assert.equal(session.editor.text, 'first\nsecond');
-  press(session, 'escape');
-  session.composer.tasks.newTask();
+  press(session, 'insert');
   session.pushInput('another');
-  press(session, 'escape');
+  press(session, 'up');
   const ids = session.notes.tasks.map((task) => task.id);
-  session.tasksFocus = taskAt(session, 0);
-  session.pushInput('\r');
+  assert.equal(session.tasksFocus, taskAt(session, 0));
   const editor = session.editor;
   editor.place(2);
-  assert.match(session.view().status, /Enter at the end: new task; Alt/);
-  session.pushInput('\rA\rB');
+  session.pushInput('\x1b\rA\x1b\rB');
   assert.equal(session.editor, editor);
   assert.equal(session.editor.text, 'fi\nA\nBrst\nsecond');
   assert.equal(session.tasksFocus, taskAt(session, 0));
   assert.equal(session.composeTaskId, ids[0]);
   press(session, 'escape');
   assert.equal(session.mode, 'review');
-  assert.equal(session.tasksFocus, taskAt(session, 0));
+  assert.notEqual(session.pane, 'tasks');
   assert.equal(session.editor, null);
   assert.deepEqual(
     session.notes.tasks.map((task) => task.id),
@@ -2529,7 +2582,8 @@ for (const sequence of [
   test(`fragmented ${JSON.stringify(sequence)} stays in the task`, async () => {
     const { session } = await openSession([sampleItem('a.js')]);
     session.dispatch('tasks');
-    session.pushInput('beforeafter\x13\r');
+    session.pushInput('beforeafter');
+    saveTask(session);
     const editor = session.editor;
     editor.place(6);
     for (const byte of sequence) {
@@ -2538,7 +2592,7 @@ for (const sequence of [
       assert.equal(session.editor, editor);
     }
     assert.equal(editor.text, 'before\nafter');
-    session.pushInput('\x13');
+    saveTask(session);
     assert.equal(session.notes.tasks.length, 1);
     assert.equal(session.notes.tasks[0].text, 'before\nafter');
   });
@@ -2582,10 +2636,9 @@ for (const [name, shift, ctrl] of [
   test(`${name} adds lines inside an existing task`, async () => {
     const { session } = await openSession([sampleItem('a.js')]);
     session.dispatch('tasks');
-    session.pushInput('alphaomega\x13');
+    session.pushInput('alphaomega');
+    saveTask(session);
     const id = session.notes.tasks[0].id;
-    session.tasksFocus = taskAt(session, 0);
-    session.pushInput('\r');
     const editor = session.editor;
     editor.place(5);
     session.pushInput(`${shift}middle`);
@@ -2597,7 +2650,7 @@ for (const [name, shift, ctrl] of [
     session.pushInput(`${ctrl}tail`);
     assert.equal(session.editor, editor);
     assert.equal(session.tasksFocus, taskAt(session, 0));
-    session.pushInput('\x13');
+    saveTask(session);
     assert.equal(session.notes.tasks.length, 1);
     assert.equal(session.notes.tasks[0].text, 'alpha\nmiddle\ntailomega');
     const saved = fs.readFileSync(session.notes.reviewPath, 'utf8');
@@ -2609,7 +2662,7 @@ test('todo list stays on screen while composing', async () => {
   const { session } = await openSession([sampleItem('a.js')]);
   session.dispatch('tasks');
   session.pushInput('first note');
-  press(session, 'ctrl-s');
+  saveTask(session);
   session.composer.tasks.newTask();
   session.pushInput('draft two');
   assert.equal(session.mode, 'compose');
@@ -2620,29 +2673,30 @@ test('todo list stays on screen while composing', async () => {
   const hit = session.lastFrame.taskHits.find((row) => row.cursor === first);
   assert.ok(hit);
   click(session, 8, hit.y);
+  click(session, 8, hit.y);
   assert.equal(session.mode, 'compose');
   assert.equal(session.editor.text, 'first note');
   assert.equal(session.notes.tasks.length, 2);
   assert.equal(session.notes.tasks[1].text, 'draft two');
 });
 
-test('delete and backspace remove the selected todo', async () => {
+test('ctrl+r removes a task and backspace an emptied one', async () => {
   const { session } = await openSession([sampleItem('a.js')]);
   session.dispatch('tasks');
   session.pushInput('first note');
-  press(session, 'ctrl-s');
-  session.composer.tasks.newTask();
+  press(session, 'insert');
   session.pushInput('second note');
-  press(session, 'ctrl-s');
-  assert.equal(session.mode, 'review');
-  assert.equal(session.tasksFocus, taskAt(session, 1));
-  press(session, 'delete');
+  press(session, 'ctrl-r');
   assert.deepEqual(taskRows(session), ['[ ] first note']);
   assert.equal(session.tasksFocus, taskAt(session, 0));
+  assert.equal(session.editor.text, 'first note');
   assert.equal(session.current().origin, 'task');
+  press(session, 'ctrl-a', 'backspace');
+  assert.deepEqual(taskRows(session), ['[ ] ']);
   press(session, 'backspace');
   assert.deepEqual(taskRows(session), []);
   assert.equal(focusedRow(session), 'Feature requests and Enhancements');
+  assert.equal(session.editor.text, 'Feature requests and Enhancements');
   assert.equal(session.current().origin, 'task');
 });
 
@@ -2653,11 +2707,13 @@ test('empty autosave does not persist a draft todo', async () => {
   session.autosave();
   assert.equal(session.notes.tasks.length, 0);
   session.pushInput('keep this');
-  press(session, 'escape');
-  assert.equal(session.mode, 'review');
-  assert.equal(session.editor, null);
-  assert.equal(session.tasksFocus, taskAt(session, 0));
-  assert.equal(session.notes.tasks[0].text, 'keep this');
+  press(session, 'enter');
+  assert.equal(session.composeTaskId, null);
+  session.autosave();
+  assert.deepEqual(
+    session.notes.tasks.map((task) => task.text),
+    ['keep this'],
+  );
   assert.equal(session.current().origin, 'task');
 });
 
@@ -2677,16 +2733,17 @@ test('todo autosave updates one draft instead of duplicating', async () => {
   press(session, 'escape');
   assert.equal(session.mode, 'review');
   assert.equal(session.editor, null);
-  assert.equal(session.tasksFocus, taskAt(session, 0));
-  assert.deepEqual(taskRows(session), ['[ ] keep this more']);
+  assert.deepEqual(
+    session.notes.tasks.map((task) => task.text),
+    ['keep this more'],
+  );
 });
 
-test('typing a todo starts editing at the end of the line', async () => {
+test('up edits the task above from the end of its text', async () => {
   const { session } = await openSession([sampleItem('a.js')]);
   session.dispatch('tasks');
   session.pushInput('first');
-  press(session, 'escape');
-  assert.equal(session.mode, 'review');
+  press(session, 'insert', 'up');
   assert.equal(session.tasksFocus, taskAt(session, 0));
   session.pushInput('+more');
   assert.equal(session.mode, 'compose');
@@ -2694,37 +2751,22 @@ test('typing a todo starts editing at the end of the line', async () => {
   assert.equal(session.editor.cursor, 'first+more'.length);
 });
 
-test('home end and page keys jump the todo list', async () => {
+test('page keys jump the tasks list', async () => {
   const { session } = await openSession([sampleItem('a.js')]);
-  session.dispatch('tasks');
-  session.pushInput('one');
-  press(session, 'escape');
-  session.composer.tasks.newTask();
-  session.pushInput('two');
-  press(session, 'escape');
-  session.composer.tasks.newTask();
-  session.pushInput('three');
-  press(session, 'escape');
-  assert.equal(session.mode, 'review');
-  const last = session.view().tasks.length - 1;
-  press(session, 'home');
-  assert.equal(session.tasksFocus, 0);
-  press(session, 'end');
-  assert.equal(session.tasksFocus, last);
-  assert.equal(focusedRow(session), '[ ] three');
-  press(session, 'home', 'pageDown');
-  assert.equal(session.tasksFocus, last);
+  typeTasks(session, 'one', 'two', 'three');
   press(session, 'pageUp');
   assert.equal(session.tasksFocus, 0);
+  assert.equal(focusedRow(session), 'Agent instructions');
+  press(session, 'pageDown');
+  assert.ok(session.tasksFocus > 0);
+  pageTo(session, '[ ] three');
+  assert.equal(focusedRow(session), '[ ] three');
+  assert.equal(session.editor.text, 'three');
 });
 
 test('todo edit arrows move across todos without leaving edit', async () => {
   const { session } = await openSession([sampleItem('a.js')]);
-  session.dispatch('tasks');
-  session.pushInput('first');
-  press(session, 'escape');
-  session.composer.tasks.newTask();
-  session.pushInput('second');
+  typeTasks(session, 'first', 'second');
   press(session, 'up');
   assert.equal(session.mode, 'compose');
   assert.equal(session.tasksFocus, taskAt(session, 0));
@@ -2749,66 +2791,32 @@ test('todo edit arrows move across todos without leaving edit', async () => {
 
 test('todo edit arrows move inside a multiline todo', async () => {
   const { session } = await openSession([sampleItem('a.js')]);
-  session.dispatch('tasks');
-  session.pushInput('first');
-  press(session, 'escape');
-  session.composer.tasks.newTask();
-  session.pushInput('second');
-  press(session, 'escape');
+  typeTasks(session, 'first', 'second');
   session.notes.setTaskText(session.notes.tasks[1].id, 'one\ntwo\nthree');
-  press(session, 'enter');
+  session.composer.tasks.settle();
   assert.equal(session.mode, 'compose');
-  assert.equal(session.editor.linePos().line, 2);
-  press(session, 'up');
-  assert.equal(session.tasksFocus, taskAt(session, 1));
-  assert.equal(session.editor.linePos().line, 1);
-  press(session, 'up');
-  assert.equal(session.tasksFocus, taskAt(session, 1));
   assert.equal(session.editor.linePos().line, 0);
-  press(session, 'up');
-  assert.equal(session.mode, 'compose');
+  press(session, 'down', 'down');
+  assert.equal(session.tasksFocus, taskAt(session, 1));
+  assert.equal(session.editor.linePos().line, 2);
+  press(session, 'down');
+  assert.equal(session.tasksFocus, taskAt(session, 1));
+  assert.equal(session.editor.linePos().line, 2);
+  press(session, 'up', 'up', 'up');
   assert.equal(session.tasksFocus, taskAt(session, 0));
   assert.equal(session.editor.text, 'first');
   press(session, 'down');
   assert.equal(session.tasksFocus, taskAt(session, 1));
   assert.equal(session.editor.text, 'one\ntwo\nthree');
-  assert.equal(session.editor.linePos().line, 2);
-  press(session, 'down');
-  assert.equal(session.tasksFocus, taskAt(session, 1));
-  assert.equal(session.editor.text, 'one\ntwo\nthree');
-});
-
-test('todo list arrows skip over multiline items', async () => {
-  const { session } = await openSession([sampleItem('a.js')]);
-  session.dispatch('tasks');
-  session.pushInput('first');
-  press(session, 'escape');
-  session.composer.tasks.newTask();
-  session.pushInput('second');
-  press(session, 'escape');
-  session.notes.setTaskText(session.notes.tasks[1].id, 'one\ntwo\nthree');
-  assert.equal(session.mode, 'review');
-  assert.equal(session.tasksFocus, taskAt(session, 1));
-  press(session, 'up');
-  assert.equal(session.mode, 'review');
-  assert.equal(session.tasksFocus, taskAt(session, 0));
-  press(session, 'down');
-  assert.equal(session.tasksFocus, taskAt(session, 1));
-  press(session, 'down');
-  assert.equal(session.tasksFocus, taskAt(session, 1));
+  assert.equal(session.editor.linePos().line, 0);
 });
 
 test('todo edit arrows move across wrapped lines', async () => {
   const { session } = await openSession([sampleItem('a.js')]);
-  session.dispatch('tasks');
-  session.pushInput('first');
-  press(session, 'escape');
-  session.composer.tasks.newTask();
-  session.pushInput('second');
-  press(session, 'escape');
+  typeTasks(session, 'first', 'second');
   const long = 'x'.repeat(90);
   session.notes.setTaskText(session.notes.tasks[1].id, long);
-  press(session, 'enter', 'up');
+  press(session, 'up');
   assert.equal(session.tasksFocus, taskAt(session, 1));
   assert.ok(session.editor.cursor < long.length);
   press(session, 'down');
@@ -2820,42 +2828,35 @@ test('todo edit arrows move across wrapped lines', async () => {
 
 test('todo edit page keys jump across todos', async () => {
   const { session } = await openSession([sampleItem('a.js')]);
-  session.dispatch('tasks');
-  session.pushInput('first');
-  press(session, 'escape');
-  session.composer.tasks.newTask();
-  session.pushInput('second');
-  press(session, 'escape');
-  session.composer.tasks.newTask();
-  session.pushInput('third');
+  typeTasks(session, 'first', 'second', 'third');
   press(session, 'pageUp');
-  assert.equal(session.mode, 'compose');
-  assert.equal(focusedRow(session), 'Feature requests and Enhancements');
-  press(session, 'pageDown');
+  assert.equal(focusedRow(session), 'Agent instructions');
+  pageTo(session, '[ ] third');
   assert.equal(session.tasksFocus, taskAt(session, 2));
   assert.equal(session.editor.text, 'third');
 });
 
-test('enter at the end of a task starts a new one below', async () => {
+test('enter breaks the line, insert starts a task below', async () => {
   const { session } = await openSession([sampleItem('a.js')]);
   session.dispatch('tasks');
+  assert.deepEqual(taskRows(session), ['[ ] ']);
   session.pushInput('first');
-  press(session, 'enter');
-  assert.equal(session.mode, 'compose');
+  press(session, 'insert');
   assert.equal(session.editor.text, '');
   assert.deepEqual(taskRows(session), ['[ ] first', '[ ] ']);
   assert.equal(session.tasksFocus, taskAt(session, 1));
   session.pushInput('second');
-  press(session, 'enter', 'escape');
-  assert.equal(session.mode, 'review');
-  assert.deepEqual(taskRows(session), ['[ ] first', '[ ] second']);
-  assert.equal(focusedRow(session), '[ ] second');
-  press(session, 'up', 'enter', 'home');
-  session.pushInput('very ');
-  press(session, 'enter');
-  assert.equal(session.editor.text, 'very \nfirst');
-  press(session, 'escape');
-  assert.equal(session.notes.tasks[0].text, 'very \nfirst');
+  press(session, 'up', 'home', 'right', 'right', 'enter');
+  assert.equal(session.editor.text, 'fi\nrst');
+  press(session, 'end', 'enter');
+  session.pushInput('- where: lib/a.js');
+  press(session, 'down');
+  assert.equal(session.notes.tasks[0].text, 'fi\nrst\n- where: lib/a.js');
+  assert.equal(session.notes.tasks[0].item.value('where'), 'lib/a.js');
+  assert.deepEqual(
+    session.notes.tasks.map((task) => task.item.title),
+    ['fi', 'second'],
+  );
 });
 
 test('todo save recovers if the stub was dropped', async () => {
@@ -2863,7 +2864,7 @@ test('todo save recovers if the stub was dropped', async () => {
   session.dispatch('tasks');
   for (const task of session.notes.tasks) session.notes.removeTask(task.id);
   session.pushInput('still here');
-  press(session, 'escape');
+  press(session, 'insert');
   assert.equal(session.notes.tasks.length, 1);
   assert.equal(session.notes.tasks[0].text, 'still here');
   assert.equal(session.current().origin, 'task');
@@ -4341,7 +4342,7 @@ test('load skips imported GitHub notes when resuming a review', async () => {
 test('openLoad paints git items before npm extras arrive', async () => {
   const gitItem = sampleItem('a.js');
   const extraItem = sampleItem('package.json');
-  extraItem.dep = { change: { name: 'lodash', section: 'dependencies' } };
+  extraItem.dep = { change: { name: 'lodash', block: 'dependencies' } };
   const cwd = tempDir('reslop-ui-');
   let extrasResolve = null;
   const extras = new Promise((resolve) => {
@@ -5479,30 +5480,24 @@ test('partial file add reloads after a later hunk fails', async () => {
   assert.equal(session.items[1].blockId, 1);
 });
 
-test('x and a checkbox click toggle a todo and the file keeps it', async () => {
+test('ctrl+d and a checkbox click toggle a task', async () => {
   const { session, stdout } = await openSession([sampleItem('a.js')]);
   stdout.columns = 100;
   session.dispatch('tasks');
   session.pushInput('ship it');
-  press(session, 'escape');
-  assert.equal(session.mode, 'review');
-  session.draw();
-  let body = stripAnsi(session.lastFrame.rows.join('\n'));
-  assert.match(body, /\[ \] ship it/);
-  session.pushInput(' ');
+  press(session, 'ctrl-d');
   assert.equal(session.notes.tasks[0].done, true);
+  assert.equal(session.editor.text, 'ship it');
   session.draw();
-  body = stripAnsi(session.lastFrame.rows.join('\n'));
+  const body = stripAnsi(session.lastFrame.rows.join('\n'));
   assert.match(body, /\[x\] ship it/);
-  assert.match(body, /delete {2}space/);
-  assert.ok(!body.includes(' q'));
-  session.pushInput(' ');
+  assert.doesNotMatch(body.split('\n').at(-1), /space/);
+  press(session, 'ctrl-d');
   assert.equal(session.notes.tasks[0].done, false);
   session.draw();
   const box = session.lastFrame.taskHits.find((row) => row.check);
   assert.ok(box);
   click(session, box.x0 + 1, box.y);
-  assert.equal(session.mode, 'review');
   assert.equal(session.notes.tasks[0].done, true);
   assert.equal(session.notes.tasks[0].text, 'ship it');
   const loaded = parseReview(
@@ -5511,13 +5506,7 @@ test('x and a checkbox click toggle a todo and the file keeps it', async () => {
   );
   assert.equal(loaded.tasks[0].done, true);
   assert.equal(loaded.tasks[0].text, 'ship it');
-  press(session, 'insert');
-  assert.equal(session.mode, 'compose');
-  assert.equal(session.editor.text, '');
-  press(session, 'escape');
-  assert.equal(session.notes.tasks.length, 1);
-  assert.equal(focusedRow(session), '[x] ship it');
-  press(session, 'enter', 'x', ' ', 'insert');
+  press(session, 'end', 'x', ' ');
   assert.equal(session.mode, 'compose');
   assert.equal(session.editor.text, 'ship itx ');
   assert.equal(session.notes.tasks[0].done, true);
@@ -5983,7 +5972,7 @@ for (const kind of ['script', 'command']) {
     if (kind === 'command') clickFooter(session, 'npmSolve');
     else session.pushInput('s');
     assert.equal(session.pane, 'tasks');
-    assert.equal(session.mode, 'review');
+    assert.equal(session.mode, 'compose');
     assert.equal(session.notes.reviewPath, reviewPath);
     const bug = session.notes.tasks.find((task) => task.kind === 'bugs');
     assert.ok(bug);
@@ -7181,7 +7170,7 @@ test('click moves the caret in feedback and todo editors', async () => {
   press(session, 'escape');
   session.dispatch('tasks');
   session.pushInput('ship');
-  press(session, 'escape', 'enter');
+  saveTask(session);
   session.editor.replace('ab\ncd');
   session.draw();
   const box = session.lastFrame.taskHits.find((row) => row.check);
@@ -7420,7 +7409,9 @@ test('ctrl-c stays in every screen when no text is selected', async () => {
     session.pane = pane;
     session.pushInput('\x03');
     assert.equal(session.done, false, pane);
-    assert.equal(session.mode, 'review', pane);
+    const editing = pane === 'tasks' ? 'compose' : 'review';
+    assert.equal(session.mode, editing, pane);
+    session.composer.tasks.closeEditor();
   }
 });
 
@@ -7489,7 +7480,7 @@ test('editors select with shift and copy cut paste', async () => {
   press(session, 'escape', 'escape');
   session.dispatch('tasks');
   session.pushInput('ship');
-  press(session, 'escape', 'enter');
+  saveTask(session);
   session.editor.replace('ab\ncd');
   press(session, 'shift-up');
   assert.equal(session.editor.text, 'ab\ncd');
@@ -7633,7 +7624,7 @@ test('find and import mouse selections use their line editors', async () => {
   assert.equal(session.status, 'copied');
   press(session, 'escape');
   session.composer.tasks.openTasksPage();
-  session.dispatch('import');
+  session.dispatch('taskImport');
   session.pushInput('https://example.com');
   session.draw();
   hit = session.lastFrame.editHits.find((entry) => entry.editor);
@@ -7699,7 +7690,7 @@ test('find import and plan lines select and use the clipboard', async () => {
   assert.equal(session.nav.find.editor.cursor, 9);
   press(session, 'escape');
   session.dispatch('tasks');
-  press(session, 'escape', 'i');
+  press(session, 'ctrl-i');
   session.pushInput('https://example.com/a');
   press(session, 'shift-left', 'shift-left');
   assert.equal(session.nav.import.editor.selectedText(), '/a');
@@ -7708,7 +7699,7 @@ test('find import and plan lines select and use the clipboard', async () => {
   press(session, 'ctrl-v');
   assert.equal(session.nav.import.url, 'https://example.com/a');
   assert.equal(session.mode, 'import');
-  press(session, 'escape', 'p');
+  press(session, 'escape', 'ctrl-p');
   session.pushInput('plan');
   press(session, 'ctrl-left');
   assert.equal(session.composer.tasks.planPick.editor.cursor, 0);
@@ -8247,7 +8238,7 @@ const PLAN_SCREEN = [
   '  - check:',
   '    - [ ] read loop survives a lone Escape',
   '    - [ ] terminal tests pass',
-  '- [ ] critical: Timeout error message names the pool',
+  '- [ ] high: Timeout error message names the pool',
   '',
   '## Notes',
   '',
@@ -8263,13 +8254,13 @@ test('tasks screen snapshot of a reslop plan', async () => {
   const { lines } = await planScreen('2026-10-27-00.md', PLAN_SCREEN);
   assert.deepEqual(lines, [
     '',
-    ' ▸ Agent instructions',
+    ' Agent instructions',
+    '   Work through unchecked items.',
     '',
     ` Bug Reports and Fixes${' '.repeat(54)}1/3`,
-    ' [x] B1 high Released connection can be assigned to two consumers',
-    ` [ ] B2 Escape ends the read loop on the file list${' '.repeat(20)}` +
-      'check 0/2',
-    ' [ ] critical Timeout error message names the pool',
+    ' [x] B1 high: Released connection can be assigned to two consumers',
+    ' [ ] B2: Escape ends the read loop on the file list  (where, check: 0/2)',
+    ' [ ] high: Timeout error message names the pool',
     '',
     ' Notes',
     '   Anything else: paragraphs, lists, code, tables.',
@@ -8315,8 +8306,10 @@ test('tasks screen snapshot of a free-form Markdown file', async () => {
 });
 
 test('tasks screen snapshot of an empty file', async () => {
-  const { lines } = await planScreen('empty.md', '');
-  assert.deepEqual(lines, ['', '   Insert task · s section · e markdown']);
+  const { session, lines } = await planScreen('empty.md', '');
+  assert.deepEqual(lines, []);
+  press(session, 'enter');
+  assert.equal(session.mode, 'compose');
 });
 
 const SECTIONS = [
@@ -8335,13 +8328,14 @@ const SECTIONS = [
   '',
 ].join('\n');
 
-test('insert adds a task below the focused one in its section', async () => {
-  const { session } = await planScreen('sections.md', SECTIONS);
-  session.tasksFocus = rowOf(session, 'B1:');
+test('insert adds a task below the focused block in its block', async () => {
+  const { session } = await planScreen('blocks.md', SECTIONS);
+  focusTask(session, rowOf(session, 'B1:'));
   press(session, 'insert');
   assert.equal(session.mode, 'compose');
+  assert.equal(session.editor.text, '');
   session.pushInput('B3: retry the handshake');
-  press(session, 'escape');
+  press(session, 'down');
   const texts = session.notes.tasks.map((task) => [task.text, task.kind]);
   assert.deepEqual(texts, [
     ['B1: pool hands a connection out twice', 'bugs'],
@@ -8349,21 +8343,21 @@ test('insert adds a task below the focused one in its section', async () => {
     ['B2: timeout names the pool', 'bugs'],
     ['S1: keep paths inside the root', 'security'],
   ]);
-  assert.equal(focusedRow(session), '[ ] B3: retry the handshake');
-  session.tasksFocus = rowOf(session, 'Context for');
+  assert.equal(focusedRow(session), '[ ] B2: timeout names the pool');
+  focusTask(session, rowOf(session, 'Context for'));
   press(session, 'insert');
   session.pushInput('read the notes');
-  press(session, 'escape');
+  press(session, 'up');
   const notes = session.notes.tasks.find(
     (task) => task.text === 'read the notes',
   );
   assert.equal(notes.kind, '');
 });
 
-test('ctrl+up and ctrl+down move a section or a task across them', async () => {
-  const { session } = await planScreen('sections.md', SECTIONS);
+test('ctrl+up and ctrl+down move a block or a task across them', async () => {
+  const { session } = await planScreen('blocks.md', SECTIONS);
   const s1 = session.notes.tasks.find((task) => task.item.id === 'S1');
-  session.tasksFocus = rowOf(session, 'S1:');
+  focusTask(session, rowOf(session, 'S1:'));
   press(session, 'ctrl-up');
   const moved = session.notes.tasks.find((task) => task.id === s1.id);
   assert.equal(moved.kind, '');
@@ -8371,7 +8365,7 @@ test('ctrl+up and ctrl+down move a section or a task across them', async () => {
   assert.equal(focusedRow(session), '[ ] S1: keep paths inside the root');
   press(session, 'ctrl-down');
   assert.equal(session.notes.tasks.at(-1).kind, 'security');
-  session.tasksFocus = rowOf(session, 'Security and Compliance');
+  focusTask(session, rowOf(session, 'Security and Compliance'));
   press(session, 'ctrl-up', 'ctrl-up');
   const text = serializeReview(session.notes);
   assert.ok(text.startsWith('## Security and Compliance\n\n- [ ] S1'));
@@ -8380,49 +8374,45 @@ test('ctrl+up and ctrl+down move a section or a task across them', async () => {
   assert.equal(focusedRow(session), 'Security and Compliance');
 });
 
-test('delete on a heading with blocks under it asks first', async () => {
-  const { session } = await planScreen('sections.md', SECTIONS);
-  session.tasksFocus = rowOf(session, 'Bug Reports and Fixes');
-  press(session, 'delete');
+test('ctrl+r on a heading with blocks under it asks first', async () => {
+  const { session } = await planScreen('blocks.md', SECTIONS);
+  focusTask(session, rowOf(session, 'Bug Reports and Fixes'));
+  press(session, 'ctrl-r');
   assert.equal(session.mode, 'confirmDrop');
   session.draw();
   const status = stripAnsi(session.lastFrame.rows.at(-2));
-  assert.match(status, /drop section Bug Reports and Fixes\?/);
+  assert.match(status, /drop block Bug Reports and Fixes\?/);
   press(session, 'n');
-  assert.equal(session.mode, 'review');
+  assert.equal(session.mode, 'compose');
   assert.equal(session.notes.tasks.length, 3);
-  press(session, 'delete', 'y');
+  press(session, 'ctrl-r', 'y');
   assert.equal(session.notes.tasks.length, 1);
   assert.ok(serializeReview(session.notes).startsWith('## Notes\n'));
   session.notes.addTask('TODOs', 'x', false, 'features');
-  session.tasksFocus = rowOf(session, 'Notes');
-  press(session, 'delete');
+  focusTask(session, rowOf(session, 'Notes'));
+  press(session, 'ctrl-r');
   assert.equal(session.mode, 'confirmDrop');
   press(session, 'escape');
   const empty = '## Empty\n\n## Notes\n\ntext\n';
-  const { session: other } = await planScreen('empty-section.md', empty);
+  const { session: other } = await planScreen('empty-block.md', empty);
   other.tasksFocus = rowOf(other, 'Empty');
-  press(other, 'delete');
-  assert.equal(other.mode, 'review');
+  press(other, 'ctrl-r');
+  assert.notEqual(other.mode, 'confirmDrop');
   assert.equal(serializeReview(other.notes), '## Notes\n\ntext\n');
 });
 
-test('ctrl+enter leaves a task alone and enter edits a heading', async () => {
-  const { session } = await planScreen('sections.md', SECTIONS);
-  session.tasksFocus = rowOf(session, 'B2:');
-  press(session, 'ctrl-enter');
-  assert.equal(session.notes.tasks[1].done, false);
-  assert.equal(session.mode, 'review');
-  session.tasksFocus = rowOf(session, 'Notes');
-  press(session, 'enter', 'end');
+test('enter on a heading goes below, insert starts a task', async () => {
+  const { session } = await planScreen('blocks.md', SECTIONS);
+  focusTask(session, rowOf(session, 'Notes'));
+  press(session, 'end');
   session.pushInput(' and links');
-  press(session, 'escape');
+  press(session, 'enter');
   assert.match(serializeReview(session.notes), /^## Notes and links$/m);
-  press(session, 'enter', 'enter');
-  assert.equal(session.mode, 'compose');
+  assert.equal(session.editor.text, 'Context for the agent.');
+  press(session, 'up', 'insert');
   assert.equal(session.editor.text, '');
   session.pushInput('a task under notes');
-  press(session, 'escape');
+  press(session, 'down');
   const text = serializeReview(session.notes);
   assert.match(text, /## Notes and links\n\n- \[ \] a task under notes\n\n/);
 });
@@ -8440,79 +8430,62 @@ const STRUCTURED = [
   '',
 ].join('\n');
 
-test('the focused task opens its fields and checks', async () => {
+test('a closed task names what it hides, an open one is its text', async () => {
   const { session, lines } = await planScreen('structured.md', STRUCTURED);
   assert.deepEqual(lines, [
     '',
     ` Bug Reports and Fixes${' '.repeat(54)}0/2`,
-    ` [ ] B1 high Escape ends the read loop${' '.repeat(32)}check 0/2`,
-    '     where       lib/session/terminal.js#readLoop',
-    '     check       [ ] read loop survives a lone Escape',
-    '                 [ ] terminal tests pass',
-    '     result      guarded the timer',
-    ' [ ] B2 Timeout names the pool',
+    ' [ ] B1 high: Escape ends the read loop',
+    '     - where: lib/session/terminal.js#readLoop',
+    '     - check:',
+    '       - [ ] read loop survives a lone Escape',
+    '       - [ ] terminal tests pass',
+    '     - result: guarded the timer',
+    ' [ ] B2: Timeout names the pool',
   ]);
-  session.tasksFocus = rowOf(session, 'B2:');
+  focusTask(session, rowOf(session, 'B2:'));
   session.draw();
-  const body = session.lastFrame.rows.map((row) => stripAnsi(row));
-  assert.ok(!body.some((row) => row.includes('where')));
+  const body = session.lastFrame.rows.map((row) => stripAnsi(row).trimEnd());
+  assert.ok(
+    body.includes(
+      ' [ ] B1 high: Escape ends the read loop  (where, result, check: 0/2)',
+    ),
+  );
+  assert.ok(!body.some((row) => row.includes('lib/session/terminal.js')));
 });
 
-test('space on a check line ticks that check, not the task', async () => {
+test('ctrl+d on a check line ticks that check, not the task', async () => {
   const { session } = await planScreen('structured.md', STRUCTURED);
   assert.equal(focusedRow(session), '[ ] B1 high: Escape ends the read loop');
-  press(session, 'down', 'down', 'down', ' ');
+  cursorAt(session, 'terminal tests');
+  press(session, 'ctrl-d');
+  assert.match(session.editor.text, / {2}- \[x\] terminal tests pass/);
+  session.composer.tasks.closeEditor();
   const [task] = session.notes.tasks;
   assert.equal(task.done, false);
   assert.deepEqual(
     task.item.checks.map((check) => check.done),
     [false, true],
   );
-  press(session, 'up', 'up', ' ');
-  assert.equal(session.notes.tasks[0].done, false);
-  press(session, 'up', ' ');
+  focusTask(session, rowOf(session, 'B1 high'));
+  cursorAt(session, 'Escape ends');
+  press(session, 'ctrl-d');
   assert.equal(session.notes.tasks[0].done, true);
-  press(session, 'down', 'down', 'down', 'down');
-  assert.equal(focusedRow(session), '[ ] B2: Timeout names the pool');
-  press(session, 'up');
-  assert.equal(focusedRow(session), '[x] B1 high: Escape ends the read loop');
-  press(session, ' ');
-  assert.equal(session.notes.tasks[0].item.checks[1].done, false);
-  session.draw();
-  assert.ok(!session.lastFrame.taskHits.some((hit) => hit.sub === 0));
-  const box = session.lastFrame.taskHits.find((hit) => hit.sub === 1);
-  assert.ok(box);
-  click(session, box.x0 + 1, box.y);
-  assert.equal(session.notes.tasks[0].item.checks[0].done, true);
+  assert.match(
+    focusedRow(session),
+    /^\[x\] B1 high: Escape ends the read loop/,
+  );
 });
 
-test('the result field is highlighted', async () => {
-  const colored = { color: true };
-  const { session } = await planScreen('s.md', STRUCTURED, 24, colored);
-  session.draw();
-  const row = session.lastFrame.rows.find((line) => line.includes('guarded'));
-  const where = session.lastFrame.rows.find((line) => line.includes('#readL'));
-  assert.ok(row.includes(fg(THEME.addLineFg)));
-  assert.ok(!where.includes(fg(THEME.addLineFg)));
-});
-
-test('tab and shift+tab open and close tasks', async () => {
+test('shift+tab opens and closes every task', async () => {
   const { session } = await planScreen('structured.md', STRUCTURED);
   const shown = () => {
     session.draw();
     return session.lastFrame.rows.some((row) =>
-      stripAnsi(row).includes('where'),
+      stripAnsi(row).includes('lib/session/terminal.js'),
     );
   };
-  assert.equal(shown(), true);
-  press(session, 'tab');
-  assert.equal(shown(), false);
-  press(session, 'tab');
-  assert.equal(shown(), true);
-  press(session, 'down', 'down', 'down', 'down');
-  assert.equal(focusedRow(session), '[ ] B2: Timeout names the pool');
-  assert.equal(shown(), true);
-  press(session, 'up', 'tab', 'down');
+  focusTask(session, rowOf(session, 'B2:'));
   assert.equal(shown(), false);
   press(session, 'shift-tab');
   assert.equal(shown(), true);
@@ -8520,57 +8493,55 @@ test('tab and shift+tab open and close tasks', async () => {
   assert.equal(shown(), false);
 });
 
-test('ghost fields show while editing and never reach the file', async () => {
-  const { session } = await planScreen('structured.md', STRUCTURED);
-  session.tasksFocus = rowOf(session, 'B2:');
-  press(session, 'enter');
+test('tab opens a field menu and its keys add fields', async () => {
+  const opened = await planScreen('structured.md', STRUCTURED, 24, {
+    color: true,
+  });
+  const { session } = opened;
+  focusTask(session, rowOf(session, 'B2:'));
+  session.composer.tasks.settle();
   session.draw();
-  const body = session.lastFrame.rows.map((row) => stripAnsi(row).trimEnd());
-  const ghosts = body.filter((row) => row.includes('░'));
-  assert.deepEqual(ghosts, [
-    '     where       ░ code locations: path, path:line, path#symbol',
-    '     problem     ░ what is wrong or missing now',
-    '     evidence    ░ failing test, stack, log, repro steps',
-    '     expected    ░ how it should behave when done',
-    '     check       ░ acceptance criteria as checkboxes',
-  ]);
+  const body = session.lastFrame.rows.map((row) => stripAnsi(row));
+  assert.ok(!body.some((row) => row.includes('░')));
   press(session, 'tab');
+  const menu = session.nav.contextMenu;
+  assert.deepEqual(menu.actions, [
+    'field:where',
+    'field:problem',
+    'field:expected',
+    'field:check',
+    'field:do',
+    'field:related',
+  ]);
+  session.draw();
+  const lines = session.lastFrame.rows.map((row) => stripAnsi(row));
+  assert.ok(lines.some((row) => row.includes(' where: path, path:line')));
+  assert.ok(lines.some((row) => row.includes(' expected: how it behaves')));
+  const hot = `${BOLD}${seq(THEME.buttonHotFg, THEME.popupHotBg)}w`;
+  assert.ok(session.lastFrame.rows.some((row) => row.includes(hot)));
+  press(session, 'w');
+  assert.equal(session.nav.contextMenu, null);
+  assert.equal(session.mode, 'compose');
   assert.equal(session.editor.text, 'B2: Timeout names the pool\n- where: ');
   session.autosave();
   const saved = fs.readFileSync(session.notes.reviewPath, 'utf8');
   assert.doesNotMatch(saved.split('B2:')[1], /where/);
   session.pushInput('lib/pool.js');
   press(session, 'tab');
+  assert.ok(session.nav.contextMenu);
+  assert.ok(!session.nav.contextMenu.actions.includes('field:where'));
+  press(session, 'p');
   assert.equal(
     session.editor.text,
     'B2: Timeout names the pool\n- where: lib/pool.js\n- problem: ',
   );
-  press(session, 'tab');
-  assert.match(session.editor.text, /\n- evidence: $/);
+  press(session, 'tab', 'escape');
+  assert.equal(session.nav.contextMenu, null);
+  assert.equal(session.mode, 'compose');
   press(session, 'escape');
   const text = fs.readFileSync(session.notes.reviewPath, 'utf8');
   assert.match(text, /- \[ \] B2: Timeout names the pool\n {2}- where: lib/);
-  assert.doesNotMatch(text.split('B2:')[1], /evidence|problem|░/);
-});
-
-test('tab after a dash completes field names, suggested first', async () => {
-  const { session } = await planScreen('structured.md', STRUCTURED);
-  session.tasksFocus = rowOf(session, 'B2:');
-  press(session, 'enter', 'end');
-  session.pushInput('\x1b\r- ');
-  press(session, 'tab');
-  assert.match(session.editor.text, /\n- where: $/);
-  press(session, 'tab');
-  assert.match(session.editor.text, /\n- problem: $/);
-  press(session, 'backspace', 'backspace', 'backspace', 'backspace');
-  press(session, 'backspace', 'backspace', 'backspace', 'backspace');
-  press(session, 'backspace');
-  session.pushInput('re');
-  press(session, 'tab');
-  assert.match(session.editor.text, /\n- related: $/);
-  session.pushInput('#86');
-  press(session, 'escape');
-  assert.equal(session.notes.tasks[1].item.value('related'), '#86');
+  assert.doesNotMatch(text.split('B2:')[1], /problem/);
 });
 
 const KIND_ORDER = [
@@ -8589,14 +8560,14 @@ const KIND_ORDER = [
 ].join('\n');
 
 const pickSection = (session, query) => {
-  press(session, 's');
+  press(session, 'ctrl-b');
   session.pushInput(query);
   press(session, 'enter');
 };
 
-test('the section menu adds a missing kind in kind order', async () => {
+test('the block menu adds a missing kind in kind order', async () => {
   const { session } = await planScreen('kinds.md', KIND_ORDER);
-  press(session, 's');
+  press(session, 'ctrl-b');
   assert.equal(session.composer.tasks.planOpen, true);
   assert.deepEqual(session.view().planNames, [
     'Feature requests and Enhancements',
@@ -8608,105 +8579,55 @@ test('the section menu adds a missing kind in kind order', async () => {
     'custom…',
   ]);
   session.draw();
-  assert.match(stripAnsi(session.lastFrame.rows.at(-2)), /Section: /);
+  assert.match(stripAnsi(session.lastFrame.rows.at(-2)), /Block: /);
   session.pushInput('secur');
   assert.deepEqual(session.view().planNames, ['Security and Compliance']);
   press(session, 'enter');
   assert.equal(session.composer.tasks.planOpen, false);
-  assert.equal(focusedRow(session), 'Security and Compliance');
-  const text = serializeReview(session.notes);
+  const file = fs.readFileSync(session.notes.reviewPath, 'utf8');
   assert.match(
-    text,
+    file,
     /D1: split the store\n\n## Security and Compliance\n\n## Notes/,
   );
-  const file = fs.readFileSync(session.notes.reviewPath, 'utf8');
-  assert.equal(file, text);
+  assert.equal(session.mode, 'compose');
+  assert.equal(focusedRow(session), '[ ] ');
+  assert.equal(
+    session.composer.tasks.taskTexts()[session.tasksFocus - 1],
+    'Security and Compliance',
+  );
+  session.pushInput('S1: keep paths inside the root');
+  press(session, 'escape');
+  const text = serializeReview(session.notes);
+  const task = '- [ ] S1: keep paths inside the root';
+  assert.ok(text.includes(`## Security and Compliance\n\n${task}\n\n## Notes`));
+  assert.equal(session.notes.tasks.at(-1).kind, 'security');
 });
 
-test('the section menu jumps to a kind and closes on escape', async () => {
+test('the block menu jumps to a kind and closes on escape', async () => {
   const { session } = await planScreen('kinds.md', KIND_ORDER);
   const before = session.tasksFocus;
-  press(session, 's');
+  press(session, 'ctrl-b');
   session.pushInput('ref');
   press(session, 'escape');
   assert.equal(session.composer.tasks.planOpen, false);
   assert.equal(session.tasksFocus, before);
-  assert.equal(session.mode, 'review');
+  assert.equal(session.mode, 'compose');
   pickSection(session, 'refactor');
   assert.equal(focusedRow(session), 'Refactoring and Technical debt');
   assert.equal(serializeReview(session.notes), KIND_ORDER);
 });
 
-test('a custom section goes at the cursor and is named at once', async () => {
+test('a custom block goes at the cursor and is named at once', async () => {
   const { session } = await planScreen('kinds.md', KIND_ORDER);
-  session.tasksFocus = rowOf(session, 'F1:');
+  focusTask(session, rowOf(session, 'F1:'));
   pickSection(session, 'custom');
   assert.equal(session.mode, 'compose');
-  assert.equal(session.editor.selectedText(), 'New section');
+  assert.equal(session.editor.selectedText(), 'New block');
   session.pushInput('Open questions');
-  press(session, 'escape');
+  press(session, 'down');
   const text = serializeReview(session.notes);
   assert.match(text, /F1: dark mode\n\n## Open questions\n\n## Refactoring/);
-  assert.equal(focusedRow(session), 'Open questions');
-});
-
-test('# numbers open tasks after the highest ID of a letter', async () => {
-  const text = [
-    '## Bug Reports and Fixes',
-    '',
-    '- [ ] b4: lower case counts',
-    '- [ ] crash on start',
-    '- [x] done stays as it is',
-    '- [ ] B2: below the highest',
-    '',
-    '## Refactoring and Technical debt',
-    '',
-    '- [ ] split the store',
-    '',
-    '## Notes',
-    '',
-    '- [ ] a custom task',
-    '- [ ] T7 high: an old custom one',
-    '',
-  ].join('\n');
-  const { session } = await planScreen('numbers.md', text);
-  press(session, '#');
-  assert.equal(session.mode, 'review');
-  assert.equal(session.status, 'numbered 3');
-  const once = fs.readFileSync(session.notes.reviewPath, 'utf8');
-  assert.equal(
-    once,
-    text
-      .replace('- [ ] crash on start', '- [ ] B5: crash on start')
-      .replace('- [ ] split the store', '- [ ] D1: split the store')
-      .replace('- [ ] a custom task', '- [ ] T8: a custom task'),
-  );
-  press(session, '#');
-  assert.equal(session.status, 'every open task has an ID');
-  assert.equal(fs.readFileSync(session.notes.reviewPath, 'utf8'), once);
-});
-
-test('e edits the plan as raw Markdown and keeps the focus', async () => {
-  const { session } = await planScreen('sections.md', SECTIONS);
-  session.tasksFocus = rowOf(session, 'B2:');
-  const b2 = session.notes.tasks[1].id;
-  press(session, 'e');
-  assert.equal(session.mode, 'compose');
-  assert.equal(session.editor.text, SECTIONS);
-  assert.equal(session.editor.cursor, SECTIONS.indexOf('- [ ] B2'));
-  assert.deepEqual(session.view().tasks, [SECTIONS]);
-  press(session, 'home');
-  session.pushInput('- [ ] B0: found while reading\x1b\r');
-  press(session, 'escape');
-  assert.equal(session.mode, 'review');
-  assert.equal(focusedRow(session), '[ ] B2: timeout names the pool');
-  assert.equal(session.notes.tasks[2].id, b2);
-  assert.deepEqual(taskRows(session).slice(0, 2), [
-    '[ ] B1: pool hands a connection out twice',
-    '[ ] B0: found while reading',
-  ]);
-  const text = fs.readFileSync(session.notes.reviewPath, 'utf8');
-  assert.match(text, /twice\n- \[ \] B0: found while reading\n- \[ \] B2:/);
+  assert.equal(focusedRow(session), 'Refactoring and Technical debt');
 });
 
 const FIXTURE_PLAN = fs.readFileSync(
@@ -8714,28 +8635,31 @@ const FIXTURE_PLAN = fs.readFileSync(
   'utf8',
 );
 
-test('specs/ plans open from the plan menu and keep their bytes', async () => {
+test('the plan menus list .plan files, which keep their bytes', async () => {
   const { session, cwd } = await openSession([sampleItem('a.js')]);
+  const dir = path.join(cwd, REVIEW_DIR);
+  fs.mkdirSync(dir, { recursive: true });
+  const file = path.join(dir, 'structured-plan.md');
+  fs.writeFileSync(file, FIXTURE_PLAN);
+  fs.writeFileSync(path.join(dir, 'notes.txt'), 'not a plan');
   const specs = path.join(cwd, 'specs');
   fs.mkdirSync(specs, { recursive: true });
-  const file = path.join(specs, 'structured-plan.md');
-  fs.writeFileSync(file, FIXTURE_PLAN);
-  fs.writeFileSync(path.join(specs, 'notes.txt'), 'not a plan');
+  fs.writeFileSync(path.join(specs, 'spec.md'), '# spec\n');
   session.dispatch('tasks');
-  press(session, 'escape', 'p');
+  press(session, 'ctrl-p');
   const labels = session.view().planNames;
-  const at = labels.findIndex((label) => label.startsWith('specs/structured'));
+  const at = labels.findIndex((label) => label.startsWith('structured'));
   assert.ok(at >= 0);
-  assert.ok(!labels.some((label) => label.includes('notes.txt')));
+  assert.ok(!labels.some((label) => /notes\.txt|spec/.test(label)));
   assert.match(labels[at], /editing {2}2\/7$/);
   session.composer.tasks.choosePlan(at);
   assert.equal(session.notes.reviewPath, file);
-  assert.equal(session.composer.tasks.planName(), 'specs/structured-plan.md');
   assert.equal(
     focusedRow(session),
     '[ ] B1 high: A lone Escape ends the read loop on the file list',
   );
-  press(session, ' ');
+  cursorAt(session, 'B1 high');
+  press(session, 'ctrl-d');
   const after = fs.readFileSync(file, 'utf8');
   const before = FIXTURE_PLAN.split('\n');
   const changed = after.split('\n').filter((line, i) => line !== before[i]);
@@ -8743,7 +8667,8 @@ test('specs/ plans open from the plan menu and keep their bytes', async () => {
     '- [x] B1 high: A lone Escape ends the read loop on the file list',
   ]);
   const agents = session.agents.planMenu();
-  assert.ok(agents.some((label) => label.startsWith('specs/structured')));
+  assert.ok(agents.some((label) => label.startsWith('structured')));
+  assert.ok(!agents.some((label) => label.includes('spec')));
 });
 
 const LINKED = [
@@ -8779,25 +8704,28 @@ const withTerm = (screen) => {
 const linkedScreen = async (text = LINKED) =>
   withTerm(await planScreen('linked.md', text));
 
-test('enter on a where line opens the file and escape comes back', async () => {
+test('ctrl+w opens the location on the cursor line', async () => {
   const { session } = await linkedScreen();
   assert.equal(focusedRow(session), '[ ] B1: Escape ends the read loop');
-  press(session, 'down', 'enter');
+  cursorAt(session, '- where');
+  press(session, 'ctrl-w');
   await session.ops.idle();
   assert.equal(session.pane, 'unit');
   assert.equal(session.nav.reviewPath, 'lib/term.js');
   assert.equal(session.nav.unitLine, 0);
   press(session, 'escape');
   assert.equal(session.pane, 'tasks');
-  assert.equal(focusedRow(session), '[ ] B1: Escape ends the read loop');
-  press(session, 'down', 'enter');
+  assert.match(focusedRow(session), /^\[ \] B1: Escape ends the read loop/);
+  cursorAt(session, '- related');
+  press(session, 'ctrl-w');
   assert.equal(session.pane, 'tasks');
   assert.match(session.status, /^not opened: https:\/\/github\.com/);
 });
 
 test('escape goes back to the task only from its own location', async () => {
   const { session } = await linkedScreen();
-  press(session, 'down', 'enter');
+  cursorAt(session, '- where');
+  press(session, 'ctrl-w');
   await session.ops.idle();
   assert.equal(session.pane, 'unit');
   await showFile(session, { path: 'lib/term.js' });
@@ -8807,12 +8735,15 @@ test('escape goes back to the task only from its own location', async () => {
 
 test('a line or a symbol opens there; a missing one at the top', async () => {
   const { session } = await linkedScreen();
-  session.tasksFocus = rowOf(session, 'B2:');
-  press(session, 'down', 'enter');
+  focusTask(session, rowOf(session, 'B2:'));
+  cursorAt(session, '- where');
+  press(session, 'ctrl-w');
   await session.ops.idle();
   assert.equal(session.pane, 'unit');
   assert.equal(session.nav.unitLine, 3);
-  press(session, 'escape', 'down', 'enter');
+  press(session, 'escape');
+  cursorAt(session, '- related');
+  press(session, 'ctrl-w');
   await session.ops.idle();
   assert.equal(session.nav.unitLine, 0);
   assert.equal(session.status, 'not found: nowhere');
@@ -8820,16 +8751,434 @@ test('a line or a symbol opens there; a missing one at the top', async () => {
   const text = LINKED.replace('lib/term.js:4', 'lib/term.js#readLoop');
   const { session: other } = await linkedScreen(text);
   other.tasksFocus = rowOf(other, 'B2:');
-  press(other, 'down', 'enter');
+  cursorAt(other, '- where');
+  press(other, 'ctrl-w');
   await other.ops.idle();
   assert.equal(other.nav.unitLine, 3);
 });
 
 test('a location outside the root is named, never opened', async () => {
   const { session } = await linkedScreen();
-  session.tasksFocus = rowOf(session, 'B3:');
-  press(session, 'down', 'enter');
+  focusTask(session, rowOf(session, 'B3:'));
+  press(session, 'ctrl-w');
   await session.ops.idle();
   assert.equal(session.pane, 'tasks');
   assert.equal(session.status, 'outside the repository: ../../.ssh/id_rsa');
+});
+
+test('editing a heading keeps the blank line above it', async () => {
+  const { session } = await planScreen('blocks.md', SECTIONS);
+  focusTask(session, rowOf(session, 'Notes'));
+  session.draw();
+  const before = session.lastFrame.rows.map((row) => stripAnsi(row));
+  press(session, 'enter');
+  session.draw();
+  const after = session.lastFrame.rows.map((row) => stripAnsi(row));
+  const at = before.findIndex((row) => row.trim() === 'Notes');
+  assert.equal(after[at - 1].trim(), '');
+  assert.equal(after[at].trim(), 'Notes');
+});
+
+test('the agent instructions open on focus and close after it', async () => {
+  const { session } = await openSession([sampleItem('a.js')]);
+  typeTasks(session, 'add tests');
+  const shown = () => {
+    session.draw();
+    return session.lastFrame.rows.some((row) =>
+      stripAnsi(row).includes('Read the fields under an item'),
+    );
+  };
+  assert.equal(shown(), false);
+  press(session, 'pageUp');
+  assert.equal(focusedRow(session), 'Agent instructions');
+  assert.equal(shown(), true);
+  press(session, 'down');
+  assert.match(focusedRow(session), /^Work through unchecked/);
+  assert.equal(shown(), true);
+  pageTo(session, '[ ] add tests');
+  assert.equal(focusedRow(session), '[ ] add tests');
+  assert.equal(shown(), false);
+});
+
+test('done tasks recede', async () => {
+  const colored = { color: true };
+  const { session } = await planScreen('linked.md', LINKED, 24, colored);
+  session.notes.setTaskDone(session.notes.tasks[1].id, true);
+  session.draw();
+  const rows = session.lastFrame.rows;
+  const row = (text) => rows.find((one) => stripAnsi(one).includes(text));
+  const on = seq(THEME.chromeFg, THEME.buttonBg);
+  assert.ok(row('B1: Escape ends').includes(on));
+  const off = `${seq(THEME.mutedFg, THEME.ctxBg)}B2: `;
+  assert.ok(row('B2: Lines and').includes(off));
+});
+
+test('the tasks footer keeps its words on 80 columns', async () => {
+  const { session } = await planScreen('blocks.md', SECTIONS);
+  session.draw();
+  const footer = stripAnsi(session.lastFrame.rows.at(-1));
+  assert.match(
+    footer,
+    /insert {2}\^remove {2}tab {2}\^block {2}\^done {2}\^level/,
+  );
+  assert.doesNotMatch(footer, /files|f {2}d {2}t/);
+});
+
+test('the title is bold text and finished checks turn green', async () => {
+  const text = [
+    '# Pool fixes',
+    '',
+    '## Bug Reports and Fixes',
+    '',
+    '- [ ] B1: all checks done',
+    '  - check:',
+    '    - [x] one',
+    '- [ ] B2: one check left',
+    '  - check:',
+    '    - [ ] two',
+    '',
+  ].join('\n');
+  const colored = { color: true };
+  const { session } = await planScreen('title.md', text, 24, colored);
+  focusTask(session, rowOf(session, 'B2:'));
+  session.draw();
+  const rows = session.lastFrame.rows;
+  const row = (part) => rows.find((one) => stripAnsi(one).includes(part));
+  const title = row('Pool fixes');
+  assert.ok(title.includes(`${BOLD}${seq(THEME.chromeFg, THEME.ctxBg)}`));
+  assert.ok(!title.includes(bg(THEME.taskHeadBg)));
+  assert.ok(row('Bug Reports').includes(bg(THEME.taskHeadBg)));
+  assert.ok(row('B1: all').includes(fg(THEME.addLineFg)));
+  assert.ok(!row('B2: one').includes(fg(THEME.addLineFg)));
+});
+
+test('notes show their line and code proposals their place', async () => {
+  const { lines } = await planScreen(
+    'notes.md',
+    fs.readFileSync(path.join(__dirname, 'fixtures', 'plan.md'), 'utf8'),
+    60,
+  );
+  const note = lines.find((line) => line.includes('keep the gap'));
+  assert.match(note, /^ \[ \] keep the gap between the two sides +:12$/);
+  const code = lines.find((line) => line.includes('code lib'));
+  assert.match(code, /^ \[x\] code lib\/diff\/align\.js:40 {3}const gap = 1;$/);
+});
+
+test('a draft in a new kind shows the heading it will go under', async () => {
+  const { session } = await openSession([sampleItem('a.js')]);
+  session.dispatch('tasks');
+  session.draw();
+  const plain = () => session.lastFrame.rows.map((row) => stripAnsi(row));
+  const at = plain().findIndex((row) => row.includes('Feature requests'));
+  assert.ok(at > 0);
+  assert.match(plain()[at + 1], /^ \[ \] /);
+  assert.equal(focusedRow(session), '[ ] ');
+  press(session, 'escape');
+  session.draw();
+  assert.ok(!plain().some((row) => row.includes('Feature requests')));
+});
+
+test('ctrl+z brings back the last dropped task or block', async () => {
+  const { session } = await planScreen('blocks.md', SECTIONS);
+  focusTask(session, rowOf(session, 'B2:'));
+  press(session, 'ctrl-r');
+  assert.equal(session.status, 'dropped · ctrl+z to undo');
+  assert.equal(rowOf(session, 'B2:'), -1);
+  press(session, 'ctrl-z');
+  assert.equal(session.status, 'restored');
+  assert.equal(focusedRow(session), '[ ] B2: timeout names the pool');
+  assert.equal(fs.readFileSync(session.notes.reviewPath, 'utf8'), SECTIONS);
+  focusTask(session, rowOf(session, 'Bug Reports and Fixes'));
+  press(session, 'ctrl-r', 'y', 'ctrl-z');
+  assert.equal(serializeReview(session.notes), SECTIONS);
+  press(session, 'ctrl-r', 'y');
+  focusTask(session, rowOf(session, 'S1:'));
+  press(session, 'x', 'ctrl-z');
+  assert.equal(session.editor.text, 'S1: keep paths inside the root');
+  press(session, 'ctrl-d', 'ctrl-z');
+  assert.equal(session.status, 'nothing to undo');
+});
+
+test('ctrl+l sets the priority of the focused task from a pop-up', async () => {
+  const { session } = await planScreen('blocks.md', SECTIONS);
+  focusTask(session, rowOf(session, 'B2:'));
+  press(session, 'ctrl-l');
+  assert.deepEqual(Object.values(session.nav.contextMenu.keys), [
+    'h',
+    'n',
+    'l',
+  ]);
+  press(session, 'h');
+  assert.equal(focusedRow(session), '[ ] B2 high: timeout names the pool');
+  press(session, 'ctrl-l', 'n');
+  assert.equal(focusedRow(session), '[ ] B2: timeout names the pool');
+  press(session, 'ctrl-l', 'escape', '!');
+  assert.equal(session.nav.contextMenu, null);
+  assert.equal(session.editor.text, 'B2: timeout names the pool!');
+});
+
+test('ctrl+f jumps between the blocks that match', async () => {
+  const { session } = await planScreen('blocks.md', SECTIONS);
+  const all = session.composer.tasks.taskTexts();
+  press(session, 'ctrl-f');
+  assert.equal(session.mode, 'find');
+  session.draw();
+  assert.match(stripAnsi(session.lastFrame.rows.at(-2)), /^ find: {2}/);
+  session.pushInput('pool');
+  assert.deepEqual(session.composer.tasks.taskTexts(), all);
+  assert.equal(
+    focusedRow(session),
+    '[ ] B1: pool hands a connection out twice',
+  );
+  press(session, 'down');
+  assert.equal(focusedRow(session), '[ ] B2: timeout names the pool');
+  press(session, 'down');
+  assert.equal(
+    focusedRow(session),
+    '[ ] B1: pool hands a connection out twice',
+  );
+  press(session, 'up', 'enter');
+  assert.equal(session.mode, 'compose');
+  assert.equal(session.editor.text, 'B2: timeout names the pool');
+  press(session, 'ctrl-f');
+  assert.equal(session.nav.find.query, 'pool');
+  session.pushInput('zzz');
+  assert.equal(session.nav.find.miss, true);
+  assert.equal(focusedRow(session), '[ ] B2: timeout names the pool');
+  press(session, 'escape');
+  assert.equal(session.pane, 'tasks');
+  assert.equal(session.mode, 'compose');
+});
+
+test('tab folds a block under its heading', async () => {
+  const { session } = await planScreen('blocks.md', SECTIONS);
+  focusTask(session, rowOf(session, 'Bug Reports and Fixes'));
+  press(session, 'tab');
+  assert.equal(rowOf(session, 'B1:'), -1);
+  session.draw();
+  const body = () => session.lastFrame.rows.map((row) => stripAnsi(row));
+  assert.ok(body().some((row) => row.trim() === '(2 tasks)'));
+  assert.equal(focusedRow(session), 'Bug Reports and Fixes');
+  press(session, 'down');
+  session.draw();
+  const folded = ' Bug Reports and Fixes  (2 tasks)';
+  assert.ok(body().some((row) => row.includes(folded)));
+  press(session, 'up');
+  assert.equal(serializeReview(session.notes), SECTIONS);
+  press(session, 'tab');
+  assert.ok(rowOf(session, 'B1:') > 0);
+});
+
+test('the status line counts open and done tasks', async () => {
+  const { session } = await planScreen('s.md', STRUCTURED);
+  session.draw();
+  const status = stripAnsi(session.lastFrame.rows.at(-2));
+  assert.match(status, /open 2 · done 0\/2 $/);
+});
+
+test('a plan opened again comes back as it was left', async () => {
+  const { session } = await planScreen('blocks.md', SECTIONS);
+  const other = path.join(session.root, REVIEW_DIR, 'other.md');
+  fs.writeFileSync(other, '- [ ] x\n');
+  focusTask(session, rowOf(session, 'Security and Compliance'));
+  press(session, 'tab');
+  focusTask(session, rowOf(session, 'B2:'));
+  session.composer.tasks.openPlan('other.md');
+  assert.equal(focusedRow(session), '[ ] x');
+  session.composer.tasks.openPlan('blocks.md');
+  assert.equal(focusedRow(session), '[ ] B2: timeout names the pool');
+  assert.equal(rowOf(session, 'S1:'), -1);
+});
+
+test('ctrl+w opens the file of a note and ctrl+c copies a task', async (t) => {
+  const plan = fs.readFileSync(path.join(__dirname, 'fixtures', 'plan.md'));
+  const { session, repo } = await planScreen('notes.md', `${plan}`, 60);
+  const dir = path.join(session.root, 'lib', 'diff');
+  fs.mkdirSync(dir, { recursive: true });
+  const code = Array.from({ length: 20 }, (_, at) => `line ${at + 1}`);
+  fs.writeFileSync(path.join(dir, 'align.js'), code.join('\n'));
+  repo.fileBodies['lib/diff/align.js'] = code.join('\n');
+  focusTask(session, rowOf(session, 'keep the gap'));
+  press(session, 'ctrl-w');
+  await session.ops.idle();
+  assert.equal(session.pane, 'unit');
+  assert.equal(session.nav.unitLine, 11);
+  press(session, 'escape');
+  assert.equal(session.pane, 'tasks');
+  const copied = t.mock.method(clipboard, 'copyText', (text) => !!text);
+  focusTask(session, rowOf(session, 'D1:'));
+  press(session, 'ctrl-c');
+  assert.equal(session.status, 'copied');
+  assert.match(copied.mock.calls.at(-1).arguments[0], /^- \[ \] D1: Split/);
+  press(session, 'o');
+  assert.equal(session.mode, 'compose');
+  assert.match(session.editor.text, /escape kindo\n/);
+});
+
+test('ctrl+s starts on the agents screen with the plan chosen', async () => {
+  const { session } = await planScreen('blocks.md', SECTIONS);
+  press(session, 'ctrl-s');
+  assert.equal(session.pane, 'agents');
+  assert.equal(session.mode, 'review');
+  assert.equal(session.agents.planPath, session.notes.reviewPath);
+  assert.equal(session.agents.jobs.length, 0);
+});
+
+test('a block stays in place when it opens in the editor', async () => {
+  const plan = fs.readFileSync(path.join(__dirname, 'fixtures', 'plan.md'));
+  const { session } = await planScreen('notes.md', `${plan}`, 60);
+  session.stdout.columns = 40;
+  const tasks = session.composer.tasks;
+  const frame = () => {
+    session.draw();
+    return session.lastFrame.rows.map((row) => stripAnsi(row).trimEnd());
+  };
+  const shapes = ['text', 'heading'];
+  const blocks = tasks
+    .rows()
+    .filter((row) => shapes.includes(row.type))
+    .filter((row) => row.block.text !== 'Agent instructions');
+  assert.ok(blocks.some((row) => row.block.fence));
+  for (const row of blocks) {
+    focusTask(session, tasks.rowIndex(row));
+    const shown = frame();
+    tasks.settle();
+    assert.equal(session.mode, 'compose');
+    const edited = frame();
+    const at = shown.findIndex((line, i) => line !== edited[i]);
+    assert.equal(at, -1, `${row.block.lines[0]}: ${shown[at]}`);
+  }
+});
+
+test('delete takes letters and ctrl+r removes the block', async () => {
+  const { session } = await planScreen('blocks.md', SECTIONS);
+  focusTask(session, rowOf(session, 'B2:'));
+  press(session, 'home', 'delete');
+  assert.equal(session.editor.text, '2: timeout names the pool');
+  press(session, 'end', 'delete');
+  assert.equal(session.editor.text, '2: timeout names the pool');
+  press(session, 'ctrl-r');
+  assert.equal(rowOf(session, 'timeout names'), -1);
+  assert.equal(session.status, 'dropped · ctrl+z to undo');
+});
+
+test('a folded block of text shows its first lines', async () => {
+  const text = [
+    '## Notes',
+    '',
+    'one',
+    'two',
+    '',
+    'three',
+    'four',
+    '',
+    '## Bug Reports and Fixes',
+    '',
+    '- [ ] B1: x',
+    '',
+  ].join('\n');
+  const { session } = await planScreen('peek.md', text);
+  focusTask(session, rowOf(session, 'Notes'));
+  press(session, 'tab', 'down');
+  session.draw();
+  const rows = session.lastFrame.rows.map((row) => stripAnsi(row).trimEnd());
+  const at = rows.indexOf(' Notes');
+  assert.ok(at > 0);
+  assert.deepEqual(rows.slice(at + 1, at + 4), [
+    '   one',
+    '   two',
+    '   three ...',
+  ]);
+  focusTask(session, rowOf(session, 'Bug Reports'));
+  press(session, 'tab');
+  session.draw();
+  const folded = session.lastFrame.rows.map((row) => stripAnsi(row));
+  assert.ok(folded.some((row) => row.trim() === '(1 task)'));
+});
+
+test('a long title gives way to what the task hides', async () => {
+  const text = [
+    '## Bug Reports and Fixes',
+    '',
+    `- [ ] B1: ${'a long title '.repeat(8)}`,
+    '  - where: lib/a.js',
+    '  - do: fix it',
+    '- [ ] B2: other',
+    '',
+  ].join('\n');
+  const { session } = await planScreen('long.md', text);
+  session.stdout.columns = 60;
+  focusTask(session, rowOf(session, 'B2:'));
+  session.draw();
+  const row = session.lastFrame.rows
+    .map((one) => stripAnsi(one))
+    .find((one) => one.includes('B1:'));
+  assert.match(row, /… {2}\(where, do\)\s*$/);
+});
+
+test('field names are blue, values green, and a priority yellow', async () => {
+  const colored = { color: true };
+  const { session } = await planScreen('s.md', STRUCTURED, 24, colored);
+  session.composer.tasks.settle();
+  const row = (text) => {
+    session.draw();
+    return session.lastFrame.rows.find((one) => stripAnsi(one).includes(text));
+  };
+  const where = row('- where: lib/session');
+  assert.ok(where.includes(`${fg(THEME.shaFg)}`));
+  assert.ok(where.includes(`${fg(THEME.addLineFg)}`));
+  assert.ok(row('read loop survives').includes(`${fg(THEME.addLineFg)}`));
+  assert.ok(row('B1 high:').includes(`${fg(THEME.warnFg)}`));
+  focusTask(session, rowOf(session, 'B2:'));
+  assert.ok(row('B1 high:').includes(`${fg(THEME.warnFg)}`));
+  assert.equal(row('(where'), row('B1 high:'));
+});
+
+test('each list item and paragraph is edited on its own', async () => {
+  const text = [
+    '## Notes',
+    '',
+    'The watcher skips:',
+    '- node_modules',
+    '- dist, and the',
+    '  build output',
+    '',
+    'A paragraph',
+    'on two lines.',
+    '',
+  ].join('\n');
+  const { session } = await planScreen('notes.md', text);
+  assert.deepEqual(session.composer.tasks.taskTexts(), [
+    'Notes',
+    'The watcher skips:',
+    '- node_modules',
+    '- dist, and the\n  build output',
+    'A paragraph\non two lines.',
+  ]);
+  focusTask(session, rowOf(session, '- node_modules'));
+  press(session, 'end', 'enter');
+  session.pushInput('- coverage');
+  press(session, 'down');
+  assert.equal(
+    serializeReview(session.notes),
+    text.replace('- node_modules\n', '- node_modules\n- coverage\n'),
+  );
+  assert.ok(rowOf(session, '- coverage') > 0);
+});
+
+test('an item typed under another is saved once, however often', async () => {
+  const text = '## Notes\n\n1. one\n- a\n';
+  const { session } = await planScreen('items.md', text);
+  focusTask(session, rowOf(session, '- a'));
+  press(session, 'end', 'enter');
+  session.pushInput('- b');
+  session.autosave();
+  session.autosave();
+  session.pushInput('x');
+  session.autosave();
+  assert.equal(
+    serializeReview(session.notes),
+    '## Notes\n\n1. one\n- a\n- bx\n',
+  );
+  assert.equal(session.editor.text, '- bx');
 });
