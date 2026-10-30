@@ -241,3 +241,22 @@ test('reslop plans that are open get the current instructions', () => {
   other.addTask('TODOs', 'more', false, 'improvements');
   assert.doesNotMatch(serializeReview(other), /Tick each `check` item/);
 });
+
+test('the README task example round-trips and reads as fields', () => {
+  const readme = fs.readFileSync(path.join(ROOT, 'README.md'), 'utf8');
+  const start = readme.indexOf('```md\n## Bug Reports and Fixes') + 6;
+  const example = readme.slice(start, readme.indexOf('```\n', start));
+  assert.equal(roundTrip(example), example);
+  const store = parseReview(example, '/repo/specs/example.md');
+  assert.equal(serializeReview(store), example);
+  const [task, plain] = store.tasks;
+  assert.equal(task.kind, 'bugs');
+  assert.equal(task.item.id, 'B1');
+  assert.equal(task.item.priority, 'high');
+  assert.deepEqual(
+    task.item.fields.map((field) => field.key),
+    ['where', 'problem', 'expected', 'check'],
+  );
+  assert.equal(task.item.checks.length, 2);
+  assert.equal(plain.item.title, 'Timeout error message names the pool');
+});

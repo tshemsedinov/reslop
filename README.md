@@ -68,6 +68,23 @@ Reviews go in `.plan/YYYY-MM-DD-NN.md` with frontmatter `status`:
 - `partial`: AI started; some items remain
 - `done`: all items marked `[x]`; adding an issue in reslop sets it back to `editing`
 
+Any Markdown file in `.plan/` or `specs/` opens as a plan, and reslop changes only the lines it edits. A task is a checkbox under a section heading; a one-line task is complete, and a few optional fields make it something an agent can finish without asking:
+
+```md
+## Bug Reports and Fixes
+
+- [ ] B1 high: Released connection can be assigned to two consumers
+  - where: `lib/pool.js` acquire:84, release
+  - problem: `release()` resolves a waiter before ownership is updated
+  - expected: each connection has at most one active owner
+  - check:
+    - [ ] 100 concurrent acquires never share a connection
+    - [ ] `npm t` passes
+- [ ] Timeout error message names the pool
+```
+
+The title line takes an optional ID (one letter and a number, one commit per ID) and priority (`critical`, `high`, `low`). The fields are `where`, `problem`, `evidence`, `expected`, `do`, `constraints`, `check`, `related`, and `result`, which the agent writes. On the tasks screen, `Insert` adds a task below, `Tab` and `Shift+Tab` open the fields of one task or all of them, `Tab` while editing completes a field name, `Space` ticks a task or a check, `Enter` on `where` opens the file, `s` adds or jumps to a section, `#` numbers open tasks, and `e` edits the file as Markdown.
+
 ## Agents
 
 reslop runs a plan in an agent over the [Agent Client Protocol](https://agentclientprotocol.com). An agent is listed as available when the command that serves ACP is on `PATH`:
