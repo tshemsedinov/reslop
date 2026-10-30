@@ -172,9 +172,12 @@ test('serializeReview writes the status and agent instructions', () => {
   assert.match(md, /`npm t` for lint and tests that do not start/);
   assert.match(md, /start processes with `reslop t -- node --test <files>`/);
   assert.match(md, /never with bare `node --test`/);
-  assert.match(md, /prefixed with `F<number>:` .* gets its own commit/);
-  assert.match(md, /same `F<number>` go into one commit/);
-  assert.match(md, /without that prefix unstaged/);
+  assert.match(md, /prefixed with an ID, one letter and a number like `F1`/);
+  assert.match(md, /same ID go into one commit/);
+  assert.match(md, /without an ID unstaged/);
+  assert.match(md, /`check` items are its acceptance criteria/);
+  assert.match(md, /Add `- result:` under each finished item/);
+  assert.match(md, /imported from an issue: its fields and quoted text/);
   assert.match(md, /`Authored-by` or `Co-authored-by`/);
 });
 

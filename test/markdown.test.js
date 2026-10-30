@@ -235,9 +235,9 @@ test('reslop plans that are open get the current instructions', () => {
   const store = parseReview(open, '/repo/.plan/2026-10-26-00.md');
   store.addTask('TODOs', 'more', false, 'improvements');
   const out = serializeReview(store);
-  assert.match(out, /Mark `\[x\]` only after the code changes are done/);
+  assert.match(out, /Tick each `check` item when it holds/);
   assert.match(out, /## Verification/);
   const other = parseReview(open, '/repo/specs/plan.md');
   other.addTask('TODOs', 'more', false, 'improvements');
-  assert.doesNotMatch(serializeReview(other), /Mark `\[x\]` only after/);
+  assert.doesNotMatch(serializeReview(other), /Tick each `check` item/);
 });
