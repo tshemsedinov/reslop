@@ -3319,7 +3319,7 @@ test('todo view paints file todo text not a diff hunk', () => {
     tasksFocus: 0,
   };
   const frame = render.renderFrame(view, {
-    width: 80,
+    width: 100,
     height: 16,
     color: false,
   });
@@ -3337,7 +3337,7 @@ test('todo view paints file todo text not a diff hunk', () => {
   const footer = frame.rows[frame.rows.length - 1];
   assert.match(
     footer,
-    /^ 🢐esc {2}insert {2}plan {2}import {2}delete {2}space {2}ctrl\+up\/dn/,
+    /^ 🢐esc {2}insert {2}section {2}plan {2}import {2}delete {2}space {2}ctrl/,
   );
   assert.match(footer, /f {2}d {2}t {2}b {2}c {2}r {2}n\s*$/);
   const rows = frame.rows.map((row) => stripAnsi(row));
