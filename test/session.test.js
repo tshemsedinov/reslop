@@ -8213,7 +8213,7 @@ test('leaving the editor does not stage a change made outside', async () => {
 // The tasks screen of a plan file, as plain text rows of its body
 const planScreen = async (name, text, rows = 24, extra = {}) => {
   const items = [sampleItem('a.js')];
-  const { session, stdout, cwd } = await openSession(items, extra);
+  const { session, stdout, cwd, repo } = await openSession(items, extra);
   stdout.rows = rows;
   const dir = path.join(cwd, REVIEW_DIR);
   fs.mkdirSync(dir, { recursive: true });
@@ -8224,7 +8224,7 @@ const planScreen = async (name, text, rows = 24, extra = {}) => {
   const body = session.lastFrame.rows.slice(1, -2);
   const lines = body.map((row) => stripAnsi(row).trimEnd());
   while (lines.length && !lines[lines.length - 1]) lines.pop();
-  return { session, lines };
+  return { session, lines, repo };
 };
 
 const PLAN_SCREEN = [
@@ -8460,7 +8460,7 @@ test('the focused task opens its fields and checks', async () => {
 test('space on a check line ticks that check, not the task', async () => {
   const { session } = await planScreen('structured.md', STRUCTURED);
   assert.equal(focusedRow(session), '[ ] B1 high: Escape ends the read loop');
-  press(session, 'down', 'down', ' ');
+  press(session, 'down', 'down', 'down', ' ');
   const [task] = session.notes.tasks;
   assert.equal(task.done, false);
   assert.deepEqual(
@@ -8468,15 +8468,18 @@ test('space on a check line ticks that check, not the task', async () => {
     [false, true],
   );
   press(session, 'up', 'up', ' ');
+  assert.equal(session.notes.tasks[0].done, false);
+  press(session, 'up', ' ');
   assert.equal(session.notes.tasks[0].done, true);
-  press(session, 'down', 'down', 'down');
+  press(session, 'down', 'down', 'down', 'down');
   assert.equal(focusedRow(session), '[ ] B2: Timeout names the pool');
   press(session, 'up');
   assert.equal(focusedRow(session), '[x] B1 high: Escape ends the read loop');
   press(session, ' ');
   assert.equal(session.notes.tasks[0].item.checks[1].done, false);
   session.draw();
-  const box = session.lastFrame.taskHits.find((hit) => hit.sub === 0);
+  assert.ok(!session.lastFrame.taskHits.some((hit) => hit.sub === 0));
+  const box = session.lastFrame.taskHits.find((hit) => hit.sub === 1);
   assert.ok(box);
   click(session, box.x0 + 1, box.y);
   assert.equal(session.notes.tasks[0].item.checks[0].done, true);
@@ -8505,7 +8508,7 @@ test('tab and shift+tab open and close tasks', async () => {
   assert.equal(shown(), false);
   press(session, 'tab');
   assert.equal(shown(), true);
-  press(session, 'down', 'down', 'down');
+  press(session, 'down', 'down', 'down', 'down');
   assert.equal(focusedRow(session), '[ ] B2: Timeout names the pool');
   assert.equal(shown(), true);
   press(session, 'up', 'tab', 'down');
@@ -8740,4 +8743,71 @@ test('specs/ plans open from the plan menu and keep their bytes', async () => {
   ]);
   const agents = session.agents.planMenu();
   assert.ok(agents.some((label) => label.startsWith('specs/structured')));
+});
+
+const LINKED = [
+  '## Bug Reports and Fixes',
+  '',
+  '- [ ] B1: Escape ends the read loop',
+  '  - where: `lib/term.js` readLoop:3, lib/term.js#readLoop',
+  '  - related: https://github.com/tshemsedinov/reslop/issues/86',
+  '- [ ] B2: Lines and missing symbols',
+  '  - where: lib/term.js:4',
+  '  - related: lib/term.js#nowhere',
+  '',
+].join('\n');
+
+const TERM = [
+  '// terminal',
+  '',
+  'const x = 1;',
+  'const readLoop = () => {};',
+  '',
+];
+
+const withTerm = (screen) => {
+  const dir = path.join(screen.session.root, 'lib');
+  fs.mkdirSync(dir, { recursive: true });
+  fs.writeFileSync(path.join(dir, 'term.js'), TERM.join('\n'));
+  screen.repo.fileBodies['lib/term.js'] = TERM.join('\n');
+  return screen;
+};
+
+const linkedScreen = async (text = LINKED) =>
+  withTerm(await planScreen('linked.md', text));
+
+test('enter on a where line opens the file and escape comes back', async () => {
+  const { session } = await linkedScreen();
+  assert.equal(focusedRow(session), '[ ] B1: Escape ends the read loop');
+  press(session, 'down', 'enter');
+  await session.ops.idle();
+  assert.equal(session.pane, 'unit');
+  assert.equal(session.nav.reviewPath, 'lib/term.js');
+  assert.equal(session.nav.unitLine, 0);
+  press(session, 'escape');
+  assert.equal(session.pane, 'tasks');
+  assert.equal(focusedRow(session), '[ ] B1: Escape ends the read loop');
+  press(session, 'down', 'enter');
+  assert.equal(session.pane, 'tasks');
+  assert.match(session.status, /^not opened: https:\/\/github\.com/);
+});
+
+test('a line or a symbol opens there; a missing one at the top', async () => {
+  const { session } = await linkedScreen();
+  session.tasksFocus = rowOf(session, 'B2:');
+  press(session, 'down', 'enter');
+  await session.ops.idle();
+  assert.equal(session.pane, 'unit');
+  assert.equal(session.nav.unitLine, 3);
+  press(session, 'escape', 'down', 'enter');
+  await session.ops.idle();
+  assert.equal(session.nav.unitLine, 0);
+  assert.equal(session.status, 'not found: nowhere');
+  press(session, 'escape');
+  const text = LINKED.replace('lib/term.js:4', 'lib/term.js#readLoop');
+  const { session: other } = await linkedScreen(text);
+  other.tasksFocus = rowOf(other, 'B2:');
+  press(other, 'down', 'enter');
+  await other.ops.idle();
+  assert.equal(other.nav.unitLine, 3);
 });
