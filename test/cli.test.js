@@ -153,13 +153,16 @@ test('AC20 commit argv loads that commit not worktree', async () => {
     repo.git(['commit', '-m', 'two']);
     const sha = repo.git(['rev-parse', 'HEAD']).trim();
     repo.write('a.txt', 'DIRTY\n');
-    const proc = fakeProc(repo.dir, {
-      argv: ['node', 'reslop', sha],
-    });
-    const code = await run(proc);
-    assert.equal(code, 1);
-    assert.match(proc.stderrText(), /interactive terminal required/);
-    assert.equal(proc.stdoutText().includes('nothing to review'), false);
+    const proc = fakeProc(repo.dir, { argv: ['node', 'reslop', sha] });
+    const session = await loadSession(proc, {}, parseArgv([sha]));
+    await session.loadReady();
+    assert.equal(session.rev, sha);
+    assert.equal(session.items.length, 1);
+    const [item] = session.items;
+    assert.equal(item.origin, 'commit');
+    const texts = item.hunk.lines.map((line) => `${line.type}:${line.text}`);
+    assert.deepEqual(texts, ['del:one', 'add:two']);
+    assert.equal(await run(fakeProc(repo.dir, { argv: proc.argv })), 1);
   } finally {
     repo.cleanup();
   }
