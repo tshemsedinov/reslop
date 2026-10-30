@@ -21,6 +21,7 @@ const { logViewRows } = require('../lib/render/log.js');
 const { setTheme, themeName } = ansi;
 const { REVIEW_DIR } = require('../lib/common/files.js');
 const { TABLE_KEY } = require('../lib/runs/output.js');
+const { showFile } = require('../lib/session/unit.js');
 
 // The checkbox rows of the tasks screen, without headings and text
 const taskRows = (session) =>
@@ -8792,6 +8793,16 @@ test('enter on a where line opens the file and escape comes back', async () => {
   press(session, 'down', 'enter');
   assert.equal(session.pane, 'tasks');
   assert.match(session.status, /^not opened: https:\/\/github\.com/);
+});
+
+test('escape goes back to the task only from its own location', async () => {
+  const { session } = await linkedScreen();
+  press(session, 'down', 'enter');
+  await session.ops.idle();
+  assert.equal(session.pane, 'unit');
+  await showFile(session, { path: 'lib/term.js' });
+  press(session, 'escape');
+  assert.notEqual(session.pane, 'tasks');
 });
 
 test('a line or a symbol opens there; a missing one at the top', async () => {
