@@ -83,7 +83,7 @@ Any Markdown file in `.plan/` or `specs/` opens as a plan, and reslop changes on
 - [ ] Timeout error message names the pool
 ```
 
-The title line takes an optional ID (one letter and a number, one commit per ID) and priority (`critical`, `high`, `low`). The fields are `where`, `problem`, `evidence`, `expected`, `do`, `constraints`, `check`, `related`, and `result`, which the agent writes. On the tasks screen, `Insert` adds a task below, `Tab` and `Shift+Tab` open the fields of one task or all of them, `Tab` while editing completes a field name, `Space` ticks a task or a check, `Enter` on `where` opens the file, `s` adds or jumps to a section, `#` numbers open tasks, and `e` edits the file as Markdown.
+The title line takes an optional ID (one letter and a number, one commit per ID) and priority (`high`, `low`). The fields are `where`, `problem`, `evidence`, `expected`, `do`, `constraints`, `check`, `related`, and `result`, which the agent writes. On the tasks screen, `Insert` adds a task below, `Tab` and `Shift+Tab` open the fields of one task or all of them, `Tab` while editing completes a field name, `Space` ticks a task or a check, `Enter` on `where` opens the file, `s` adds or jumps to a section, `#` numbers open tasks, and `e` edits the file as Markdown.
 
 ## Agents
 
