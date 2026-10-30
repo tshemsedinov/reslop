@@ -8266,7 +8266,7 @@ test('tasks screen snapshot of a reslop plan', async () => {
     '',
     ` Bug Reports and Fixes${' '.repeat(54)}1/3`,
     ' [x] B1 high Released connection can be assigned to two consumers',
-    ` [ ] B2 Escape ends the read loop on the file list${' '.repeat(21)}` +
+    ` [ ] B2 Escape ends the read loop on the file list${' '.repeat(20)}` +
       'check 0/2',
     ' [ ] critical Timeout error message names the pool',
     '',
@@ -8444,7 +8444,7 @@ test('the focused task opens its fields and checks', async () => {
   assert.deepEqual(lines, [
     '',
     ` Bug Reports and Fixes${' '.repeat(54)}0/2`,
-    ` [ ] B1 high Escape ends the read loop${' '.repeat(33)}check 0/2`,
+    ` [ ] B1 high Escape ends the read loop${' '.repeat(32)}check 0/2`,
     '     where       lib/session/terminal.js#readLoop',
     '     check       [ ] read loop survives a lone Escape',
     '                 [ ] terminal tests pass',
