@@ -1,10 +1,9 @@
 'use strict';
 
-const { sampleHunk } = require('../helpers.js');
-
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 
+const { sampleHunk } = require('../helpers.js');
 const diff = require('../../lib/diff/diff.js');
 const { parseDiff, splitHunk, formatPatch, flattenBlock } = diff;
 const { displayLines, itemsFromFiles, DISPLAY_CONTEXT } = diff;
@@ -64,7 +63,7 @@ test('flattenBlock new-side context keeps added other blocks', () => {
 test('displayLines keeps a short window of surrounding lines', () => {
   const before = ['b1', 'b2', 'b3', 'b4', 'b5'];
   const after = ['a1', 'a2', 'a3', 'a4', 'a5'];
-  const ctx = (text) => ({ type: 'ctx', text, noNl: false, blockId: null });
+  const context = (text) => ({ type: 'ctx', text, noNl: false, blockId: null });
   const hunk = {
     oldStart: 1,
     oldCount: 11,
@@ -72,10 +71,10 @@ test('displayLines keeps a short window of surrounding lines', () => {
     newCount: 11,
     header: '@@ -1,11 +1,11 @@',
     lines: [
-      ...before.map(ctx),
+      ...before.map(context),
       { type: 'del', text: 'OLD', noNl: false, blockId: 0 },
       { type: 'add', text: 'NEW', noNl: false, blockId: 0 },
-      ...after.map(ctx),
+      ...after.map(context),
     ],
   };
   const lines = displayLines(hunk, 0);

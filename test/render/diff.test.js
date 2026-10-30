@@ -1,9 +1,10 @@
 'use strict';
 
-const helpers = require('../helpers.js');
-const { sampleHunk, reviewView, assertPrompt, YES_NO } = helpers;
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
+
+const helpers = require('../helpers.js');
+const { sampleHunk, reviewView, assertPrompt, YES_NO } = helpers;
 const { displayLines } = require('../../lib/diff/diff.js');
 const render = require('../../lib/render/render.js');
 const ansi = require('../../lib/term/ansi.js');
@@ -108,25 +109,25 @@ test('js toString paints in side layout', () => {
 });
 
 test('AC29 short diff leaves a gap under the header', () => {
-  const addHunk = (n) => ({
+  const addHunk = (count) => ({
     oldStart: 1,
     oldCount: 0,
     newStart: 1,
-    newCount: n,
-    header: `@@ -1,0 +1,${n} @@`,
-    lines: Array.from({ length: n }, (_, i) => ({
+    newCount: count,
+    header: `@@ -1,0 +1,${count} @@`,
+    lines: Array.from({ length: count }, (_, i) => ({
       type: 'add',
       text: `line${i}`,
       noNl: false,
       blockId: 0,
     })),
   });
-  const viewFor = (n, scroll) => ({
+  const viewFor = (count, scroll) => ({
     pane: 'diff',
     item: {
       origin: 'unstaged',
       file: { newPath: 'f.js', oldPath: 'f.js', isBinary: false },
-      hunk: addHunk(n),
+      hunk: addHunk(count),
       blockId: 0,
     },
     index: 0,
@@ -229,7 +230,7 @@ test('AC30 diff lines keep a two-column left gutter', () => {
     ],
   };
   const lines = displayLines(hunk, 0);
-  const ctx = stripAnsi(
+  const context = stripAnsi(
     render.paintDiffLine(lines[0], 40, false, 'unstaged', 'txt'),
   );
   const del = stripAnsi(
@@ -238,7 +239,7 @@ test('AC30 diff lines keep a two-column left gutter', () => {
   const add = stripAnsi(
     render.paintDiffLine(lines[2], 40, false, 'unstaged', 'txt'),
   );
-  assert.equal(ctx.startsWith('  hold'), true);
+  assert.equal(context.startsWith('  hold'), true);
   assert.equal(del.startsWith('- hello world'), true);
   assert.equal(add.startsWith('+ hello World'), true);
   const view = reviewView(

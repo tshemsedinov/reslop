@@ -8,7 +8,16 @@ const { Readable } = require('node:stream');
 const zlib = require('node:zlib');
 
 const registry = require('../../lib/agents/registry.js');
+const {
+  REGISTRY_URL,
+  platformTarget,
+  installedRegistryAgent,
+  registryEntry,
+  extractZip,
+  installRegistryAgent,
+} = registry;
 const { tempDir } = require('../helpers.js');
+
 const helperName = ['localharness', 'external'].join('_');
 const installTest = [
   'registry install downloads, extracts',
@@ -18,14 +27,25 @@ const unsafePathTest = [
   'registry zip extraction rejects a path',
   'outside its directory',
 ].join(' ');
-const {
-  REGISTRY_URL,
-  platformTarget,
-  installedRegistryAgent,
-  registryEntry,
-  extractZip,
-  installRegistryAgent,
-} = registry;
+
+const manifest = {
+  agents: [
+    {
+      id: 'antigravity-acp',
+      version: '1.3.0',
+      distribution: {
+        binary: {
+          'linux-x86_64': {
+            archive:
+              'https://dl.google.com/agy-extensions/releases/linux/agy-acp-server-1.3.0-linux-x86_64.zip',
+            cmd: './agy_acp_server.par',
+            args: ['--uid='],
+          },
+        },
+      },
+    },
+  ],
+};
 
 const crc32 = (buffer) => {
   let crc = 0xffffffff;
@@ -42,7 +62,8 @@ const zipArchive = (files, method = 0) => {
   const localParts = [];
   const centralParts = [];
   let offset = 0;
-  for (const [name, text] of Object.entries(files)) {
+  for (const name in files) {
+    const text = files[name];
     const nameBuffer = Buffer.from(name);
     const body = Buffer.from(text);
     const packed = method === 8 ? zlib.deflateRawSync(body) : body;
@@ -80,25 +101,6 @@ const zipArchive = (files, method = 0) => {
   return Buffer.concat([...localParts, central, end]);
 };
 
-const manifest = {
-  agents: [
-    {
-      id: 'antigravity-acp',
-      version: '1.3.0',
-      distribution: {
-        binary: {
-          'linux-x86_64': {
-            archive:
-              'https://dl.google.com/agy-extensions/releases/linux/agy-acp-server-1.3.0-linux-x86_64.zip',
-            cmd: './agy_acp_server.par',
-            args: ['--uid='],
-          },
-        },
-      },
-    },
-  ],
-};
-
 test('ACP registry selects the Antigravity binary for this platform', () => {
   assert.equal(platformTarget('linux', 'x64'), 'linux-x86_64');
   assert.equal(platformTarget('darwin', 'arm64'), 'darwin-aarch64');
@@ -119,7 +121,7 @@ test('ACP registry selects the Antigravity binary for this platform', () => {
 });
 
 test(installTest, async () => {
-  const dir = tempDir('reslop-registry-');
+  const agentsDir = tempDir('reslop-registry-');
   const archive = zipArchive(
     {
       'agy_acp_server.par': 'hello',
@@ -139,7 +141,7 @@ test(installTest, async () => {
       body: Readable.toWeb(Readable.from(archive)),
     };
   };
-  const env = { RESLOP_AGENTS_DIR: dir };
+  const env = { RESLOP_AGENTS_DIR: agentsDir };
   const output = [];
   try {
     const installed = await installRegistryAgent('antigravity-acp', {
@@ -168,14 +170,14 @@ test(installTest, async () => {
     ]);
     assert.match(output.join('\n'), /Installed Google Antigravity ACP 1\.3\.0/);
   } finally {
-    fs.rmSync(dir, { recursive: true, force: true });
+    fs.rmSync(agentsDir, { recursive: true, force: true });
   }
 });
 
 test('Antigravity ACP installed by Zed is discovered', () => {
-  const home = tempDir('reslop-zed-');
+  const homeDir = tempDir('reslop-zed-');
   const dir = path.join(
-    home,
+    homeDir,
     '.local',
     'share',
     'zed',
@@ -190,13 +192,13 @@ test('Antigravity ACP installed by Zed is discovered', () => {
   try {
     assert.deepEqual(
       installedRegistryAgent('antigravity-acp', {
-        env: { HOME: home },
+        env: { HOME: homeDir },
         platform: 'linux',
       }),
       { bin, args: ['--uid='] },
     );
   } finally {
-    fs.rmSync(home, { recursive: true, force: true });
+    fs.rmSync(homeDir, { recursive: true, force: true });
   }
 });
 

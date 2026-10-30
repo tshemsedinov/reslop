@@ -5,15 +5,8 @@ const assert = require('node:assert/strict');
 
 const select = require('../../lib/term/select.js');
 const { osc52 } = select;
-const {
-  ESC,
-  stripAnsi,
-  paint,
-  THEME,
-  fg,
-  bg,
-  seq,
-} = require('../../lib/term/ansi.js');
+const ansiModule = require('../../lib/term/ansi.js');
+const { ESC, stripAnsi, paint, THEME, fg, bg, seq } = ansiModule;
 
 test('extractText copies a same-row range', () => {
   const rows = ['abcdef', 'ghijkl'];

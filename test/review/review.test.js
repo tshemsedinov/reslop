@@ -7,16 +7,18 @@ const path = require('node:path');
 
 const review = require('../../lib/review/review.js');
 const { ReviewController } = review;
-const { tempDir } = require('../helpers.js');
 const { allocateReviewPath, rankedTemplates } = review;
 const { prefixTemplates, upsertTemplate, ReviewStore } = review;
 const { hasNotes, noteCounts } = review;
 const { serializeReview } = review;
 const { flushReview, loadTemplates, parseReview } = review;
 const { resolveReviewPath, latestReviewName, parseFrontmatterStatus } = review;
+const { tempDir } = require('../helpers.js');
 const { AGENT_INSTRUCTIONS } = require('../../lib/review/blocks.js');
 const { canonicalStatus } = require('../../lib/review/store.js');
 const { FIELD_KEYS, parseTitle } = require('../../lib/review/task.js');
+
+const blockPlan = () => new ReviewStore('.plan/2026-01-01-00.md');
 
 test('allocateReviewPath uses 00 then 01 on the same day', () => {
   const date = new Date(2026, 8, 7);
@@ -713,8 +715,8 @@ test('applyImportedNotes skips an identical issue and adds an edit', () => {
   assert.equal(store.tasks.length, 1);
   store.applyImportedNotes({ tasks: [same] });
   assert.equal(store.tasks.length, 1);
-  const saved = store.tasks[0].text.trim().replace(/\n/g, ' ');
-  store.tasks[0] = { ...store.tasks[0], text: saved };
+  const text = store.tasks[0].text.trim().replace(/\n/g, ' ');
+  store.tasks[0] = { ...store.tasks[0], text };
   store.applyImportedNotes({ tasks: [same] });
   assert.equal(store.tasks.length, 1);
   const edited = {
@@ -846,8 +848,6 @@ test('empty code proposal still counts as a note', () => {
   assert.equal(loaded.code.get('a.js:1:1:0').text, '');
 });
 
-const blockPlan = () => new ReviewStore('.plan/2026-01-01-00.md');
-
 test('an indented fence in proposed code stays inside the task', () => {
   const store = blockPlan();
   store.addTask('', 'first');
@@ -866,7 +866,7 @@ test('clearing a block note keeps its code proposal', () => {
   store.setBlockTask('a.js:3', { text: 'Rename\nToo short' });
   store.setBlockTask('a.js:3', { text: '' });
   assert.equal(store.blockCode('a.js:3').text, 'const a = 1;');
-  const [task] = store.tasks;
+  const task = store.tasks[0];
   assert.equal(task.item.title, 'Replace the added lines');
   assert.equal(task.item.value('problem'), '');
   store.setBlockCode('a.js:3', '', '', true);
@@ -911,7 +911,7 @@ test('new code reopens a done task and plan; the same code does not', () => {
 test('a block on a path with spaces is one location', () => {
   const store = blockPlan();
   store.setBlockTask('my dir/a b.js:3', { text: 'Rename' });
-  const [task] = store.tasks;
+  const task = store.tasks[0];
   assert.equal(task.item.value('where'), '`my dir/a b.js:3`');
   assert.equal(store.blockTask('my dir/a b.js:3').text, 'Rename');
   const marks = store.taskMarks('my dir/a b.js');

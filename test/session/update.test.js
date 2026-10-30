@@ -174,13 +174,13 @@ test('checkUpdate skips a source checkout', async () => {
 });
 
 test('checkUpdate fetches when the cache is stale', async () => {
-  const file = cachePath();
+  const cacheFile = cachePath();
   let fetched = 0;
   const before = Date.now();
   const plan = await checkUpdate({
     enabled: true,
     current: '0.1.5',
-    cacheFile: file,
+    cacheFile,
     fetch: async () => {
       fetched += 1;
       return { ok: true, json: async () => ({ version: '0.1.6' }) };
@@ -189,19 +189,19 @@ test('checkUpdate fetches when the cache is stale', async () => {
   assert.equal(plan.action, 'install');
   assert.equal(plan.latest, '0.1.6');
   assert.equal(fetched, 1);
-  const cache = readCache(file);
+  const cache = readCache(cacheFile);
   assert.ok(cache.checkedAt >= before);
   assert.equal(cache.compatible, '0.1.6');
 });
 
 test('checkUpdate does not fetch again while the cache is fresh', async () => {
-  const file = cachePath();
-  writeCache(file, { checkedAt: Date.now(), compatible: '0.1.6' });
+  const cacheFile = cachePath();
+  writeCache(cacheFile, { checkedAt: Date.now(), compatible: '0.1.6' });
   let fetched = 0;
   const plan = await checkUpdate({
     enabled: true,
     current: '0.1.5',
-    cacheFile: file,
+    cacheFile,
     fetch: async () => {
       fetched += 1;
       return { ok: true, json: async () => ({ version: '9.9.9' }) };
@@ -224,13 +224,13 @@ test('readCache maps old latest and handled fields', () => {
 });
 
 test('checkUpdate still confirms a major from a fresh cache', async () => {
-  const file = cachePath();
-  writeCache(file, { checkedAt: Date.now(), major: '1.0.0' });
+  const cacheFile = cachePath();
+  writeCache(cacheFile, { checkedAt: Date.now(), major: '1.0.0' });
   let fetched = 0;
   const plan = await checkUpdate({
     enabled: true,
     current: '0.1.5',
-    cacheFile: file,
+    cacheFile,
     fetch: async () => {
       fetched += 1;
       return { ok: true, json: async () => ({ version: '1.0.0' }) };
@@ -242,37 +242,37 @@ test('checkUpdate still confirms a major from a fresh cache', async () => {
 });
 
 test('checkUpdate writes the check time when fetch fails', async () => {
-  const file = cachePath();
+  const cacheFile = cachePath();
   const before = Date.now();
   const plan = await checkUpdate({
     enabled: true,
     current: '0.1.5',
-    cacheFile: file,
+    cacheFile,
     fetch: async () => {
       throw new Error('offline');
     },
   });
   assert.equal(plan.action, 'none');
-  const cache = readCache(file);
+  const cache = readCache(cacheFile);
   assert.ok(cache.checkedAt >= before);
 });
 
 test('markSkipped stops a later confirm for the same major', async () => {
-  const file = cachePath();
-  writeCache(file, { checkedAt: Date.now(), major: '1.0.0', skipped: '' });
-  markSkipped('1.0.0', { cacheFile: file });
+  const cacheFile = cachePath();
+  writeCache(cacheFile, { checkedAt: Date.now(), major: '1.0.0', skipped: '' });
+  markSkipped('1.0.0', { cacheFile });
   const plan = await checkUpdate({
     enabled: true,
     current: '0.1.5',
-    cacheFile: file,
+    cacheFile,
     fetch: async () => ({ ok: true, json: async () => ({ version: '2.0.0' }) }),
   });
   assert.equal(plan.action, 'none');
 });
 
 test('skipped major still installs a later compatible release', async () => {
-  const file = cachePath();
-  writeCache(file, {
+  const cacheFile = cachePath();
+  writeCache(cacheFile, {
     checkedAt: Date.now(),
     major: '1.0.0',
     skipped: '1.0.0',
@@ -280,7 +280,7 @@ test('skipped major still installs a later compatible release', async () => {
   const plan = await checkUpdate({
     enabled: true,
     current: '0.1.5',
-    cacheFile: file,
+    cacheFile,
     interval: 0,
     fetch: async () => ({
       ok: true,
@@ -299,8 +299,8 @@ test('skipped major still installs a later compatible release', async () => {
 });
 
 test('checkUpdate confirms a newer major after a skipped major', async () => {
-  const file = cachePath();
-  writeCache(file, {
+  const cacheFile = cachePath();
+  writeCache(cacheFile, {
     checkedAt: Date.now(),
     major: '1.0.0',
     skipped: '1.0.0',
@@ -308,7 +308,7 @@ test('checkUpdate confirms a newer major after a skipped major', async () => {
   const plan = await checkUpdate({
     enabled: true,
     current: '0.1.5',
-    cacheFile: file,
+    cacheFile,
     interval: 0,
     fetch: async () => ({
       ok: true,

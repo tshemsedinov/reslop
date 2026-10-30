@@ -4,11 +4,8 @@ const { test } = require('node:test');
 const assert = require('node:assert/strict');
 
 const { detectLang } = require('../../lib/highlight/highlight.js');
-const {
-  tokenize,
-  overlayTokens,
-  tokensText,
-} = require('../../lib/highlight/highlight.js');
+const highlightModule = require('../../lib/highlight/highlight.js');
+const { tokenize, overlayTokens, tokensText } = highlightModule;
 
 const stylesOf = (tokens, text) =>
   tokens.filter((t) => t.text === text).map((t) => t.style);
@@ -38,11 +35,11 @@ test('AC24 overlay keeps syntax on changed pieces', () => {
     { text: ';', changed: false },
   ];
   const pieces = overlayTokens(tokens, spans);
-  const one = pieces.find((p) => p.text === '1');
+  const one = pieces.find((piece) => piece.text === '1');
   assert.ok(one);
   assert.equal(one.style, 'number');
   assert.equal(one.changed, true);
-  const cst = pieces.find((p) => p.text === 'const');
+  const cst = pieces.find((piece) => piece.text === 'const');
   assert.equal(cst.style, 'storage');
   assert.equal(cst.changed, false);
 });
@@ -59,9 +56,9 @@ test('bash highlights echo as function', () => {
 });
 
 test('jsx highlights tags attrs and expressions', () => {
-  const src = '<div className="card">{title}</div>';
-  const tokens = tokenize('jsx', src);
-  assert.equal(tokensText(tokens), src);
+  const source = '<div className="card">{title}</div>';
+  const tokens = tokenize('jsx', source);
+  assert.equal(tokensText(tokens), source);
   assert.equal(stylesOf(tokens, 'div')[0], 'tag');
   assert.equal(stylesOf(tokens, 'className')[0], 'attr');
   assert.equal(stylesOf(tokens, '"card"')[0], 'string');
@@ -69,34 +66,34 @@ test('jsx highlights tags attrs and expressions', () => {
 });
 
 test('jsx keeps less-than as an operator', () => {
-  const src = 'if (a < b) return a;';
-  const tokens = tokenize('jsx', src);
-  assert.equal(tokensText(tokens), src);
+  const source = 'if (a < b) return a;';
+  const tokens = tokenize('jsx', source);
+  assert.equal(tokensText(tokens), source);
   assert.equal(stylesOf(tokens, '<')[0], 'operator');
 });
 
 test('tsx highlights components and keeps types', () => {
-  const src = 'const n: number = 1;\nconst el = <Card title={n} />;';
-  const tokens = tokenize('tsx', src);
-  assert.equal(tokensText(tokens), src);
+  const source = 'const n: number = 1;\nconst el = <Card title={n} />;';
+  const tokens = tokenize('tsx', source);
+  assert.equal(tokensText(tokens), source);
   assert.equal(stylesOf(tokens, 'number')[0], 'type');
   assert.equal(stylesOf(tokens, 'Card')[0], 'className');
   assert.equal(stylesOf(tokens, 'title')[0], 'attr');
 });
 
 test('tsx does not treat generics as jsx', () => {
-  const src = 'useState<number>(0)';
-  const tokens = tokenize('tsx', src);
-  assert.equal(tokensText(tokens), src);
+  const source = 'useState<number>(0)';
+  const tokens = tokenize('tsx', source);
+  assert.equal(tokensText(tokens), source);
   assert.equal(stylesOf(tokens, 'number')[0], 'type');
   assert.equal(stylesOf(tokens, '<')[0], 'operator');
 });
 
 test('dart highlights keywords types and interpolation', () => {
   const interp = '$name';
-  const src = `final n = 1;\nString hi = 'Hello ${interp}';`;
-  const tokens = tokenize('dart', src);
-  assert.equal(tokensText(tokens), src);
+  const source = `final n = 1;\nString hi = 'Hello ${interp}';`;
+  const tokens = tokenize('dart', source);
+  assert.equal(tokensText(tokens), source);
   assert.equal(stylesOf(tokens, 'final')[0], 'storage');
   assert.equal(stylesOf(tokens, 'n')[0], 'variable');
   assert.ok(stylesOf(tokens, '1').includes('number'));
@@ -105,9 +102,9 @@ test('dart highlights keywords types and interpolation', () => {
 });
 
 test('dart highlights class names comments and annotations', () => {
-  const src = '@override\nclass Foo {}\n// note';
-  const tokens = tokenize('dart', src);
-  assert.equal(tokensText(tokens), src);
+  const source = '@override\nclass Foo {}\n// note';
+  const tokens = tokenize('dart', source);
+  assert.equal(tokensText(tokens), source);
   assert.equal(stylesOf(tokens, '@override')[0], 'decorator');
   assert.equal(stylesOf(tokens, 'class')[0], 'storage');
   assert.equal(stylesOf(tokens, 'Foo')[0], 'className');
@@ -142,9 +139,11 @@ test('js family reconstructs incomplete strings templates regexes', () => {
     ['jsx', '<>frag</>'],
     ['tsx', 'const el = <A><B x={1}/></A>;'],
   ];
-  for (const [lang, src] of cases) {
-    const tokens = tokenize(lang, src);
-    assert.equal(tokensText(tokens), src, `${lang}: ${src}`);
+  for (const entry of cases) {
+    const lang = entry[0];
+    const source = entry[1];
+    const tokens = tokenize(lang, source);
+    assert.equal(tokensText(tokens), source, `${lang}: ${source}`);
   }
 });
 
@@ -157,8 +156,8 @@ test('js comments beat regex and regex beats division', () => {
   assert.equal(stylesOf(re, '/ab+c/i')[0], 'regex');
   const div = tokenize('js', 'a / b');
   assert.equal(stylesOf(div, '/')[0], 'operator');
-  const ret = tokenize('js', 'return /x/;');
-  assert.equal(stylesOf(ret, '/x/')[0], 'regex');
+  const returned = tokenize('js', 'return /x/;');
+  assert.equal(stylesOf(returned, '/x/')[0], 'regex');
 });
 
 test('js decorators templates and nested jsx keep styles', () => {

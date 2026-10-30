@@ -51,21 +51,21 @@ const emitSink = () => {
 test('watchResize removes listeners from stdout and process', () => {
   const stdout = new EventEmitter();
   const proc = new EventEmitter();
-  let n = 0;
+  let count = 0;
   const stop = watchResize(stdout, proc, () => {
-    n += 1;
+    count += 1;
   });
   assert.equal(stdout.listenerCount('resize'), 1);
   assert.equal(proc.listenerCount('SIGWINCH'), 1);
   stdout.emit('resize');
   proc.emit('SIGWINCH');
-  assert.equal(n, 2);
+  assert.equal(count, 2);
   stop();
   assert.equal(stdout.listenerCount('resize'), 0);
   assert.equal(proc.listenerCount('SIGWINCH'), 0);
   stdout.emit('resize');
   proc.emit('SIGWINCH');
-  assert.equal(n, 2);
+  assert.equal(count, 2);
 });
 
 test('watchResize abort signal also removes listeners', () => {
@@ -101,7 +101,9 @@ test('leaving turns off every terminal mode that entering turned on', () => {
     ['\x1b[>1u', '\x1b[<u'],
     ['\x1b[>1s', '\x1b[>0s'],
   ];
-  for (const [on, off] of undo) {
+  for (const entry of undo) {
+    const on = entry[0];
+    const off = entry[1];
     assert.ok(entered.includes(on), JSON.stringify(on));
     assert.ok(left.includes(off), JSON.stringify(off));
   }
@@ -122,11 +124,11 @@ test('leaving turns off every terminal mode that entering turned on', () => {
 
 test('pause and resume restore listening after an external command', () => {
   const { term, stdin, stdout } = openTerm();
-  let n = 0;
+  let count = 0;
   term.enter();
   term.startListening({
     onData: () => {
-      n += 1;
+      count += 1;
     },
     onResize: () => {},
   });
@@ -137,14 +139,14 @@ test('pause and resume restore listening after an external command', () => {
   assert.equal(stdin.paused, true);
   assert.equal(stdin.listenerCount('data'), 0);
   stdin.emit('data', 'x');
-  assert.equal(n, 0);
+  assert.equal(count, 0);
   term.resume();
   assert.equal(term.open, true);
   assert.equal(stdin.raw, true);
   assert.equal(stdin.paused, false);
   assert.equal(stdin.listenerCount('data'), 1);
   stdin.emit('data', 'x');
-  assert.equal(n, 1);
+  assert.equal(count, 1);
   assert.ok(stdout.dump().includes(LEAVE_TERM));
   assert.ok(stdout.dump().endsWith(ENTER_TERM));
 });

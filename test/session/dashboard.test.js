@@ -2,6 +2,7 @@
 
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
+
 const tiles = require('../../lib/render/tiles.js');
 const { paintTile } = tiles;
 const dashTable = require('../../lib/render/table.js');
@@ -113,14 +114,14 @@ test('a click on a tile opens its screen', async () => {
   const { ui, close } = await openDashboard();
   try {
     ui.draw();
-    const hit = ui.lastFrame.fileHits.find((h) => h.cursor === 'branches');
+    const hit = ui.lastFrame.fileHits.find((hit) => hit.cursor === 'branches');
     assert.ok(hit);
     click(ui, hit.x0 + 2, hit.y);
     await ui.ops.idle();
     assert.equal(ui.pane, 'branches');
     ui.nav.pane = 'dashboard';
     ui.draw();
-    const npm = ui.lastFrame.fileHits.find((h) => h.cursor === 'npm');
+    const npm = ui.lastFrame.fileHits.find((hit) => hit.cursor === 'npm');
     assert.ok(npm);
     click(ui, npm.x0 + 2, npm.y);
     await ui.ops.idle();
@@ -624,8 +625,8 @@ test('the branches header shows the local count', () => {
       hot: new Map(),
     },
   };
-  const ctx = { now: 10, frame: 0 };
-  const block = branchesBlock(model, 32, 6, ctx, tile);
+  const context = { now: 10, frame: 0 };
+  const block = branchesBlock(model, 32, 6, context, tile);
   const header = block.titleLine.map((part) => part.text).join('');
   assert.equal(header.startsWith('branches'), true);
   assert.equal(header.endsWith('2'), true);
@@ -705,9 +706,9 @@ test('the npm screen lists every package the tile cuts off', () => {
     running: '',
   };
   const tile = { key: 'n', title: 'npm' };
-  const ctx = { frame: 0 };
-  const block = npmBlock({ npm: data }, 48, 6, ctx, tile);
-  const full = npmContent(data, 48, null, ctx, tile);
+  const context = { frame: 0 };
+  const block = npmBlock({ npm: data }, 48, 6, context, tile);
+  const full = npmContent(data, 48, null, context, tile);
   const text = (line) => line.map((part) => part.text).join('');
   const short = block.lines.map(text).join('\n');
   const complete = full.lines.map(text).join('\n');

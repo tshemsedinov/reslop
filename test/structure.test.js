@@ -11,6 +11,16 @@ const LIB_DIR = path.resolve(__dirname, '../lib');
 const SESSION_DIR = path.join(LIB_DIR, 'session');
 const SESSION_FILE = path.join(SESSION_DIR, 'session.js');
 
+const FUNCTION_RULE = [
+  'error',
+  {
+    max: 100,
+    skipBlankLines: false,
+    skipComments: false,
+    IIFEs: true,
+  },
+];
+
 const resolveRelative = (fromFile, spec) => {
   if (typeof spec !== 'string' || !spec.startsWith('.')) return null;
   let resolved = path.resolve(path.dirname(fromFile), spec);
@@ -79,16 +89,6 @@ const local = {
     },
   },
 };
-
-const FUNCTION_RULE = [
-  'error',
-  {
-    max: 100,
-    skipBlankLines: false,
-    skipComments: false,
-    IIFEs: true,
-  },
-];
 
 const lint = (code, rules, filename = 'file.js') => {
   const linter = new Linter();

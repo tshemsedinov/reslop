@@ -1,6 +1,7 @@
 'use strict';
 
 const assert = require('node:assert/strict');
+
 const { Session } = require('../lib/session/session.js');
 const helpers = require('./helpers.js');
 const { uiSink, sampleHunk, tempDir, press, click } = helpers;
@@ -8,11 +9,9 @@ const ansi = require('../lib/term/ansi.js');
 const { stripAnsi } = ansi;
 const { dateStamp } = require('../lib/common/utilities.js');
 
-// The row of the tasks screen whose label includes a text
 const rowOf = (session, text) =>
   session.composer.tasks.taskTexts().findIndex((label) => label.includes(text));
 
-// The label of the focused row of the tasks screen
 const focusedRow = (session) =>
   session.composer.tasks.taskTexts()[session.tasksFocus];
 

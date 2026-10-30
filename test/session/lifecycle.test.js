@@ -3,10 +3,8 @@
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 
-const {
-  LoadCoordinator,
-  tagLoaded,
-} = require('../../lib/session/lifecycle.js');
+const lifecycleModule = require('../../lib/session/lifecycle.js');
+const { LoadCoordinator, tagLoaded } = lifecycleModule;
 const { isAbort } = require('../../lib/common/process.js');
 const { Session } = require('../../lib/session/session.js');
 const { uiSink, sampleHunk, tempDir } = require('../helpers.js');
@@ -25,6 +23,19 @@ const sampleItem = (name) => ({
   hunk: sampleHunk([{ type: 'add', text: 'x', noNl: false, blockId: 0 }]),
   blockId: 0,
 });
+
+const emptySession = (extra = {}) => {
+  const cwd = extra.cwd ?? tempDir('reslop-ui-');
+  const load = async () => ({ top: cwd, items: [] });
+  const repo = extra.repo ?? { load };
+  return new Session({
+    stdout: uiSink(),
+    color: false,
+    ...extra,
+    cwd,
+    repo,
+  });
+};
 
 test('isAbort recognizes ABORT codes', () => {
   assert.equal(isAbort({ code: 'ABORT' }), true);
@@ -241,14 +252,8 @@ test('reset ignores extras from a previous load', async () => {
   const pending = session.openLoad();
   await new Promise((resolve, reject) => {
     const tick = (left) => {
-      if (extrasStarted) {
-        resolve();
-        return;
-      }
-      if (left <= 0) {
-        reject(new Error('extras did not start'));
-        return;
-      }
+      if (extrasStarted) return void resolve();
+      if (left <= 0) return void reject(new Error('extras did not start'));
       setImmediate(() => tick(left - 1));
     };
     tick(50);
@@ -291,19 +296,6 @@ test('close while loading ignores the late snapshot', async () => {
   await pending;
   assert.equal(session.items.length, 0);
 });
-
-const emptySession = (extra = {}) => {
-  const cwd = extra.cwd ?? tempDir('reslop-ui-');
-  const load = async () => ({ top: cwd, items: [] });
-  const repo = extra.repo ?? { load };
-  return new Session({
-    stdout: uiSink(),
-    color: false,
-    ...extra,
-    cwd,
-    repo,
-  });
-};
 
 test('opening an empty worktree stays in the files pane', async () => {
   const session = emptySession({ startPane: 'diff' });

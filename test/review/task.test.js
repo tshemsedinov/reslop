@@ -3,17 +3,11 @@
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 
-const {
-  TaskItem,
-  parseTitle,
-  FIELD_KEYS,
-} = require('../../lib/review/task.js');
+const taskModule = require('../../lib/review/task.js');
+const { TaskItem, parseTitle, FIELD_KEYS } = taskModule;
 const { parseReview } = require('../../lib/review/review.js');
-const {
-  taskKind,
-  kindFields,
-  TASK_KINDS,
-} = require('../../lib/common/files.js');
+const filesModule = require('../../lib/common/files.js');
+const { taskKind, kindFields, TASK_KINDS } = filesModule;
 
 const B1 = [
   '- [ ] B1 high: Released connection can be assigned to two consumers',

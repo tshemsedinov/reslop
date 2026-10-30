@@ -7,9 +7,9 @@ const path = require('node:path');
 
 const workspace = require('../../lib/dashboard/workspace.js');
 const { workspaceAt, readDiffStat } = workspace;
+const { countCommits, taskStats, pickRun } = workspace;
 const { load } = require('../../lib/git/git.js');
 const { fileEntries, fileTotals } = require('../../lib/common/files.js');
-const { countCommits, taskStats, pickRun } = workspace;
 const tiles = require('../../lib/render/tiles.js');
 const { equalGrid, pageWindow, placeEqualTiles } = tiles;
 const { size } = require('../../lib/common/format.js');
@@ -257,17 +257,11 @@ test('opening a folder of repositories starts on repo tiles', async () => {
     assert.equal(session.workspaceRoot, path.resolve(root));
     assert.equal(session.repoName, path.basename(root));
     session.workspace.start();
-    const ready = await waitUntil(() =>
-      session.workspace.rows.every(
-        (row) =>
-          row.filesReady &&
-          row.commitsReady &&
-          row.diffReady &&
-          row.tasksReady &&
-          row.runsReady &&
-          row.npmReady,
-      ),
-    );
+    const isReady = (row) => {
+      const git = row.filesReady && row.commitsReady && row.diffReady;
+      return git && row.tasksReady && row.runsReady && row.npmReady;
+    };
+    const ready = await waitUntil(() => session.workspace.rows.every(isReady));
     assert.equal(ready, true);
     const alphaRow = session.workspace.byName.get('alpha');
     assert.equal(alphaRow.tasksDone, 0);

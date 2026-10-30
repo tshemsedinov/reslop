@@ -10,10 +10,6 @@ const icons = require('../../lib/render/icons.js');
 const { FOLDER, entryIcon } = icons;
 const { fileMark, extMark, badgeColors } = icons;
 
-const fileIcon = (rel) => fileMark(rel).text;
-
-const extIcon = (key) => extMark(key).text;
-
 const NAMES = [
   'a.js',
   'a.ts',
@@ -35,6 +31,10 @@ const NAMES = [
   'a.rs',
   'lib/a.css',
 ];
+
+const fileIcon = (rel) => fileMark(rel).text;
+
+const extIcon = (key) => extMark(key).text;
 
 test('file and folder icons take two columns', () => {
   assert.equal(visibleWidth(FOLDER), 2);

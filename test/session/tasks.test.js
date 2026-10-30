@@ -4,6 +4,7 @@ const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
+
 const helpers = require('../helpers.js');
 const { press } = helpers;
 const review = require('../../lib/review/review.js');
@@ -16,32 +17,6 @@ const clipboard = require('../../lib/term/select.js');
 const sessionHelpers = require('../session-helpers.js');
 const { rowOf, focusedRow, focusTask, pageTo, typeTasks } = sessionHelpers;
 const { sampleItem, openSession } = sessionHelpers;
-
-// The editor of the focused block, with the cursor at a text in it
-const cursorAt = (session, text) => {
-  session.composer.tasks.settle();
-  const at = session.editor.text.indexOf(text);
-  assert.ok(at >= 0, text);
-  session.editor.place(at);
-  return session.editor;
-};
-
-// The tasks screen of a plan file, as plain text rows of its body
-const planScreen = async (name, text, rows = 24, extra = {}) => {
-  const items = [sampleItem('a.js')];
-  const { session, stdout, cwd, repo } = await openSession(items, extra);
-  stdout.rows = rows;
-  const dir = path.join(cwd, REVIEW_DIR);
-  fs.mkdirSync(dir, { recursive: true });
-  if (text !== null) fs.writeFileSync(path.join(dir, name), text);
-  session.composer.tasks.openTasksPage();
-  session.composer.tasks.openPlan(name);
-  session.draw();
-  const body = session.lastFrame.rows.slice(1, -2);
-  const lines = body.map((row) => stripAnsi(row).trimEnd());
-  while (lines.length && !lines[lines.length - 1]) lines.pop();
-  return { session, lines, repo };
-};
 
 const PLAN_SCREEN = [
   '---',
@@ -73,6 +48,126 @@ const PLAN_SCREEN = [
   '```',
   '',
 ].join('\n');
+
+const SECTIONS = [
+  '## Bug Reports and Fixes',
+  '',
+  '- [ ] B1: pool hands a connection out twice',
+  '- [ ] B2: timeout names the pool',
+  '',
+  '## Notes',
+  '',
+  'Context for the agent.',
+  '',
+  '## Security and Compliance',
+  '',
+  '- [ ] S1: keep paths inside the root',
+  '',
+].join('\n');
+
+const STRUCTURED = [
+  '## Bug Reports and Fixes',
+  '',
+  '- [ ] B1 high: Escape ends the read loop',
+  '  - where: lib/session/terminal.js#readLoop',
+  '  - check:',
+  '    - [ ] read loop survives a lone Escape',
+  '    - [ ] terminal tests pass',
+  '  - result: guarded the timer',
+  '- [ ] B2: Timeout names the pool',
+  '',
+].join('\n');
+
+const KIND_ORDER = [
+  '## Feature requests and Enhancements',
+  '',
+  '- [ ] F1: dark mode',
+  '',
+  '## Refactoring and Technical debt',
+  '',
+  '- [ ] D1: split the store',
+  '',
+  '## Notes',
+  '',
+  'Text.',
+  '',
+].join('\n');
+
+const FIXTURE_PLAN = fs.readFileSync(
+  path.join(__dirname, '..', 'fixtures', 'plan.md'),
+  'utf8',
+);
+
+const LINKED = [
+  '## Bug Reports and Fixes',
+  '',
+  '- [ ] B1: Escape ends the read loop',
+  '  - where: `lib/term.js` readLoop:3, lib/term.js#readLoop',
+  '  - related: https://github.com/tshemsedinov/reslop/issues/86',
+  '- [ ] B2: Lines and missing symbols',
+  '  - where: lib/term.js:4',
+  '  - related: lib/term.js#nowhere',
+  '- [ ] B3: Outside the root',
+  '  - where: ../../.ssh/id_rsa',
+  '',
+].join('\n');
+
+const TERM = [
+  '// terminal',
+  '',
+  'const x = 1;',
+  'const readLoop = () => {};',
+  '',
+];
+
+const cursorAt = (session, text) => {
+  session.composer.tasks.settle();
+  const at = session.editor.text.indexOf(text);
+  assert.ok(at >= 0, text);
+  session.editor.place(at);
+  return session.editor;
+};
+
+// The tasks screen of a plan file, as plain text rows of its body
+const planScreen = async (name, text, rows = 24, extra = {}) => {
+  const items = [sampleItem('a.js')];
+  const { session, stdout, cwd, repo } = await openSession(items, extra);
+  stdout.rows = rows;
+  const dir = path.join(cwd, REVIEW_DIR);
+  fs.mkdirSync(dir, { recursive: true });
+  if (text !== null) fs.writeFileSync(path.join(dir, name), text);
+  session.composer.tasks.openTasksPage();
+  session.composer.tasks.openPlan(name);
+  session.draw();
+  const body = session.lastFrame.rows.slice(1, -2);
+  const lines = body.map((row) => stripAnsi(row).trimEnd());
+  while (lines.length && !lines[lines.length - 1]) lines.pop();
+  return { session, lines, repo };
+};
+
+const pickSection = (session, query) => {
+  press(session, 'ctrl-b');
+  session.pushInput(query);
+  press(session, 'enter');
+};
+
+const withTerm = (screen) => {
+  const dir = path.join(screen.session.root, 'lib');
+  fs.mkdirSync(dir, { recursive: true });
+  fs.writeFileSync(path.join(dir, 'term.js'), TERM.join('\n'));
+  screen.repo.fileBodies['lib/term.js'] = TERM.join('\n');
+  return screen;
+};
+
+const linkedScreen = async (text = LINKED) =>
+  withTerm(await planScreen('linked.md', text));
+
+// The foreground in force where a text starts in a painted row
+const colorBefore = (row, text) => {
+  const head = row.slice(0, row.indexOf(text));
+  const at = head.lastIndexOf('\x1b[38;');
+  return head.slice(at, head.indexOf('m', at) + 1);
+};
 
 test('tasks screen snapshot of a reslop plan', async () => {
   const { lines } = await planScreen('2026-10-27-00.md', PLAN_SCREEN);
@@ -135,22 +230,6 @@ test('tasks screen snapshot of an empty file', async () => {
   press(session, 'enter');
   assert.equal(session.mode, 'compose');
 });
-
-const SECTIONS = [
-  '## Bug Reports and Fixes',
-  '',
-  '- [ ] B1: pool hands a connection out twice',
-  '- [ ] B2: timeout names the pool',
-  '',
-  '## Notes',
-  '',
-  'Context for the agent.',
-  '',
-  '## Security and Compliance',
-  '',
-  '- [ ] S1: keep paths inside the root',
-  '',
-].join('\n');
 
 test('insert adds a task below the focused block in its block', async () => {
   const { session } = await planScreen('blocks.md', SECTIONS);
@@ -241,19 +320,6 @@ test('enter on a heading goes below, insert starts a task', async () => {
   assert.match(text, /## Notes and links\n\n- \[ \] a task under notes\n\n/);
 });
 
-const STRUCTURED = [
-  '## Bug Reports and Fixes',
-  '',
-  '- [ ] B1 high: Escape ends the read loop',
-  '  - where: lib/session/terminal.js#readLoop',
-  '  - check:',
-  '    - [ ] read loop survives a lone Escape',
-  '    - [ ] terminal tests pass',
-  '  - result: guarded the timer',
-  '- [ ] B2: Timeout names the pool',
-  '',
-].join('\n');
-
 test('a closed task names what it hides, an open one is its text', async () => {
   const { session, lines } = await planScreen('structured.md', STRUCTURED);
   assert.deepEqual(lines, [
@@ -285,7 +351,7 @@ test('ctrl+d on a check line ticks that check, not the task', async () => {
   press(session, 'ctrl-d');
   assert.match(session.editor.text, / {2}- \[x\] terminal tests pass/);
   session.composer.tasks.closeEditor();
-  const [task] = session.notes.tasks;
+  const task = session.notes.tasks[0];
   assert.equal(task.done, false);
   assert.deepEqual(
     task.item.checks.map((check) => check.done),
@@ -368,27 +434,6 @@ test('tab opens a field menu and its keys add fields', async () => {
   assert.doesNotMatch(text.split('B2:')[1], /problem/);
 });
 
-const KIND_ORDER = [
-  '## Feature requests and Enhancements',
-  '',
-  '- [ ] F1: dark mode',
-  '',
-  '## Refactoring and Technical debt',
-  '',
-  '- [ ] D1: split the store',
-  '',
-  '## Notes',
-  '',
-  'Text.',
-  '',
-].join('\n');
-
-const pickSection = (session, query) => {
-  press(session, 'ctrl-b');
-  session.pushInput(query);
-  press(session, 'enter');
-};
-
 test('the block menu adds a missing kind in kind order', async () => {
   const { session } = await planScreen('kinds.md', KIND_ORDER);
   press(session, 'ctrl-b');
@@ -454,11 +499,6 @@ test('a custom block goes at the cursor and is named at once', async () => {
   assert.equal(focusedRow(session), 'Refactoring and Technical debt');
 });
 
-const FIXTURE_PLAN = fs.readFileSync(
-  path.join(__dirname, '..', 'fixtures', 'plan.md'),
-  'utf8',
-);
-
 test('the plan menus list .plan files, which keep their bytes', async () => {
   const { session, cwd } = await openSession([sampleItem('a.js')]);
   const dir = path.join(cwd, REVIEW_DIR);
@@ -494,39 +534,6 @@ test('the plan menus list .plan files, which keep their bytes', async () => {
   assert.ok(agents.some((label) => label.startsWith('structured')));
   assert.ok(!agents.some((label) => label.includes('spec')));
 });
-
-const LINKED = [
-  '## Bug Reports and Fixes',
-  '',
-  '- [ ] B1: Escape ends the read loop',
-  '  - where: `lib/term.js` readLoop:3, lib/term.js#readLoop',
-  '  - related: https://github.com/tshemsedinov/reslop/issues/86',
-  '- [ ] B2: Lines and missing symbols',
-  '  - where: lib/term.js:4',
-  '  - related: lib/term.js#nowhere',
-  '- [ ] B3: Outside the root',
-  '  - where: ../../.ssh/id_rsa',
-  '',
-].join('\n');
-
-const TERM = [
-  '// terminal',
-  '',
-  'const x = 1;',
-  'const readLoop = () => {};',
-  '',
-];
-
-const withTerm = (screen) => {
-  const dir = path.join(screen.session.root, 'lib');
-  fs.mkdirSync(dir, { recursive: true });
-  fs.writeFileSync(path.join(dir, 'term.js'), TERM.join('\n'));
-  screen.repo.fileBodies['lib/term.js'] = TERM.join('\n');
-  return screen;
-};
-
-const linkedScreen = async (text = LINKED) =>
-  withTerm(await planScreen('linked.md', text));
 
 test('ctrl+w opens the location on the cursor line', async () => {
   const { session } = await linkedScreen();
@@ -1045,13 +1052,6 @@ test('an item typed under another is saved once, however often', async () => {
   assert.equal(session.editor.text, '- bx');
 });
 
-// The foreground in force where a text starts in a painted row
-const colorBefore = (row, text) => {
-  const head = row.slice(0, row.indexOf(text));
-  const at = head.lastIndexOf('\x1b[38;');
-  return head.slice(at, head.indexOf('m', at) + 1);
-};
-
 test('every field of an open task has its name and value colors', async () => {
   const text = [
     '## Bug Reports and Fixes',
@@ -1068,11 +1068,14 @@ test('every field of an open task has its name and value colors', async () => {
   session.draw();
   const row = (part) =>
     session.lastFrame.rows.find((one) => stripAnsi(one).includes(part));
-  for (const [line, key, value] of [
+  for (const entry of [
     ['- where:', 'where', 'lib/a.js'],
     ['- problem:', 'problem', 'it breaks'],
     ['- do:', 'do', 'fix it'],
   ]) {
+    const line = entry[0];
+    const key = entry[1];
+    const value = entry[2];
     const painted = row(line);
     assert.equal(colorBefore(painted, key), fg(THEME.shaFg), line);
     assert.equal(colorBefore(painted, value), fg(THEME.addLineFg), line);

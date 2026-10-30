@@ -4,6 +4,7 @@ const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
+
 const helpers = require('../helpers.js');
 const { uiSink, press, click, rightClick } = helpers;
 const ansi = require('../../lib/term/ansi.js');
@@ -82,7 +83,7 @@ test('feedback is a structured task, an older note becomes one', async () => {
   ].join('\n');
   assert.ok(notes.doc.toString().includes(task));
   assert.doesNotMatch(notes.doc.toString(), /## a\.js|:1:1:0/);
-  const [only] = notes.tasks;
+  const only = notes.tasks[0];
   notes.setTaskDone(only.id, true);
   session.dispatch('blockTask');
   session.pushInput('!');
@@ -252,7 +253,7 @@ test('e on a read-only commit keeps a code proposal', async () => {
   assert.equal(repo.edited.length, 0);
   const note = session.notes.blockCode('a.js:1');
   assert.equal(note.text, 'b2');
-  const [task] = session.notes.tasks;
+  const task = session.notes.tasks[0];
   assert.equal(task.item.title, 'Replace the added lines');
   assert.equal(task.item.value('where'), 'a.js:1');
   assert.equal(
@@ -285,7 +286,7 @@ test('an older code note becomes the do of the block task', async () => {
   press(session, 'escape');
   assert.equal(notes.code.size, 0);
   assert.doesNotMatch(notes.doc.toString(), /## a\.js|code `/);
-  const [task] = notes.tasks;
+  const task = notes.tasks[0];
   assert.equal(task.item.title, 'Rename');
   assert.match(task.item.value('do'), /```\nolder\n```/);
 });
@@ -697,7 +698,7 @@ test('tasks plan combo filters in place and keeps the agent menu', async () => {
   const dir = path.join(cwd, REVIEW_DIR);
   fs.mkdirSync(dir, { recursive: true });
   for (let i = 0; i < 12; i++) {
-    const name = `note-${String(i).padStart(2, '0')}.md`;
+    const name = `note-${`${i}`.padStart(2, '0')}.md`;
     fs.writeFileSync(path.join(dir, name), `# ${name}\n`);
   }
   fs.writeFileSync(path.join(dir, 'beta-plan.md'), '# beta\n');

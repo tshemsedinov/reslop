@@ -7,12 +7,8 @@ const path = require('node:path');
 
 const reports = require('../../lib/dashboard/npm.js');
 const { remembered, reportCounts, forgetReports } = reports;
-const {
-  makeRepo,
-  tempDir,
-  removeTree,
-  openRepoSession,
-} = require('../helpers.js');
+const helpersModule = require('../helpers.js');
+const { makeRepo, tempDir, removeTree, openRepoSession } = helpersModule;
 
 // What npm would answer: the number of problems asked for, counted
 const counter = (sizes = { audit: 2, outdated: 3 }) => {
@@ -63,12 +59,12 @@ test('worktrees with one lockfile ask npm audit once', async () => {
     const two = await reportCounts(second, collect);
     assert.deepEqual(one, { audit: 2, outdated: 3 });
     assert.deepEqual(two, one);
-    const audits = calls.filter(([, kind]) => kind === 'audit');
-    const outdated = calls.filter(([, kind]) => kind === 'outdated');
+    const audits = calls.filter((call) => call[1] === 'audit');
+    const outdated = calls.filter((call) => call[1] === 'outdated');
     assert.equal(audits.length, 1);
     assert.equal(outdated.length, 2);
     await reportCounts(changed, collect);
-    assert.equal(calls.filter(([, kind]) => kind === 'audit').length, 2);
+    assert.equal(calls.filter((call) => call[1] === 'audit').length, 2);
     await reportCounts(first, collect);
     await reportCounts(second, collect);
     await reportCounts(changed, collect);
@@ -91,7 +87,7 @@ test('a directory without a lockfile keeps no audit answer', async () => {
     const counts = await reportCounts(root, collect);
     assert.deepEqual(counts, { audit: 0, outdated: 0 });
     await reportCounts(root, collect);
-    const asked = (kind) => calls.filter(([, name]) => name === kind).length;
+    const asked = (kind) => calls.filter((call) => call[1] === kind).length;
     assert.equal(asked('audit'), 2);
     assert.equal(asked('outdated'), 1);
   } finally {

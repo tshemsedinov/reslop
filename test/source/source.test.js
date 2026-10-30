@@ -8,6 +8,8 @@ const { selectChangeSource, createLoadedSource } = source;
 const { SOURCE_CAPS, capabilitiesFor, attachCapabilities } = source;
 const { sessionCapabilities } = source;
 
+const hasMethod = (source, name) => typeof source[name] === 'function';
+
 test('selectChangeSource recognizes a GitHub pull request URL', () => {
   const url = 'https://github.com/acme/app/pull/123';
   const selected = selectChangeSource([url]);
@@ -121,8 +123,6 @@ test('createLoadedSource is read only and copies its items', async () => {
   assert.equal(source.capabilities.changes, false);
   assert.equal(source.capabilities.branches, false);
 });
-
-const hasMethod = (source, name) => typeof source[name] === 'function';
 
 test('capability matrix covers local commit remotes and read-only', () => {
   assert.deepEqual(capabilitiesFor('commit'), {

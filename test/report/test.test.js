@@ -4,6 +4,7 @@ const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
+
 const { tempDir } = require('../helpers.js');
 const { buildDocument } = require('../../lib/report/parse.js');
 const { renderDocument } = require('../../lib/report/render.js');
@@ -19,6 +20,16 @@ const textFailure = (number, name, message, caller) => [
   '      at read (/repo/lib/read.js:4:5)',
   `      at test (/repo/test/${caller}.js:10:2)`,
   '      at Test.run (node:internal/test_runner/test:1:1)',
+];
+
+const nestedFailure = (number, type, message) => [
+  `    not ok ${number} - test ${number} # time=1.00ms`,
+  '        ---',
+  '        error:',
+  `            name: ${JSON.stringify(type)}`,
+  `            message: "${message}"`,
+  '        at: "/repo/lib/shared.js:4:5"',
+  '        ...',
 ];
 
 test('TAP text failures group before filtering without a header', () => {
@@ -121,23 +132,13 @@ test('TAP repeated contexts remain bounded and count every failure', () => {
   assert.equal(item.related.length, 2);
   assert.equal(item.omitted, 7);
   const duplicate = textFailure(1, 'same test', 'missing id', 'a');
-  const identical = parsed([...duplicate, ...duplicate, ...duplicate]);
+  const identical = parsed(duplicate.concat(duplicate, duplicate));
   const repeated = identical.report.problems[0];
   assert.equal(repeated.count, 3);
   assert.equal(repeated.traces.length, 1);
   assert.equal(repeated.related.length, 0);
   assert.equal(repeated.omitted, 2);
 });
-
-const nestedFailure = (number, type, message) => [
-  `    not ok ${number} - test ${number} # time=1.00ms`,
-  '        ---',
-  '        error:',
-  `            name: ${JSON.stringify(type)}`,
-  `            message: "${message}"`,
-  '        at: "/repo/lib/shared.js:4:5"',
-  '        ...',
-];
 
 test('TAP nested errors keep multiline messages and leaf counts', () => {
   const { report, md } = parsed([
@@ -273,25 +274,25 @@ test('TAP Node container failures do not repeat child diagnostics', () => {
 });
 
 test('TUI groups and saves TAP without a version header', async () => {
-  const root = tempDir();
+  const top = tempDir();
   try {
-    const raw = [
+    const text = [
       ...textFailure(1, 'first', 'missing id', 'a'),
       ...textFailure(2, 'second', 'missing id', 'b'),
       '1..2',
     ]
       .join('\n')
-      .replaceAll('/repo', root);
+      .replaceAll('/repo', top);
     const { NpmController } = require('../../lib/session/npm.js');
     const ui = {
-      top: root,
+      top,
       nav: { npmCursor: 0 },
       progress: { start() {}, stop() {} },
       paint() {},
       repo: {
         runNpmCommand(cwd, entry, onData, onClose) {
-          onData(raw);
-          return onClose({ text: raw, status: 1 });
+          onData(text);
+          return onClose({ text, status: 1 });
         },
       },
     };
@@ -302,7 +303,7 @@ test('TUI groups and saves TAP without a version header', async () => {
     assert.match(controller.output, /× 2/);
     assert.ok(!controller.output.includes('## '));
     assert.ok(!controller.output.includes('node:'));
-    const directory = path.join(root, '.log');
+    const directory = path.join(top, '.log');
     const names = fs.readdirSync(directory);
     const reduced = names.find((name) => name.endsWith('.log'));
     const rawName = names.find((name) => name.endsWith('.raw'));
@@ -314,8 +315,8 @@ test('TUI groups and saves TAP without a version header', async () => {
     const savedRaw = fs.readFileSync(path.join(directory, rawName), 'utf8');
     assert.match(savedRaw, /missing id/);
     controller.toggleVerbose();
-    assert.equal(controller.output.trimEnd(), raw);
+    assert.equal(controller.output.trimEnd(), text);
   } finally {
-    fs.rmSync(root, { recursive: true, force: true });
+    fs.rmSync(top, { recursive: true, force: true });
   }
 });

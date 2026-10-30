@@ -22,15 +22,6 @@ const helpers = require('../helpers.js');
 const { tempDir, removeTree, seedRepo, gitIn: git } = helpers;
 const { wait, waitUntil, fakeProc, stopSession, click } = helpers;
 
-const initRepo = (where) => {
-  seedRepo(where);
-  fs.writeFileSync(path.join(where, 'app.js'), 'const n = 1;\n');
-  git(where, ['add', '.']);
-  git(where, ['commit', '-m', 'init']);
-};
-
-const same = (left, right) => assert.equal(dirKey(left), dirKey(right));
-
 const PORCELAIN = [
   'worktree /repo/app',
   'HEAD 1111111111111111111111111111111111111111',
@@ -47,6 +38,80 @@ const PORCELAIN = [
   'prunable gitdir file points to non-existent location',
   '',
 ].join('\n');
+
+const initRepo = (where) => {
+  seedRepo(where);
+  fs.writeFileSync(path.join(where, 'app.js'), 'const n = 1;\n');
+  git(where, ['add', '.']);
+  git(where, ['commit', '-m', 'init']);
+};
+
+const same = (left, right) => assert.equal(dirKey(left), dirKey(right));
+
+const readyRows = (session) =>
+  session.workspace.rows.every(
+    (row) => row.filesReady && row.commitsReady && row.diffReady,
+  );
+
+const readyTrees = (session) =>
+  session.trees.rows.every(
+    (row) => row.filesReady && row.commitsReady && row.diffReady,
+  );
+
+const tileOf = (name, extra = {}) => ({
+  id: name,
+  name,
+  bytes: 10,
+  exts: [],
+  tasks: 0,
+  tasksDone: 0,
+  commits: 1,
+  diff: {
+    stagedAdded: 0,
+    unstagedAdded: 0,
+    stagedRemoved: 0,
+    unstagedRemoved: 0,
+  },
+  run: null,
+  activityAt: 0,
+  filesReady: true,
+  commitsReady: true,
+  diffReady: true,
+  tasksReady: true,
+  runsReady: true,
+  npmReady: true,
+  npm: null,
+  agents: 0,
+  branch: 'main',
+  ...extra,
+});
+
+const shownWith = (fields, height = 30) => {
+  const base = { repoName: 'demo', status: '', counts: {}, files: [] };
+  const view = { ...base, ...fields };
+  const frame = renderFrame(view, { width: 100, height, color: false });
+  return stripAnsi(frame.text);
+};
+
+const press = (session, key) => session.handleEvent({ type: 'key', key });
+
+// The branches with the tiles of the worktrees, one of them selected
+const openTiles = async (session, count = 2) => {
+  press(session, 'b');
+  await session.ops.idle();
+  assert.equal(session.pane, 'branches');
+  const loaded = () => session.trees.rows.length === count;
+  assert.equal(await waitUntil(loaded), true);
+  session.nav.branchCursor = 0;
+  press(session, 'up');
+  assert.equal(session.nav.treeFocus, true);
+};
+
+const framed = (session) => {
+  const view = session.view();
+  const frame = renderFrame(view, { width: 120, height: 36, color: false });
+  return stripAnsi(frame.text);
+};
 
 test('worktree list is parsed from the porcelain output', () => {
   const list = parseWorktrees(PORCELAIN);
@@ -316,16 +381,6 @@ test('the branch screen has a w button for worktrees', () => {
   );
 });
 
-const readyRows = (session) =>
-  session.workspace.rows.every(
-    (row) => row.filesReady && row.commitsReady && row.diffReady,
-  );
-
-const readyTrees = (session) =>
-  session.trees.rows.every(
-    (row) => row.filesReady && row.commitsReady && row.diffReady,
-  );
-
 test('worktrees are created and removed on the repos screen', async () => {
   const root = tempDir('reslop-wt-');
   let session = null;
@@ -448,41 +503,6 @@ test('a linked worktree opens like a repository of its own', async () => {
   }
 });
 
-const tileOf = (name, extra = {}) => ({
-  id: name,
-  name,
-  bytes: 10,
-  exts: [],
-  tasks: 0,
-  tasksDone: 0,
-  commits: 1,
-  diff: {
-    stagedAdded: 0,
-    unstagedAdded: 0,
-    stagedRemoved: 0,
-    unstagedRemoved: 0,
-  },
-  run: null,
-  activityAt: 0,
-  filesReady: true,
-  commitsReady: true,
-  diffReady: true,
-  tasksReady: true,
-  runsReady: true,
-  npmReady: true,
-  npm: null,
-  agents: 0,
-  branch: 'main',
-  ...extra,
-});
-
-const shownWith = (fields, height = 30) => {
-  const base = { repoName: 'demo', status: '', counts: {}, files: [] };
-  const view = { ...base, ...fields };
-  const frame = renderFrame(view, { width: 100, height, color: false });
-  return stripAnsi(frame.text);
-};
-
 test('both panels of worktrees count the active agents on the run line', () => {
   const tiles = [
     tileOf('app', { agents: 2 }),
@@ -503,26 +523,6 @@ test('both panels of worktrees count the active agents on the run line', () => {
   });
   assert.match(passed, /test passed.*agents active: 1/);
 });
-
-const press = (session, key) => session.handleEvent({ type: 'key', key });
-
-// The branches with the tiles of the worktrees, one of them selected
-const openTiles = async (session, count = 2) => {
-  press(session, 'b');
-  await session.ops.idle();
-  assert.equal(session.pane, 'branches');
-  const loaded = () => session.trees.rows.length === count;
-  assert.equal(await waitUntil(loaded), true);
-  session.nav.branchCursor = 0;
-  press(session, 'up');
-  assert.equal(session.nav.treeFocus, true);
-};
-
-const framed = (session) => {
-  const view = session.view();
-  const frame = renderFrame(view, { width: 120, height: 36, color: false });
-  return stripAnsi(frame.text);
-};
 
 test('w confirms a sibling worktree for the selected branch', async () => {
   const root = tempDir('reslop-wt-');

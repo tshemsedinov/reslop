@@ -3,6 +3,7 @@
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
+
 const runs = require('../../lib/runs/runs.js');
 const { RunRecorder, readRuns } = runs;
 const dashModel = require('../../lib/dashboard/model.js');
@@ -10,8 +11,8 @@ const { runName, buildModel, mergeRuns, groupChanges } = dashModel;
 const tiles = require('../../lib/render/tiles.js');
 const { seg, paintTile } = tiles;
 const dashTable = require('../../lib/render/table.js');
-const { ago } = require('../../lib/common/format.js');
 const { titleAside } = dashTable;
+const { ago } = require('../../lib/common/format.js');
 const dashboardPaint = require('../../lib/render/dashboard.js');
 const { runMetrics, branchesBlock, runsBlock, commitsBlock } = dashboardPaint;
 const { agentsBlock } = require('../../lib/render/agents.js');
@@ -22,6 +23,36 @@ const ansi = require('../../lib/term/ansi.js');
 const { stripAnsi, visibleWidth, THEME, seq } = ansi;
 const helpers = require('../helpers.js');
 const { tempDir } = helpers;
+
+const metricText = (cells) =>
+  cells.map((item) => item.segs.map((part) => part.text).join('')).join('|');
+
+const runRecord = (command, script, startedAt, endedAt, extra = {}) => ({
+  id: `${startedAt}`,
+  command,
+  script,
+  status: extra.status || 'passed',
+  exit: extra.exit ?? 0,
+  startedAt,
+  endedAt,
+  progress: { done: 0, failed: 0, lines: 0, expected: 0 },
+  result: extra.result ?? null,
+});
+
+const lineText = (line) => line.map((part) => part.text).join('');
+
+const messageAt = (rows, message) =>
+  rows.findIndex((row) => row.includes(message));
+
+const assertCentered = (rows, message) => {
+  const body = rows.slice(1);
+  const at = messageAt(body, message);
+  assert.ok(at >= 0, message);
+  assert.equal(at, Math.floor((body.length - 1) / 2), message);
+  const start = body[at].indexOf(message);
+  const after = body[at].length - start - message.length;
+  assert.ok(Math.abs(start - after) <= 1, message);
+};
 
 test('npm packages take wanted and latest from the outdated report', () => {
   const outdatedMap = new Map([
@@ -332,7 +363,8 @@ test('task tracks show zero, partial, and full completion', () => {
   const model = { tasks: { done: 6, total: 12, kinds, plan: '' } };
   for (const width of [13, 14, 24, 48, 96]) {
     const block = tasksBlock(model, width, 4, {}, tile);
-    for (const [index, kind] of kinds.entries()) {
+    for (let index = 0; index < kinds.length; index++) {
+      const kind = kinds[index];
       const line = block.lines[index];
       const text = line.map((part) => part.text).join('');
       assert.equal(visibleWidth(text), width);
@@ -431,9 +463,6 @@ test('dashboard ages stay at minutes', () => {
   assert.equal(ago(now - 30 * 60 * 1000, now), '30m ago');
   assert.equal(ago(now - 3 * 3600 * 1000, now), '3h ago');
 });
-
-const metricText = (cells) =>
-  cells.map((item) => item.segs.map((part) => part.text).join('')).join('|');
 
 test('run rows show passed, failed and total counts', () => {
   const passed = runMetrics({
@@ -572,23 +601,11 @@ test('a long run command keeps the columns and shows an ellipsis', () => {
   assert.equal(visibleWidth(row), 40);
 });
 
-const runRecord = (command, script, startedAt, endedAt, extra = {}) => ({
-  id: `${startedAt}`,
-  command,
-  script,
-  status: extra.status || 'passed',
-  exit: extra.exit ?? 0,
-  startedAt,
-  endedAt,
-  progress: { done: 0, failed: 0, lines: 0, expected: 0 },
-  result: extra.result ?? null,
-});
-
 test('chained npm script steps share one run row', () => {
-  const lint = { errors: 1, warnings: 2, problems: 1 };
+  const result = { errors: 1, warnings: 2, problems: 1 };
   const list = mergeRuns(
     [
-      runRecord('eslint .', 'lint', 1000, 2000, { result: lint }),
+      runRecord('eslint .', 'lint', 1000, 2000, { result }),
       runRecord('prettier -c **/*.js', 'lint', 2086, 3000),
       runRecord('eslint . --fix', 'fix', 8000, 9000),
       runRecord('prettier --write **/*.js', 'fix', 9100, 10000, {
@@ -767,8 +784,8 @@ test('the agents panel lists agents in two columns', () => {
   const items = names.map((name) => ({ name, bin: `/bin/${name}` }));
   const model = { agents: { ready: true, running: 0, items } };
   const text = (line) => line.map((part) => part.text).join('');
-  const ctx = { now: 1, frame: 0 };
-  const block = agentsBlock(model, 40, 4, ctx, tile);
+  const context = { now: 1, frame: 0 };
+  const block = agentsBlock(model, 40, 4, context, tile);
   const lines = block.lines.map(text);
   assert.equal(lines.length, 3);
   assert.match(lines[0], /^● claude +● junie +$/);
@@ -776,40 +793,25 @@ test('the agents panel lists agents in two columns', () => {
   assert.match(lines[2], /^● cursor +$/);
   assert.equal(lines[0].indexOf('junie'), lines[1].indexOf('kilo'));
   for (const line of block.lines) assert.ok(visibleWidth(text(line)) <= 40);
-  const low = agentsBlock(model, 40, 2, ctx, tile).lines.map(text);
+  const low = agentsBlock(model, 40, 2, context, tile).lines.map(text);
   assert.equal(low.length, 2);
   assert.match(low[0], /claude.*cursor/);
   assert.match(low[1], /codex.*junie/);
-  const narrow = agentsBlock(model, 12, 6, ctx, tile).lines.map(text);
+  const narrow = agentsBlock(model, 12, 6, context, tile).lines.map(text);
   assert.equal(narrow.length, 5);
   assert.match(narrow[0], /^● claude +$/);
   assert.match(narrow[4], /^● kilo +$/);
 });
 
-const lineText = (line) => line.map((part) => part.text).join('');
-
-const messageAt = (rows, message) =>
-  rows.findIndex((row) => row.includes(message));
-
-const assertCentered = (rows, message) => {
-  const body = rows.slice(1);
-  const at = messageAt(body, message);
-  assert.ok(at >= 0, message);
-  assert.equal(at, Math.floor((body.length - 1) / 2), message);
-  const start = body[at].indexOf(message);
-  const after = body[at].length - start - message.length;
-  assert.ok(Math.abs(start - after) <= 1, message);
-};
-
 test('empty dashboard panels center their message', () => {
-  const ctx = { now: 1, frame: 0 };
+  const context = { now: 1, frame: 0 };
   const paint = (block, tile) => paintTile(tile, block, 42, 6, false);
   const diffTile = { key: 'd', title: 'diffs' };
   const diff = diffsBlock(
     { diffs: { files: 0, dirs: [], exts: [], activity: { minutes: [] } } },
     40,
     5,
-    ctx,
+    context,
     diffTile,
   );
   assert.equal(lineText(diff.lines[0]), 'working tree clean');
@@ -828,7 +830,7 @@ test('empty dashboard panels center their message', () => {
     },
     40,
     5,
-    ctx,
+    context,
     fileTile,
   );
   assertCentered(paint(files, fileTile), 'no files');
@@ -838,7 +840,7 @@ test('empty dashboard panels center their message', () => {
     { tasks: { done: 0, total: 0, kinds: [], plan: '2026-10-10-00.md' } },
     40,
     5,
-    ctx,
+    context,
     taskTile,
   );
   assert.match(lineText(tasks.titleLine), /2026-10-10-00\.md/);
@@ -857,7 +859,7 @@ test('empty dashboard panels center their message', () => {
     },
     40,
     5,
-    ctx,
+    context,
     branchTile,
   );
   assert.match(lineText(branches.titleLine), /^branches/);
@@ -875,13 +877,13 @@ test('empty dashboard panels center their message', () => {
     },
     40,
     5,
-    ctx,
+    context,
     commitTile,
   );
   assertCentered(paint(commits, commitTile), 'no commits');
 
   const runTile = { key: 'r', title: 'run' };
-  const idleRun = runsBlock({ busy: '', runs: [] }, 40, 5, ctx, runTile);
+  const idleRun = runsBlock({ busy: '', runs: [] }, 40, 5, context, runTile);
   const idleLines = idleRun.lines.map(lineText);
   assert.deepEqual(idleLines, ['idle', 'reslop t -- <command>']);
   const runRows = paint(idleRun, runTile).slice(1);
@@ -907,7 +909,7 @@ test('empty dashboard panels center their message', () => {
     },
     40,
     5,
-    ctx,
+    context,
     npmTile,
   );
   assertCentered(paint(npm, npmTile), 'no packages');
@@ -917,12 +919,18 @@ test('empty dashboard panels center their message', () => {
     { agents: { ready: true, running: 0, items: [] } },
     40,
     5,
-    ctx,
+    context,
     agentTile,
   );
   assertCentered(paint(agents, agentTile), 'no agents');
 
-  const scan = filesBlock({ files: { ready: false } }, 40, 5, ctx, fileTile);
+  const scan = filesBlock(
+    { files: { ready: false } },
+    40,
+    5,
+    context,
+    fileTile,
+  );
   assertCentered(paint(scan, fileTile), 'scanning…');
 });
 

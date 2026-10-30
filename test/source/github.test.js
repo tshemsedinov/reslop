@@ -4,13 +4,13 @@ const { test } = require('node:test');
 const assert = require('node:assert/strict');
 
 const github = require('../../lib/source/github.js');
-const { filterChangeFiles } = require('../../lib/source/remote.js');
-const { parseDiff, itemsFromFiles } = require('../../lib/diff/diff.js');
-const { jsonResponse, CHANGE_DIFF: PR_DIFF } = require('../helpers.js');
 const { parseGithubPrUrl, parseGithubIssueUrl, githubToken } = github;
 const { parseGithubIssueListUrl } = github;
 const { loadPullRequest, loadGithubIssue } = github;
 const { prApiUrl, discussionToNotes } = github;
+const { filterChangeFiles } = require('../../lib/source/remote.js');
+const { parseDiff, itemsFromFiles } = require('../../lib/diff/diff.js');
+const { jsonResponse, CHANGE_DIFF: PR_DIFF } = require('../helpers.js');
 
 const PR = { owner: 'acme', repo: 'app', number: 123 };
 
@@ -40,6 +40,45 @@ const EMPTY_THREADS = {
   },
 };
 
+const DEP_PR_DIFF = `diff --git a/package.json b/package.json
+index 1111111..2222222 100644
+--- a/package.json
++++ b/package.json
+@@ -1,6 +1,6 @@
+ {
+   "name": "demo",
+   "dependencies": {
+-    "lodash": "^4.17.20"
++    "lodash": "^4.17.21"
+   }
+ }
+diff --git a/package-lock.json b/package-lock.json
+index 1111111..2222222 100644
+--- a/package-lock.json
++++ b/package-lock.json
+@@ -1,8 +1,8 @@
+ {
+   "lockfileVersion": 3,
+   "packages": {
+     "node_modules/lodash": {
+-      "version": "4.17.20"
++      "version": "4.17.21"
+     }
+   }
+ }
+`;
+
+const ISSUE = { owner: 'acme', repo: 'app', number: 12 };
+
+const ISSUE_JSON = JSON.parse(`{
+  "number": 12,
+  "title": "Add import",
+  "body": "from the cli",
+  "state": "open",
+  "html_url": "https://github.com/acme/app/issues/12",
+  "user": { "login": "alice" }
+}`);
+
 const mockFetch = (json, diff, status = 200, routes = {}) => {
   const calls = [];
   const fetchImpl = async (url, init) => {
@@ -67,6 +106,33 @@ const mockFetch = (json, diff, status = 200, routes = {}) => {
     if (`${url}`.includes('/issues/') && `${url}`.includes('/comments')) {
       return jsonResponse(200, routes.issueComments ?? []);
     }
+    return jsonResponse(status, json);
+  };
+  fetchImpl.calls = calls;
+  return fetchImpl;
+};
+
+for (const entry of [
+  [404, 'Not Found', /GitHub pull request not found/],
+  [403, 'API rate limit exceeded', /rate limit exceeded/],
+  [401, 'Bad credentials', /GitHub authentication failed/],
+]) {
+  const status = entry[0];
+  const message = entry[1];
+  const error = entry[2];
+  test(`loadPullRequest maps ${status} to its error`, async () => {
+    const fetch = mockFetch({ message }, '', status);
+    const options = { fetch, token: 'tok', retry: { attempts: 1 } };
+    await assert.rejects(() => loadPullRequest(PR, options), error);
+  });
+}
+
+const issueFetch = (json, comments, status = 200) => {
+  const calls = [];
+  const fetchImpl = async (url, init) => {
+    const headers = init.headers || {};
+    calls.push({ url: `${url}`, auth: headers.Authorization || '' });
+    if (`${url}`.includes('/comments')) return jsonResponse(200, comments);
     return jsonResponse(status, json);
   };
   fetchImpl.calls = calls;
@@ -114,44 +180,16 @@ test('githubToken reads GITHUB_TOKEN then GH_TOKEN', () => {
   assert.equal(githubToken({}), '');
 });
 
-const DEP_PR_DIFF = `diff --git a/package.json b/package.json
-index 1111111..2222222 100644
---- a/package.json
-+++ b/package.json
-@@ -1,6 +1,6 @@
- {
-   "name": "demo",
-   "dependencies": {
--    "lodash": "^4.17.20"
-+    "lodash": "^4.17.21"
-   }
- }
-diff --git a/package-lock.json b/package-lock.json
-index 1111111..2222222 100644
---- a/package-lock.json
-+++ b/package-lock.json
-@@ -1,8 +1,8 @@
- {
-   "lockfileVersion": 3,
-   "packages": {
-     "node_modules/lodash": {
--      "version": "4.17.20"
-+      "version": "4.17.21"
-     }
-   }
- }
-`;
-
 test('loadPullRequest converts a GitHub patch into pr items', async () => {
-  const fetchImpl = mockFetch(PR_JSON, PR_DIFF);
+  const fetch = mockFetch(PR_JSON, PR_DIFF);
   const loaded = await loadPullRequest(PR, {
-    fetch: fetchImpl,
+    fetch,
     token: '',
     cwd: '/tmp',
   });
-  assert.equal(fetchImpl.calls.length, 6);
+  assert.equal(fetch.calls.length, 6);
   const url = prApiUrl(PR);
-  assert.equal(fetchImpl.calls[0].url, url);
+  assert.equal(fetch.calls[0].url, url);
   assert.equal(loaded.sourceLabel, '#123');
   assert.equal(loaded.change.title, 'Fix parser');
   assert.equal(loaded.change.author, 'alice');
@@ -170,9 +208,9 @@ test('loadPullRequest converts a GitHub patch into pr items', async () => {
 });
 
 test('loadPullRequest folds package.json and lockfile changes', async () => {
-  const fetchImpl = mockFetch(PR_JSON, DEP_PR_DIFF);
+  const fetch = mockFetch(PR_JSON, DEP_PR_DIFF);
   const loaded = await loadPullRequest(PR, {
-    fetch: fetchImpl,
+    fetch,
     token: '',
     cwd: '/tmp',
   });
@@ -186,18 +224,18 @@ test('loadPullRequest folds package.json and lockfile changes', async () => {
 });
 
 test('loadPullRequest sends a bearer token', async () => {
-  const fetchImpl = mockFetch(PR_JSON, PR_DIFF);
-  await loadPullRequest(PR, { fetch: fetchImpl, token: 'secret' });
-  assert.ok(fetchImpl.calls.length >= 2);
-  for (const call of fetchImpl.calls) {
+  const fetch = mockFetch(PR_JSON, PR_DIFF);
+  await loadPullRequest(PR, { fetch, token: 'secret' });
+  assert.ok(fetch.calls.length >= 2);
+  for (const call of fetch.calls) {
     assert.equal(call.auth, 'Bearer secret');
   }
 });
 
 test('loadPullRequest filters files by path scope', async () => {
-  const fetchImpl = mockFetch(PR_JSON, PR_DIFF);
+  const fetch = mockFetch(PR_JSON, PR_DIFF);
   const loaded = await loadPullRequest(PR, {
-    fetch: fetchImpl,
+    fetch,
     token: '',
     paths: ['lib'],
   });
@@ -215,18 +253,6 @@ test('filterChangeFiles keeps matching paths', () => {
   assert.equal(kept.length, 1);
   assert.equal(kept[0].newPath, 'lib/a.js');
 });
-
-for (const [status, message, error] of [
-  [404, 'Not Found', /GitHub pull request not found/],
-  [403, 'API rate limit exceeded', /rate limit exceeded/],
-  [401, 'Bad credentials', /GitHub authentication failed/],
-]) {
-  test(`loadPullRequest maps ${status} to its error`, async () => {
-    const fetchImpl = mockFetch({ message }, '', status);
-    const options = { fetch: fetchImpl, token: 'tok', retry: { attempts: 1 } };
-    await assert.rejects(() => loadPullRequest(PR, options), error);
-  });
-}
 
 test('loadPullRequest maps network failures', async () => {
   const fetchImpl = async () => {
@@ -452,7 +478,7 @@ test('loadPullRequest imports review discussion', async () => {
     line: 2,
     side: 'RIGHT',
   };
-  const fetchImpl = mockFetch(PR_JSON, PR_DIFF, 200, {
+  const fetch = mockFetch(PR_JSON, PR_DIFF, 200, {
     reviewComments: [comment],
     reviews: [{ user: { login: 'carol' }, body: 'Looks good overall' }],
     issueComments: [{ user: { login: 'dave' }, body: 'Please add tests' }],
@@ -474,7 +500,7 @@ test('loadPullRequest imports review discussion', async () => {
       },
     },
   });
-  const loaded = await loadPullRequest(PR, { fetch: fetchImpl, token: '' });
+  const loaded = await loadPullRequest(PR, { fetch, token: '' });
   assert.equal(loaded.imported.blockTasks.length, 1);
   assert.equal(loaded.imported.blockTasks[0].done, true);
   assert.match(loaded.imported.blockTasks[0].text, /use const/);
@@ -608,29 +634,6 @@ test('loadPullRequest keeps comments if GraphQL resolved fails', async () => {
   assert.match(loaded.imported.blockTasks[0].text, /use const/);
 });
 
-const ISSUE = { owner: 'acme', repo: 'app', number: 12 };
-
-const ISSUE_JSON = JSON.parse(`{
-  "number": 12,
-  "title": "Add import",
-  "body": "from the cli",
-  "state": "open",
-  "html_url": "https://github.com/acme/app/issues/12",
-  "user": { "login": "alice" }
-}`);
-
-const issueFetch = (json, comments, status = 200) => {
-  const calls = [];
-  const fetchImpl = async (url, init) => {
-    const headers = init.headers || {};
-    calls.push({ url: `${url}`, auth: headers.Authorization || '' });
-    if (`${url}`.includes('/comments')) return jsonResponse(200, comments);
-    return jsonResponse(status, json);
-  };
-  fetchImpl.calls = calls;
-  return fetchImpl;
-};
-
 test('parseGithubIssueUrl reads github issue URLs', () => {
   const expected = { owner: 'acme', repo: 'app', number: 12 };
   const urls = [
@@ -667,10 +670,10 @@ test('loadGithubIssue imports the title, body, and comments', async () => {
     { user: { login: 'bob' }, body: '  seen  ' },
     { user: { login: 'cara' }, body: '   ' },
   ];
-  const fetchImpl = issueFetch(ISSUE_JSON, comments);
+  const fetch = issueFetch(ISSUE_JSON, comments);
   const loaded = await loadGithubIssue(ISSUE, {
     cwd: '/repo',
-    fetch: fetchImpl,
+    fetch,
     token: 'secret',
   });
   assert.deepEqual(loaded.items, []);
@@ -696,18 +699,18 @@ test('loadGithubIssue imports the title, body, and comments', async () => {
   assert.equal(issue.author, 'alice');
   assert.equal(issue.host, 'github');
   assert.deepEqual(issue.comments, [{ author: 'bob', body: 'seen' }]);
-  const commentCall = fetchImpl.calls.find((call) =>
+  const commentCall = fetch.calls.find((call) =>
     call.url.includes('/comments'),
   );
   assert.match(commentCall.url, /\/repos\/acme\/app\/issues\/12\/comments/);
-  assert.equal(fetchImpl.calls[0].auth, 'Bearer secret');
+  assert.equal(fetch.calls[0].auth, 'Bearer secret');
 });
 
 test('loadGithubIssue marks a closed issue done', async () => {
   const closed = { ...ISSUE_JSON, state: 'closed', body: '' };
-  const fetchImpl = issueFetch(closed, []);
+  const fetch = issueFetch(closed, []);
   const loaded = await loadGithubIssue(ISSUE, {
-    fetch: fetchImpl,
+    fetch,
     token: '',
   });
   assert.equal(loaded.imported.tasks.length, 1);
@@ -828,9 +831,9 @@ test('loadGithubIssue imports every open issue from a list', async () => {
 });
 
 test('loadGithubIssue maps 404 to a not found error', async () => {
-  const fetchImpl = issueFetch({ message: 'Not Found' }, [], 404);
+  const fetch = issueFetch({ message: 'Not Found' }, [], 404);
   await assert.rejects(
-    () => loadGithubIssue(ISSUE, { fetch: fetchImpl, token: '' }),
+    () => loadGithubIssue(ISSUE, { fetch, token: '' }),
     /GitHub issue not found/,
   );
 });

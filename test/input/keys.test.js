@@ -7,6 +7,11 @@ const keys = require('../../lib/input/keys.js');
 const { decodeChunk, hitAction } = keys;
 const actions = require('../../lib/input/actions.js');
 const { FILES_DISABLED } = actions;
+const { FILES_GIT_DISABLED } = actions;
+const { DIFF_DISABLED, TASKS_DISABLED, BRANCHES_DISABLED } = actions;
+const { COMMITS_DISABLED } = actions;
+const { actionFromKey, disabledActions, DASH_IDS } = actions;
+const { layoutButtons } = require('../../lib/render/render.js');
 
 const FILES_HIDDEN = [
   ...FILES_DISABLED,
@@ -18,11 +23,6 @@ const FILES_HIDDEN = [
   'tasks',
   'branch',
 ];
-const { FILES_GIT_DISABLED } = actions;
-const { DIFF_DISABLED, TASKS_DISABLED, BRANCHES_DISABLED } = actions;
-const { COMMITS_DISABLED } = actions;
-const { actionFromKey, disabledActions, DASH_IDS } = actions;
-const { layoutButtons } = require('../../lib/render/render.js');
 
 const KEY_SEQUENCES = [
   ['\x1b[A', 'up'],
@@ -73,82 +73,6 @@ const KEY_SEQUENCES = [
   ['\x1b[27;5;105~', 'ctrl-i'],
   ['\t', 'tab'],
 ];
-
-test('decodeChunk maps letters, control codes, and escape sequences', () => {
-  const keys = decodeChunk('ar').events.map((event) => event.key);
-  assert.deepEqual(keys, ['a', 'r']);
-  for (const [text, key] of KEY_SEQUENCES) {
-    assert.deepEqual(decodeChunk(text).events, [{ type: 'key', key }], key);
-  }
-});
-
-test('decodeChunk carries a split sequence to the next chunk', () => {
-  const pending = decodeChunk('\x1b');
-  assert.equal(pending.events.length, 0);
-  assert.equal(pending.carry, '\x1b');
-  const completed = decodeChunk('[A', pending.carry);
-  assert.equal(completed.events[0].key, 'up');
-});
-
-test('decodeChunk distinguishes legacy Alt+Enter from Return', () => {
-  for (const text of ['\x1b\r', '\x1b\n', '\x1b[13;3u', '\x1b[27;3;13~']) {
-    assert.deepEqual(decodeChunk(text).events, [
-      { type: 'key', key: 'alt-enter' },
-    ]);
-  }
-  assert.equal(decodeChunk('\r').events[0].key, 'enter');
-});
-
-test('decodeChunk keeps shortcuts and typing in xterm modifier mode', () => {
-  const keys = (text) => decodeChunk(text).events.map((event) => event.key);
-  for (const letter of ['a', 'c', 'v', 'x', 's', 'y', 'z']) {
-    const code = letter.charCodeAt(0);
-    assert.deepEqual(keys(`\x1b[27;5;${code}~`), [`ctrl-${letter}`]);
-  }
-  assert.deepEqual(keys('\x1b[27;2;65~\x1b[27;2;33~'), ['A', '!']);
-  assert.deepEqual(keys('\x1b[27;2;9~'), ['shift-tab']);
-  assert.deepEqual(keys('\x1b[27;5;127~'), ['ctrl-backspace']);
-});
-
-test('decodeChunk maps kitty reports of plain keys', () => {
-  const keys = (text) => decodeChunk(text).events.map((event) => event.key);
-  assert.deepEqual(keys('\x1b[27u'), ['escape']);
-  assert.deepEqual(keys('\x1b[9u'), ['tab']);
-  assert.deepEqual(keys('\x1b[9;2u'), ['shift-tab']);
-  assert.deepEqual(keys('\x1b[99;5u'), ['ctrl-c']);
-  assert.deepEqual(keys('\x1b[115;5u'), ['ctrl-s']);
-  assert.deepEqual(keys('\x1b[104;5u'), ['backspace']);
-  assert.deepEqual(keys('\x1b[106;5u'), ['ctrl-enter']);
-});
-
-// The keys of the tasks screen as kitty, xterm, GNOME Terminal, Windows
-// Terminal, iTerm2, and tmux send them
-test('decodeChunk parses SGR mouse press', () => {
-  const event = decodeChunk('\x1b[<0;4;12M').events[0];
-  assert.equal(event.type, 'mouse');
-  assert.equal(event.button, 0);
-  assert.equal(event.x, 4);
-  assert.equal(event.y, 12);
-  assert.equal(event.press, true);
-  assert.equal(event.kind, 'press');
-});
-
-test('decodeChunk parses SGR mouse drag and release', () => {
-  const drag = decodeChunk('\x1b[<32;10;5M').events[0];
-  assert.equal(drag.kind, 'drag');
-  assert.equal(drag.btn, 0);
-  const up = decodeChunk('\x1b[<0;10;5m').events[0];
-  assert.equal(up.kind, 'release');
-  assert.equal(up.press, false);
-});
-
-test('decodeChunk reports mouse motion without a pressed button', () => {
-  const event = decodeChunk('\x1b[<35;10;5M').events[0];
-  assert.equal(event.kind, 'move');
-  assert.equal(event.btn, 3);
-  const shifted = decodeChunk('\x1b[<39;10;5M').events[0];
-  assert.equal(shifted.kind, 'move');
-});
 
 // [key, pane, action]; undefined is the pane of the default bindings
 const KEY_ACTIONS = [
@@ -296,8 +220,89 @@ const KEY_ACTIONS = [
   ['escape', undefined, null],
 ];
 
+test('decodeChunk maps letters, control codes, and escape sequences', () => {
+  const keys = decodeChunk('ar').events.map((event) => event.key);
+  assert.deepEqual(keys, ['a', 'r']);
+  for (const entry of KEY_SEQUENCES) {
+    const text = entry[0];
+    const key = entry[1];
+    assert.deepEqual(decodeChunk(text).events, [{ type: 'key', key }], key);
+  }
+});
+
+test('decodeChunk carries a split sequence to the next chunk', () => {
+  const pending = decodeChunk('\x1b');
+  assert.equal(pending.events.length, 0);
+  assert.equal(pending.carry, '\x1b');
+  const completed = decodeChunk('[A', pending.carry);
+  assert.equal(completed.events[0].key, 'up');
+});
+
+test('decodeChunk distinguishes legacy Alt+Enter from Return', () => {
+  for (const text of ['\x1b\r', '\x1b\n', '\x1b[13;3u', '\x1b[27;3;13~']) {
+    assert.deepEqual(decodeChunk(text).events, [
+      { type: 'key', key: 'alt-enter' },
+    ]);
+  }
+  assert.equal(decodeChunk('\r').events[0].key, 'enter');
+});
+
+test('decodeChunk keeps shortcuts and typing in xterm modifier mode', () => {
+  const keys = (text) => decodeChunk(text).events.map((event) => event.key);
+  for (const letter of ['a', 'c', 'v', 'x', 's', 'y', 'z']) {
+    const code = letter.charCodeAt(0);
+    assert.deepEqual(keys(`\x1b[27;5;${code}~`), [`ctrl-${letter}`]);
+  }
+  assert.deepEqual(keys('\x1b[27;2;65~\x1b[27;2;33~'), ['A', '!']);
+  assert.deepEqual(keys('\x1b[27;2;9~'), ['shift-tab']);
+  assert.deepEqual(keys('\x1b[27;5;127~'), ['ctrl-backspace']);
+});
+
+test('decodeChunk maps kitty reports of plain keys', () => {
+  const keys = (text) => decodeChunk(text).events.map((event) => event.key);
+  assert.deepEqual(keys('\x1b[27u'), ['escape']);
+  assert.deepEqual(keys('\x1b[9u'), ['tab']);
+  assert.deepEqual(keys('\x1b[9;2u'), ['shift-tab']);
+  assert.deepEqual(keys('\x1b[99;5u'), ['ctrl-c']);
+  assert.deepEqual(keys('\x1b[115;5u'), ['ctrl-s']);
+  assert.deepEqual(keys('\x1b[104;5u'), ['backspace']);
+  assert.deepEqual(keys('\x1b[106;5u'), ['ctrl-enter']);
+});
+
+// The keys of the tasks screen as kitty, xterm, GNOME Terminal, Windows
+// Terminal, iTerm2, and tmux send them
+test('decodeChunk parses SGR mouse press', () => {
+  const event = decodeChunk('\x1b[<0;4;12M').events[0];
+  assert.equal(event.type, 'mouse');
+  assert.equal(event.button, 0);
+  assert.equal(event.x, 4);
+  assert.equal(event.y, 12);
+  assert.equal(event.press, true);
+  assert.equal(event.kind, 'press');
+});
+
+test('decodeChunk parses SGR mouse drag and release', () => {
+  const drag = decodeChunk('\x1b[<32;10;5M').events[0];
+  assert.equal(drag.kind, 'drag');
+  assert.equal(drag.btn, 0);
+  const up = decodeChunk('\x1b[<0;10;5m').events[0];
+  assert.equal(up.kind, 'release');
+  assert.equal(up.press, false);
+});
+
+test('decodeChunk reports mouse motion without a pressed button', () => {
+  const event = decodeChunk('\x1b[<35;10;5M').events[0];
+  assert.equal(event.kind, 'move');
+  assert.equal(event.btn, 3);
+  const shifted = decodeChunk('\x1b[<39;10;5M').events[0];
+  assert.equal(shifted.kind, 'move');
+});
+
 test('actionFromKey maps aliases and ignores unbound keys', () => {
-  for (const [key, pane, action] of KEY_ACTIONS) {
+  for (const entry of KEY_ACTIONS) {
+    const key = entry[0];
+    const pane = entry[1];
+    const action = entry[2];
     assert.equal(actionFromKey(key, pane), action, `${key} on ${pane}`);
   }
 });
@@ -466,10 +471,10 @@ test('disabledActions hides add unstage drop ignore on files todos', () => {
   assert.equal(onto.includes('drop'), false);
   assert.equal(onto.includes('pull'), false);
   assert.equal(onto.includes('push'), false);
-  const branchIds = ['newBranch', 'rebase', 'drop', 'pull', 'push'];
+  const extra = ['newBranch', 'rebase', 'drop', 'pull', 'push'];
   const branchLayout = layoutButtons(160, {
     hidden: BRANCHES_DISABLED,
-    extra: branchIds,
+    extra,
     disabled: ['rebase', 'drop'],
   });
   assert.ok(branchLayout.parts.some((part) => part.id === 'drop'));
@@ -484,7 +489,7 @@ test('disabledActions hides add unstage drop ignore on files todos', () => {
   );
   const ontoLayout = layoutButtons(160, {
     hidden: BRANCHES_DISABLED,
-    extra: branchIds,
+    extra,
     disabled: ['pull', 'push'],
   });
   assert.ok(ontoLayout.parts.some((part) => part.id === 'pull'));

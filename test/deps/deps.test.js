@@ -2,19 +2,22 @@
 
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
+
 const deps = require('../../lib/deps/deps.js');
-const { diffSections, mergeResolved } = require('../../lib/deps/diff.js');
-const manifest = require('../../lib/deps/manifest.js');
-const { parseDiff, itemsFromFiles } = require('../../lib/diff/diff.js');
-const { makeRepo } = require('../helpers.js');
 const { foldDepItems, collectUsedNames, parseAuditReport } = deps;
 const { parseOutdatedReport, proposeDepItems, mergeProposedItems } = deps;
+const { diffSections, mergeResolved } = require('../../lib/deps/diff.js');
+const manifest = require('../../lib/deps/manifest.js');
 const { readSections, lockEntries } = manifest;
 const { mergeDepFile, applyWantedRange, patchedFromRange } = manifest;
+const { parseDiff, itemsFromFiles } = require('../../lib/diff/diff.js');
+const { makeRepo } = require('../helpers.js');
 const depsHelpers = require('../deps-helpers.js');
 const { pkgJson, pkgLib, noExportPkg, libPkg, lockV3, dummyFile } = depsHelpers;
 const { dummyItem, sidesOf, hunkTexts, assertBlankAfter } = depsHelpers;
 const { depByName, lodashOutdated } = depsHelpers;
+
+const DEP_CAPTION = 'Dependencies in package.json & package-lock.json';
 
 const toolPkg = (name, binName) => {
   const bin = { [binName]: 'bin.js' };
@@ -23,8 +26,8 @@ const toolPkg = (name, binName) => {
 };
 
 const typesPkg = (name) => {
-  const exported = { '.': { types: './index.d.ts' } };
-  const body = { name, types: 'index.d.ts', exports: exported };
+  const exports = { '.': { types: './index.d.ts' } };
+  const body = { name, types: 'index.d.ts', exports };
   return `${JSON.stringify(body, null, 2)}\n`;
 };
 
@@ -76,8 +79,6 @@ const splitHunkItems = (rel, lines) => {
   }
   return items;
 };
-
-const DEP_CAPTION = 'Dependencies in package.json & package-lock.json';
 
 test('mergeDepFile applies one dependency and leaves others', () => {
   const oldDeps = { lodash: '^4.17.20' };
@@ -308,10 +309,10 @@ test('proposeDepItems shows an unused dependency as a removal', () => {
   const repo = makeRepo();
   try {
     repo.write('node_modules/leftpad/package.json', libPkg('leftpad'));
-    const used = new Set(['eslint']);
+    const usedNames = new Set(['eslint']);
     const pkg = pkgLib({ eslint: '^9.39.5', leftpad: '1.0.0' });
     const proposed = proposeDepItems(pkg, null, null, {
-      usedNames: used,
+      usedNames,
       root: repo.dir,
     });
     const item = depByName(proposed, 'leftpad');
@@ -331,9 +332,9 @@ test('proposeDepItems shows an unused dependency as a removal', () => {
 });
 
 test('proposeDepItems skips unused without an export entry', () => {
-  const used = new Set(['eslint']);
+  const usedNames = new Set(['eslint']);
   const pkg = pkgJson({ eslint: '^9.39.5', leftpad: '1.0.0' });
-  const proposed = proposeDepItems(pkg, null, null, { usedNames: used });
+  const proposed = proposeDepItems(pkg, null, null, { usedNames });
   assert.equal(depByName(proposed, 'leftpad'), null);
 });
 
@@ -376,7 +377,7 @@ test('proposeDepItems removes an unused devDependency that exports', () => {
   const repo = makeRepo();
   try {
     repo.write('node_modules/leftpad/package.json', libPkg('leftpad'));
-    const used = new Set(['eslint']);
+    const usedNames = new Set(['eslint']);
     const body = {
       name: 'demo',
       main: 'index.js',
@@ -385,7 +386,7 @@ test('proposeDepItems removes an unused devDependency that exports', () => {
     };
     const pkg = `${JSON.stringify(body, null, 2)}\n`;
     const proposed = proposeDepItems(pkg, null, null, {
-      usedNames: used,
+      usedNames,
       root: repo.dir,
     });
     const item = depByName(proposed, 'leftpad');
@@ -403,10 +404,10 @@ test('proposeDepItems skips a CLI tool that is not imported', () => {
   try {
     const manifest = 'node_modules/typescript/package.json';
     repo.write(manifest, toolPkg('typescript', 'tsc'));
-    const used = new Set(['eslint']);
+    const usedNames = new Set(['eslint']);
     const pkg = pkgLib({ eslint: '^9.39.5', typescript: '5.9.2' });
     const proposed = proposeDepItems(pkg, null, null, {
-      usedNames: used,
+      usedNames,
       root: repo.dir,
     });
     assert.equal(depByName(proposed, 'typescript'), null);
@@ -420,11 +421,11 @@ test('proposeDepItems skips a types-only package', () => {
   try {
     const manifest = 'node_modules/@types/node/package.json';
     repo.write(manifest, typesPkg('@types/node'));
-    const used = new Set(['eslint']);
+    const usedNames = new Set(['eslint']);
     const deps = { eslint: '^9.39.5', '@types/node': '^22.0.0' };
     const pkg = pkgLib(deps);
     const proposed = proposeDepItems(pkg, null, null, {
-      usedNames: used,
+      usedNames,
       root: repo.dir,
     });
     assert.equal(depByName(proposed, '@types/node'), null);
@@ -675,11 +676,11 @@ test('proposeDepItems shows a transitive npm audit finding', () => {
     range: '<=1.1.17',
   });
   const pkg = pkgJson({ eslint: '^9.39.5' });
-  const lock = lockV3(
+  const lockText = lockV3(
     { eslint: '^9.39.5' },
     { eslint: '9.39.5', 'brace-expansion': '1.1.15' },
   );
-  const proposed = proposeDepItems(pkg, null, audit, { lockText: lock });
+  const proposed = proposeDepItems(pkg, null, audit, { lockText });
   const item = depByName(proposed, 'brace-expansion');
   assert.ok(item);
   assert.equal(item.dep.change.section, 'resolved');

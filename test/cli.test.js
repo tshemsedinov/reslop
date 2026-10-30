@@ -10,6 +10,171 @@ const { createGitRepo } = require('../lib/git/git.js');
 const helpers = require('./helpers.js');
 const { makeRepo, sampleHunk, fakeProc, tempDir, removeTree } = helpers;
 
+const PR_URL = 'https://github.com/acme/app/pull/123';
+const MR_URL = 'https://gitlab.com/acme/app/-/merge_requests/123';
+const ISSUE_URL = 'https://github.com/acme/app/issues/12';
+
+const NO_NOTES = { imported: { blockTasks: [], tasks: [] } };
+
+const prItem = () => ({
+  origin: 'pr',
+  file: {
+    oldPath: 'lib/a.js',
+    newPath: 'lib/a.js',
+    isNew: false,
+    isDeleted: false,
+    isBinary: false,
+    preamble: ['diff --git a/lib/a.js b/lib/a.js'],
+    hunks: [],
+  },
+  hunk: sampleHunk([
+    { type: 'del', text: 'a', noNl: false, blockId: 0 },
+    { type: 'add', text: 'b', noNl: false, blockId: 0 },
+  ]),
+  blockId: 0,
+  patchAdd: '',
+  patchRevert: '',
+});
+
+const mockPrLoad =
+  (top, extra = {}) =>
+  async () => ({
+    top,
+    items: extra.items ?? [prItem()],
+    sourceLabel: extra.sourceLabel ?? '#123',
+    change: {
+      source: 'pr',
+      title: extra.title ?? 'Fix parser',
+      author: extra.author ?? 'alice',
+      repository: extra.repository ?? 'acme/app',
+      number: extra.number ?? 123,
+      base: extra.base ?? 'main',
+      head: extra.head ?? 'fix-parser',
+      url: extra.url ?? 'https://github.com/acme/app/pull/123',
+      files: extra.files ?? ['lib/a.js'],
+    },
+  });
+
+const mockMrLoad =
+  (top, extra = {}) =>
+  async () => ({
+    top,
+    items: extra.items ?? [prItem()],
+    sourceLabel: extra.sourceLabel ?? '!123',
+    change: {
+      source: 'mr',
+      title: extra.title ?? 'Fix parser',
+      author: extra.author ?? 'alice',
+      repository: extra.repository ?? 'acme/app',
+      number: extra.number ?? 123,
+      base: extra.base ?? 'main',
+      head: extra.head ?? 'fix-parser',
+      url: extra.url ?? 'https://gitlab.com/acme/app/-/merge_requests/123',
+      files: extra.files ?? ['lib/a.js'],
+    },
+  });
+
+const mockIssueLoad =
+  (top, extra = {}) =>
+  async () => ({
+    top,
+    items: [],
+    sourceLabel: '#12',
+    change: {
+      source: 'issue',
+      title: 'Add import',
+      author: 'alice',
+      repository: 'acme/app',
+      number: 12,
+      base: '',
+      head: '',
+      url: 'https://github.com/acme/app/issues/12',
+    },
+    imported: extra.imported ?? {
+      blockTasks: [],
+      tasks: [
+        {
+          file: 'issue',
+          text: '@alice review at github: Add import',
+          done: false,
+        },
+      ],
+    },
+  });
+
+const failWith = (message) => async () => {
+  throw new Error(message);
+};
+
+// Runs reslop on a URL in a directory that is not a repository
+const runRemote = async (t, url, loaders) => {
+  const dir = tempDir('reslop-remote-');
+  t.after(() => removeTree(dir));
+  const proc = fakeProc(dir, { argv: ['node', 'reslop', url] });
+  const code = await run(proc, loaders(dir));
+  return { code, proc };
+};
+
+const githubIssue = (dir) => ({ loadGithubIssue: mockIssueLoad(dir) });
+const gitlabIssue = (dir) => ({ loadGitlabIssue: mockIssueLoad(dir) });
+
+for (const entry of [
+  [PR_URL, (dir) => ({ loadPullRequest: mockPrLoad(dir) })],
+  [MR_URL, (dir) => ({ loadMergeRequest: mockMrLoad(dir) })],
+  [ISSUE_URL, githubIssue],
+  ['https://github.com/tshemsedinov/reslop', githubIssue],
+  ['https://github.com/tshemsedinov/reslop/issues', githubIssue],
+  ['https://gitlab.com/acme/app', gitlabIssue],
+  ['https://gitlab.com/acme/app/-/issues', gitlabIssue],
+  ['https://gitlab.com/acme/app/-/issues/12', gitlabIssue],
+]) {
+  const url = entry[0];
+  const loaders = entry[1];
+  test(`${url} opens without a local git repository`, async (t) => {
+    const { code, proc } = await runRemote(t, url, loaders);
+    assert.equal(code, 1);
+    assert.match(proc.stderrText(), /interactive terminal required/);
+    assert.doesNotMatch(proc.stderrText(), /not a git repository/);
+    assert.equal(proc.stdoutText().includes('nothing to review'), false);
+  });
+}
+
+for (const entry of [
+  [PR_URL, (dir) => ({ loadPullRequest: mockPrLoad(dir, { items: [] }) })],
+  [MR_URL, (dir) => ({ loadMergeRequest: mockMrLoad(dir, { items: [] }) })],
+  [ISSUE_URL, (dir) => ({ loadGithubIssue: mockIssueLoad(dir, NO_NOTES) })],
+]) {
+  const url = entry[0];
+  const loaders = entry[1];
+  test(`empty ${url} prints nothing to review`, async (t) => {
+    const { code, proc } = await runRemote(t, url, loaders);
+    assert.equal(code, 0);
+    assert.equal(proc.stdoutText(), 'nothing to review\n');
+  });
+}
+
+for (const entry of [
+  [
+    PR_URL,
+    () => ({ loadPullRequest: failWith('GitHub pull request not found') }),
+    /GitHub pull request not found/,
+  ],
+  [
+    MR_URL,
+    () => ({ loadMergeRequest: failWith('GitLab merge request not found') }),
+    /GitLab merge request not found/,
+  ],
+]) {
+  const url = entry[0];
+  const loaders = entry[1];
+  const message = entry[2];
+  test(`${url} load errors exit 1`, async (t) => {
+    const { code, proc } = await runRemote(t, url, loaders);
+    assert.equal(code, 1);
+    assert.match(proc.stderrText(), message);
+  });
+}
+
 test('AC11 not a git directory exits 1', async () => {
   const dir = tempDir('reslop-nogit-');
   try {
@@ -68,16 +233,16 @@ test('unknown option exits 1', async () => {
   });
   const code = await run(proc);
   assert.equal(code, 1);
-  const err = proc.stderrText();
-  assert.match(err, /unknown option/);
+  const stderrText = proc.stderrText();
+  assert.match(stderrText, /unknown option/);
   const usage = new RegExp(
     [
       'Usage: reslop \\[-r\\]',
       '\\[path \\| commit \\| pr-url \\| mr-url \\| issue-url\\]',
     ].join(' '),
   );
-  assert.match(err, usage);
-  assert.doesNotMatch(err, /--help/);
+  assert.match(stderrText, usage);
+  assert.doesNotMatch(stderrText, /--help/);
 });
 
 test('AC22 resolveScope peels a commit from argv', async () => {
@@ -158,7 +323,7 @@ test('AC20 commit argv loads that commit not worktree', async () => {
     await session.loadReady();
     assert.equal(session.rev, sha);
     assert.equal(session.items.length, 1);
-    const [item] = session.items;
+    const item = session.items[0];
     assert.equal(item.origin, 'commit');
     const texts = item.hunk.lines.map((line) => `${line.type}:${line.text}`);
     assert.deepEqual(texts, ['del:one', 'add:two']);
@@ -167,45 +332,6 @@ test('AC20 commit argv loads that commit not worktree', async () => {
     repo.cleanup();
   }
 });
-
-const prItem = () => ({
-  origin: 'pr',
-  file: {
-    oldPath: 'lib/a.js',
-    newPath: 'lib/a.js',
-    isNew: false,
-    isDeleted: false,
-    isBinary: false,
-    preamble: ['diff --git a/lib/a.js b/lib/a.js'],
-    hunks: [],
-  },
-  hunk: sampleHunk([
-    { type: 'del', text: 'a', noNl: false, blockId: 0 },
-    { type: 'add', text: 'b', noNl: false, blockId: 0 },
-  ]),
-  blockId: 0,
-  patchAdd: '',
-  patchRevert: '',
-});
-
-const mockPrLoad =
-  (dir, extra = {}) =>
-  async () => ({
-    top: dir,
-    items: extra.items ?? [prItem()],
-    sourceLabel: extra.sourceLabel ?? '#123',
-    change: {
-      source: 'pr',
-      title: extra.title ?? 'Fix parser',
-      author: extra.author ?? 'alice',
-      repository: extra.repository ?? 'acme/app',
-      number: extra.number ?? 123,
-      base: extra.base ?? 'main',
-      head: extra.head ?? 'fix-parser',
-      url: extra.url ?? 'https://github.com/acme/app/pull/123',
-      files: extra.files ?? ['lib/a.js'],
-    },
-  });
 
 test('review is not a subcommand before a GitHub PR URL', async () => {
   const dir = tempDir('reslop-pr-');
@@ -229,53 +355,6 @@ test('review is not a subcommand before a GitHub PR URL', async () => {
   }
 });
 
-const mockMrLoad =
-  (dir, extra = {}) =>
-  async () => ({
-    top: dir,
-    items: extra.items ?? [prItem()],
-    sourceLabel: extra.sourceLabel ?? '!123',
-    change: {
-      source: 'mr',
-      title: extra.title ?? 'Fix parser',
-      author: extra.author ?? 'alice',
-      repository: extra.repository ?? 'acme/app',
-      number: extra.number ?? 123,
-      base: extra.base ?? 'main',
-      head: extra.head ?? 'fix-parser',
-      url: extra.url ?? 'https://gitlab.com/acme/app/-/merge_requests/123',
-      files: extra.files ?? ['lib/a.js'],
-    },
-  });
-
-const mockIssueLoad =
-  (dir, extra = {}) =>
-  async () => ({
-    top: dir,
-    items: [],
-    sourceLabel: '#12',
-    change: {
-      source: 'issue',
-      title: 'Add import',
-      author: 'alice',
-      repository: 'acme/app',
-      number: 12,
-      base: '',
-      head: '',
-      url: 'https://github.com/acme/app/issues/12',
-    },
-    imported: extra.imported ?? {
-      blockTasks: [],
-      tasks: [
-        {
-          file: 'issue',
-          text: '@alice review at github: Add import',
-          done: false,
-        },
-      ],
-    },
-  });
-
 test('GitHub issue URL with notes opens the tasks screen', async () => {
   const dir = tempDir('reslop-issue-');
   try {
@@ -296,78 +375,6 @@ test('GitHub issue URL with notes opens the tasks screen', async () => {
     fs.rmSync(dir, { recursive: true, force: true });
   }
 });
-
-const PR_URL = 'https://github.com/acme/app/pull/123';
-const MR_URL = 'https://gitlab.com/acme/app/-/merge_requests/123';
-const ISSUE_URL = 'https://github.com/acme/app/issues/12';
-
-const failWith = (message) => async () => {
-  throw new Error(message);
-};
-
-// Runs reslop on a URL in a directory that is not a repository
-const runRemote = async (t, url, loaders) => {
-  const dir = tempDir('reslop-remote-');
-  t.after(() => removeTree(dir));
-  const proc = fakeProc(dir, { argv: ['node', 'reslop', url] });
-  const code = await run(proc, loaders(dir));
-  return { code, proc };
-};
-
-const githubIssue = (dir) => ({ loadGithubIssue: mockIssueLoad(dir) });
-const gitlabIssue = (dir) => ({ loadGitlabIssue: mockIssueLoad(dir) });
-
-for (const [url, loaders] of [
-  [PR_URL, (dir) => ({ loadPullRequest: mockPrLoad(dir) })],
-  [MR_URL, (dir) => ({ loadMergeRequest: mockMrLoad(dir) })],
-  [ISSUE_URL, githubIssue],
-  ['https://github.com/tshemsedinov/reslop', githubIssue],
-  ['https://github.com/tshemsedinov/reslop/issues', githubIssue],
-  ['https://gitlab.com/acme/app', gitlabIssue],
-  ['https://gitlab.com/acme/app/-/issues', gitlabIssue],
-  ['https://gitlab.com/acme/app/-/issues/12', gitlabIssue],
-]) {
-  test(`${url} opens without a local git repository`, async (t) => {
-    const { code, proc } = await runRemote(t, url, loaders);
-    assert.equal(code, 1);
-    assert.match(proc.stderrText(), /interactive terminal required/);
-    assert.doesNotMatch(proc.stderrText(), /not a git repository/);
-    assert.equal(proc.stdoutText().includes('nothing to review'), false);
-  });
-}
-
-const NO_NOTES = { imported: { blockTasks: [], tasks: [] } };
-
-for (const [url, loaders] of [
-  [PR_URL, (dir) => ({ loadPullRequest: mockPrLoad(dir, { items: [] }) })],
-  [MR_URL, (dir) => ({ loadMergeRequest: mockMrLoad(dir, { items: [] }) })],
-  [ISSUE_URL, (dir) => ({ loadGithubIssue: mockIssueLoad(dir, NO_NOTES) })],
-]) {
-  test(`empty ${url} prints nothing to review`, async (t) => {
-    const { code, proc } = await runRemote(t, url, loaders);
-    assert.equal(code, 0);
-    assert.equal(proc.stdoutText(), 'nothing to review\n');
-  });
-}
-
-for (const [url, loaders, message] of [
-  [
-    PR_URL,
-    () => ({ loadPullRequest: failWith('GitHub pull request not found') }),
-    /GitHub pull request not found/,
-  ],
-  [
-    MR_URL,
-    () => ({ loadMergeRequest: failWith('GitLab merge request not found') }),
-    /GitLab merge request not found/,
-  ],
-]) {
-  test(`${url} load errors exit 1`, async (t) => {
-    const { code, proc } = await runRemote(t, url, loaders);
-    assert.equal(code, 1);
-    assert.match(proc.stderrText(), message);
-  });
-}
 
 test('a local session without paths opens on the dashboard', async () => {
   const repo = makeRepo();

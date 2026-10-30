@@ -41,6 +41,34 @@ const REPO_CONFIG = [
   '',
 ].join('\n');
 
+// One real init for the process. Copying it avoids a git process per test,
+// which is most of the time on Windows.
+let template = '';
+
+// A pull or merge request diff: one changed hunk in two files
+const CHANGE_DIFF = `diff --git a/lib/parser.js b/lib/parser.js
+index 1111111..2222222 100644
+--- a/lib/parser.js
++++ b/lib/parser.js
+@@ -1,3 +1,4 @@
+ keep
+-old
++new
+ keep
+diff --git a/README.md b/README.md
+index 1111111..2222222 100644
+--- a/README.md
++++ b/README.md
+@@ -1,1 +1,1 @@
+-hello
++Hello
+`;
+
+const YES_NO = [
+  ['y', 'y'],
+  ['n', '/n'],
+];
+
 // The identity and the line ends of a repository: writing them is one
 // process fewer for each, and starting a process is slow on Windows
 const configureRepo = (dir) => {
@@ -56,16 +84,13 @@ const gitSync = (args, cwd, input) =>
     windowsHide: true,
   });
 
-// One real init for the process. Copying it avoids a git process per test,
-// which is most of the time on Windows.
-let template = '';
 const templateRepo = () => {
   if (template) return template;
   template = fs.mkdtempSync(path.join(os.tmpdir(), 'reslop-git-'));
   const init = gitSync(['init', '-b', 'main'], template);
   if (init.status !== 0) {
-    const msg = init.stderr || init.stdout || 'git init failed';
-    throw new Error(msg.trim());
+    const message = init.stderr || init.stdout || 'git init failed';
+    throw new Error(message.trim());
   }
   configureRepo(template);
   return template;
@@ -80,8 +105,8 @@ const seedRepo = (dir) => {
 const gitIn = (cwd, args, input) => {
   const result = gitSync(args, cwd, input);
   if (result.status !== 0) {
-    const msg = result.stderr || result.stdout || 'git failed';
-    throw new Error(msg.trim());
+    const message = result.stderr || result.stdout || 'git failed';
+    throw new Error(message.trim());
   }
   return result.stdout;
 };
@@ -159,7 +184,6 @@ const waitUntil = async (check, ms = 4000) => {
   return false;
 };
 
-// The process object that loadSession and the cli read
 const fakeProc = (cwd, extra = {}) => {
   const stdout = sink();
   const stderr = sink();
@@ -202,29 +226,10 @@ const stopSession = (session) => {
   session.term.clearTimers();
 };
 
-// A pull or merge request diff: one changed hunk in two files
-const CHANGE_DIFF = `diff --git a/lib/parser.js b/lib/parser.js
-index 1111111..2222222 100644
---- a/lib/parser.js
-+++ b/lib/parser.js
-@@ -1,3 +1,4 @@
- keep
--old
-+new
- keep
-diff --git a/README.md b/README.md
-index 1111111..2222222 100644
---- a/README.md
-+++ b/README.md
-@@ -1,1 +1,1 @@
--hello
-+Hello
-`;
-
-const jsonResponse = (status, body, extraHeaders = {}) => ({
+const jsonResponse = (status, body, headers = {}) => ({
   ok: status >= 200 && status < 300,
   status,
-  headers: extraHeaders,
+  headers,
   text: async () => (typeof body === 'string' ? body : JSON.stringify(body)),
 });
 
@@ -280,7 +285,6 @@ const frameText = (ui) => {
   return stripAnsi(ui.lastFrame.rows.join('\n'));
 };
 
-// Rows of the tasks screen that are plain labels
 const labels = (...texts) => texts.map((text) => ({ type: 'label', text }));
 
 // A y/n style prompt on the status line: its text, one warn color and one
@@ -304,36 +308,31 @@ const assertPrompt = (view, text, choices) => {
   return { frame, statusRow, plain };
 };
 
-const YES_NO = [
-  ['y', 'y'],
-  ['n', '/n'],
-];
-
 module.exports = {
+  wait,
+  CHANGE_DIFF,
+  YES_NO,
+  configureRepo,
+  seedRepo,
   gitIn,
   makeRepo,
-  seedRepo,
-  configureRepo,
   sink,
   uiSink,
   tempDir,
   sampleHunk,
-  reviewView,
-  removeTree,
   press,
   click,
   rightClick,
-  wait,
   waitUntil,
   fakeProc,
-  stopSession,
   openRepoSession,
+  stopSession,
+  jsonResponse,
+  removeTree,
+  reviewView,
   sessionFor,
   openDashboard,
   frameText,
   labels,
   assertPrompt,
-  YES_NO,
-  CHANGE_DIFF,
-  jsonResponse,
 };

@@ -2,6 +2,7 @@
 
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
+
 const { contextMenu } = require('../../lib/render/menu.js');
 const ansi = require('../../lib/term/ansi.js');
 const { THEME, bg, fg, paint, stripAnsi, visibleWidth, setTheme } = ansi;

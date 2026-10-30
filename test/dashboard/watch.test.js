@@ -6,10 +6,8 @@ const fs = require('node:fs');
 const path = require('node:path');
 
 const { Session } = require('../../lib/session/session.js');
-const {
-  restoredIndex,
-  alignLoadedItems,
-} = require('../../lib/session/items.js');
+const itemsModule = require('../../lib/session/items.js');
+const { restoredIndex, alignLoadedItems } = itemsModule;
 const watch = require('../../lib/dashboard/watch.js');
 const { ignoredRel, isOwnDirEvent, unchangedSince } = watch;
 const { DiskWatcher, DEBOUNCE_MS } = watch;
@@ -67,6 +65,57 @@ const openWatched = async (list, extra = {}) => {
   return { session, repo, cwd };
 };
 
+for (const recursive of [false, true]) {
+  const name = `disk watcher reports skipped item files (${recursive})`;
+  test(name, async () => {
+    const root = tempDir('reslop-watch-');
+    fs.mkdirSync(path.join(root, '.git'));
+    fs.mkdirSync(path.join(root, 'dist'));
+    const built = path.join(root, 'dist', 'out.js');
+    const other = path.join(root, 'dist', 'other.js');
+    fs.writeFileSync(built, 'x\n');
+    fs.writeFileSync(other, 'x\n');
+    let count = 0;
+    const watcher = await startWatcher({
+      root,
+      recursive,
+      debounceMs: 20,
+      onChange: () => {
+        count += 1;
+      },
+    });
+    try {
+      watcher.watchFiles(['dist/out.js']);
+      await wait(60);
+      fs.writeFileSync(other, 'y\n');
+      await wait(150);
+      assert.equal(count, 0);
+      fs.writeFileSync(built, 'y\n');
+      assert.equal(await waitUntil(() => count >= 1, 1000), true);
+    } finally {
+      watcher.close();
+    }
+  });
+}
+
+const npmReloadRepo = (top, gitItem, extras) => ({
+  load: async (_dir, _paths, options = {}) => ({
+    top,
+    items: [gitItem],
+    pending: options.deferExtras === true,
+  }),
+  loadExtras: async () => {
+    extras.count += 1;
+    return {
+      top,
+      items: [gitItem],
+      pending: false,
+      auditMap: { lodash: extras.count },
+      outdatedMap: null,
+    };
+  },
+});
+
 test('linux recursive watch is available from Node 19.1', () => {
   const { canWatchRecursive } = watch;
   assert.equal(canWatchRecursive('linux', '18.20.0'), false);
@@ -77,36 +126,36 @@ test('linux recursive watch is available from Node 19.1', () => {
 });
 
 test('disk watcher watches nested files when recursive is off', async () => {
-  const cwd = tempDir('reslop-watch-');
-  fs.mkdirSync(path.join(cwd, 'src'));
-  fs.mkdirSync(path.join(cwd, '.git'));
-  const nested = path.join(cwd, 'src', 'nested.js');
+  const root = tempDir('reslop-watch-');
+  fs.mkdirSync(path.join(root, 'src'));
+  fs.mkdirSync(path.join(root, '.git'));
+  const nested = path.join(root, 'src', 'nested.js');
   fs.writeFileSync(nested, 'x\n');
-  let n = 0;
+  let count = 0;
   const watcher = await startWatcher({
-    root: cwd,
+    root,
     recursive: false,
     debounceMs: 20,
     onChange: () => {
-      n += 1;
+      count += 1;
     },
   });
   try {
     await wait(60);
     fs.writeFileSync(nested, 'y\n');
-    assert.equal(await waitUntil(() => n >= 1, 1000), true);
+    assert.equal(await waitUntil(() => count >= 1, 1000), true);
   } finally {
     watcher.close();
   }
 });
 
 test('the disk watcher reports changed paths and run records', async () => {
-  const dir = tempDir('reslop-watch-');
+  const root = tempDir('reslop-watch-');
   await wait(20);
   const seen = new Set();
   let changes = 0;
   const watcher = new DiskWatcher({
-    root: dir,
+    root,
     debounceMs: 30,
     onChange: () => {
       changes += 1;
@@ -117,19 +166,19 @@ test('the disk watcher reports changed paths and run records', async () => {
   });
   try {
     await wait(50);
-    fs.writeFileSync(path.join(dir, 'a.js'), 'x\n');
+    fs.writeFileSync(path.join(root, 'a.js'), 'x\n');
     assert.ok(await waitUntil(() => seen.has('a.js')));
     assert.ok(changes >= 1);
     const before = changes;
-    fs.mkdirSync(path.join(dir, '.log', '.runs'), { recursive: true });
+    fs.mkdirSync(path.join(root, '.log', '.runs'), { recursive: true });
     await wait(60);
-    fs.writeFileSync(path.join(dir, '.log', '.runs', '1-2.json'), '{}');
+    fs.writeFileSync(path.join(root, '.log', '.runs', '1-2.json'), '{}');
     assert.ok(await waitUntil(() => seen.has('.log/.runs/1-2.json')));
     await wait(120);
     assert.equal(changes, before);
   } finally {
     watcher.close();
-    fs.rmSync(dir, { recursive: true, force: true });
+    fs.rmSync(root, { recursive: true, force: true });
   }
 });
 
@@ -174,15 +223,15 @@ test('own directory event is not a file change', () => {
 });
 
 test('review markdown notifies onReview and not onChange', async () => {
-  const cwd = tempDir('reslop-watch-');
-  fs.mkdirSync(path.join(cwd, '.git'));
-  fs.mkdirSync(path.join(cwd, '.plan'));
-  const file = path.join(cwd, '.plan', '2026-09-23-00.md');
+  const root = tempDir('reslop-watch-');
+  fs.mkdirSync(path.join(root, '.git'));
+  fs.mkdirSync(path.join(root, '.plan'));
+  const file = path.join(root, '.plan', '2026-09-23-00.md');
   fs.writeFileSync(file, '---\nstatus: editing\n---\n');
   let changes = 0;
   let reviews = 0;
   const watcher = await startWatcher({
-    root: cwd,
+    root,
     recursive: false,
     debounceMs: 20,
     onChange: () => {
@@ -394,51 +443,18 @@ test('npm extras do not block a disk reload', async () => {
   assert.equal(session.pane, 'diff');
 });
 
-for (const recursive of [false, true]) {
-  const name = `disk watcher reports skipped item files (${recursive})`;
-  test(name, async () => {
-    const cwd = tempDir('reslop-watch-');
-    fs.mkdirSync(path.join(cwd, '.git'));
-    fs.mkdirSync(path.join(cwd, 'dist'));
-    const built = path.join(cwd, 'dist', 'out.js');
-    const other = path.join(cwd, 'dist', 'other.js');
-    fs.writeFileSync(built, 'x\n');
-    fs.writeFileSync(other, 'x\n');
-    let n = 0;
-    const watcher = await startWatcher({
-      root: cwd,
-      recursive,
-      debounceMs: 20,
-      onChange: () => {
-        n += 1;
-      },
-    });
-    try {
-      watcher.watchFiles(['dist/out.js']);
-      await wait(60);
-      fs.writeFileSync(other, 'y\n');
-      await wait(150);
-      assert.equal(n, 0);
-      fs.writeFileSync(built, 'y\n');
-      assert.equal(await waitUntil(() => n >= 1, 1000), true);
-    } finally {
-      watcher.close();
-    }
-  });
-}
-
 test('disk watcher keeps a code change during a review write', async () => {
-  const cwd = tempDir('reslop-watch-');
-  fs.mkdirSync(path.join(cwd, '.git'));
-  fs.mkdirSync(path.join(cwd, '.plan'));
-  const review = path.join(cwd, '.plan', '2026-09-23-00.md');
-  const code = path.join(cwd, 'a.js');
+  const root = tempDir('reslop-watch-');
+  fs.mkdirSync(path.join(root, '.git'));
+  fs.mkdirSync(path.join(root, '.plan'));
+  const review = path.join(root, '.plan', '2026-09-23-00.md');
+  const code = path.join(root, 'a.js');
   fs.writeFileSync(review, '---\nstatus: editing\n---\n');
   fs.writeFileSync(code, 'x\n');
   let changes = 0;
   let reviews = 0;
   const watcher = await startWatcher({
-    root: cwd,
+    root,
     recursive: false,
     debounceMs: 20,
     onChange: () => {
@@ -691,24 +707,6 @@ test('watch reload runs npm extras when package.json changes', async () => {
     });
   });
   assert.equal(extras, 2);
-});
-
-const npmReloadRepo = (cwd, gitItem, extras) => ({
-  load: async (_dir, _paths, options = {}) => ({
-    top: cwd,
-    items: [gitItem],
-    pending: options.deferExtras === true,
-  }),
-  loadExtras: async () => {
-    extras.count += 1;
-    return {
-      top: cwd,
-      items: [gitItem],
-      pending: false,
-      auditMap: { lodash: extras.count },
-      outdatedMap: null,
-    };
-  },
 });
 
 test('source reload skips npm extras when packages are unchanged', async () => {
