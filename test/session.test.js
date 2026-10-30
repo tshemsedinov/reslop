@@ -1892,7 +1892,7 @@ test('ctrl+up and ctrl+down reorder tasks and stay inside a file', async () => {
   );
   press(session, 'ctrl-down');
   const moved = session.notes.tasks.find((task) => task.text === 'first');
-  assert.equal(moved.kind, 'improvements');
+  assert.equal(moved.kind, 'features');
   session.notes.setFeedback('a.js:1:1:0', {
     file: 'a.js',
     oldStart: 1,
@@ -1907,15 +1907,8 @@ test('ctrl+up and ctrl+down reorder tasks and stay inside a file', async () => {
     blockId: 0,
     text: 'quote two',
   });
-  session.notes.tasks = [
-    {
-      id: 9,
-      file: 'TODOs',
-      text: 'only',
-      done: false,
-      kind: 'security',
-    },
-  ];
+  for (const task of session.notes.tasks) session.notes.removeTask(task.id);
+  session.notes.addTask('TODOs', 'only', false, 'security');
   const rows = session.composer.tasks.rows();
   const security = rows.findIndex(
     (row) => row.task && row.task.text === 'only',
@@ -2859,7 +2852,7 @@ test('enter adds task lines and escape stays on the saved task', async () => {
 test('todo save recovers if the stub was dropped', async () => {
   const { session } = await openSession([sampleItem('a.js')]);
   session.dispatch('tasks');
-  session.notes.tasks = [];
+  for (const task of session.notes.tasks) session.notes.removeTask(task.id);
   session.pushInput('still here');
   press(session, 'escape');
   assert.equal(session.notes.tasks.length, 1);
@@ -4302,7 +4295,7 @@ test('load applies imported GitHub notes on a new review', async () => {
   assert.equal(notes.length, 1);
   assert.match(notes[0].text, /use const/);
   assert.equal(session.notes.tasks.length, 1);
-  assert.equal(session.notes.tasks[0].file, 'pull request');
+  assert.match(session.notes.tasks[0].text, /add tests/);
   assert.equal(
     session.fileList().some((entry) => entry.kind === 'tasks'),
     false,
