@@ -22,7 +22,23 @@ const { setTheme, themeName } = ansi;
 const { REVIEW_DIR } = require('../lib/common/files.js');
 const { TABLE_KEY } = require('../lib/runs/output.js');
 
-const taskRows = (lines) => [...lines, '[ ] ', '[ ] ', '[ ] ', '[ ] ', '[ ] '];
+// The checkbox rows of the tasks screen, without headings and text
+const taskRows = (session) =>
+  session.view().tasks.filter((text) => /^\[[ xX]\] /.test(text));
+
+// The row of the tasks screen whose label includes a text
+const rowOf = (session, text) =>
+  session.view().tasks.findIndex((label) => label.includes(text));
+
+// The row of the nth checkbox on the tasks screen
+const taskAt = (session, n) => {
+  const labels = session.view().tasks;
+  const rows = labels.map((label, at) => (/^\[[ xX]\] /.test(label) ? at : -1));
+  return rows.filter((at) => at >= 0)[n] ?? -1;
+};
+
+// The label of the focused row of the tasks screen
+const focusedRow = (session) => session.view().tasks[session.tasksFocus];
 const clipboard = require('../lib/term/clipboard.js');
 
 const { dateStamp } = require('../lib/common/utilities.js');
@@ -1796,7 +1812,7 @@ test('todo list scrolls the focused row into view', async () => {
   stdout.rows = 12;
   for (let i = 0; i < 30; i++) session.notes.addTask('a.js', `item ${i}`);
   session.composer.tasks.openTasksPage();
-  session.tasksFocus = 0;
+  session.tasksFocus = rowOf(session, 'item 0');
   session.draw();
   const top = stripAnsi(session.lastFrame.rows.join('\n'));
   assert.match(top, /item 0(?!\d)/);
@@ -1818,13 +1834,13 @@ test('todo list scrolls the focused row into view', async () => {
   });
   session.draw();
   const up = stripAnsi(session.lastFrame.rows.join('\n'));
-  assert.equal(session.tasksFocus, 24);
+  assert.equal(focusedRow(session), '[ ] item 24');
   assert.match(up, /item 24(?!\d)/);
   session.dispatch('pageDown');
   session.draw();
   const paged = stripAnsi(session.lastFrame.rows.join('\n'));
-  assert.equal(session.tasksFocus, 33);
-  assert.match(paged, /Research|Refactoring/);
+  assert.equal(focusedRow(session), '[ ] item 29');
+  assert.match(paged, /item 29/);
   assert.ok(!/item 0(?!\d)/.test(paged));
 });
 
@@ -1843,7 +1859,9 @@ test('scrolling to the top shows the first header and blank line', async () => {
   assert.equal(session.scroll, 0);
   const rows = session.lastFrame.rows.map((row) => stripAnsi(row));
   assert.equal(rows[1].trim(), '');
-  assert.match(rows[2], /Feature requests and Enhancements/);
+  assert.match(rows[2], /▸ Agent instructions/);
+  assert.equal(rows[3].trim(), '');
+  assert.match(rows[4], /Feature requests and Enhancements/);
 });
 
 test('tasks list ends with a blank line after the blocks', async () => {
@@ -1881,10 +1899,10 @@ test('ctrl+up and ctrl+down reorder tasks and stay inside a file', async () => {
   session.dispatch('tasks');
   session.pushInput('first');
   press(session, 'escape');
-  session.composer.tasks.startDraftCompose();
+  session.composer.tasks.newTask();
   session.pushInput('second');
   press(session, 'escape');
-  session.tasksFocus = 0;
+  session.tasksFocus = rowOf(session, 'first');
   press(session, 'ctrl-down');
   assert.deepEqual(
     session.notes.tasks.map((task) => task.text),
@@ -2309,15 +2327,13 @@ test('todo edits in the list not the note line', async () => {
   session.draw();
   const body = stripAnsi(session.lastFrame.rows.join('\n'));
   assert.match(body, /\[ \] in the list/);
-  assert.match(body, /Feature requests/);
-  assert.match(body, /Bug Reports and Fixes/);
-  assert.match(body, /Technical debt/);
-  assert.match(body, /Research/);
-  assert.match(body, /Security/);
+  assert.doesNotMatch(body, /Bug Reports and Fixes/);
+  assert.doesNotMatch(body, /Security/);
   assert.equal(body.split('in the list').length - 1, 1);
   assert.equal(session.view().compose, null);
   assert.ok(session.view().taskEdit);
-  const hit = session.lastFrame.taskHits.find((row) => row.cursor === 0);
+  const focus = session.tasksFocus;
+  const hit = session.lastFrame.taskHits.find((row) => row.cursor === focus);
   assert.ok(hit);
   assert.equal(session.lastFrame.cursor.y, hit.y);
 });
@@ -2337,8 +2353,8 @@ test('t from any file adds a repo todo and starts editing', async () => {
   assert.equal(session.current().file.newPath, 'TODOs');
   assert.equal(session.mode, 'compose');
   assert.equal(session.composeKind, 'tasks');
-  assert.equal(session.tasksFocus, 0);
-  assert.deepEqual(session.view().tasks, taskRows(['[ ] ']));
+  assert.equal(focusedRow(session), '[ ] ');
+  assert.deepEqual(taskRows(session), ['[ ] ']);
   press(session, 'escape');
   session.dispatch('files');
   session.fileCursor = 0;
@@ -2369,73 +2385,60 @@ test('t opens the repo todo page and lets you edit it', async () => {
   assert.equal(session.items[0].file.newPath, 'a.js');
   assert.equal(session.items[1].file.newPath, 'b.js');
   assert.equal(session.current().origin, 'task');
-  assert.deepEqual(
-    session.view().tasks,
-    taskRows(['[ ] rewrite loop', '[ ] ']),
-  );
+  assert.deepEqual(taskRows(session), ['[ ] rewrite loop']);
   assert.equal(session.view().total, 2);
   assert.equal(session.view().counts.tasks, 1);
   assert.equal(session.view().counts.feedback, 0);
-  assert.equal(session.tasksFocus, 0);
+  assert.equal(focusedRow(session), '[ ] rewrite loop');
   press(session, 'enter');
   assert.equal(session.mode, 'compose');
   assert.equal(session.editor.text, 'rewrite loop');
   press(session, 'escape');
   assert.equal(session.mode, 'review');
-  assert.equal(session.tasksFocus, 0);
-  session.dispatch('next');
-  assert.equal(session.pane, 'tasks');
-  assert.equal(session.tasksFocus, 1);
+  assert.equal(focusedRow(session), '[ ] rewrite loop');
   assert.equal(session.composer.idleNoteText(), '');
-  press(session, 'enter');
+  session.composer.tasks.newTask();
   assert.equal(session.mode, 'compose');
   assert.equal(session.editor.text, '');
-  assert.deepEqual(
-    session.view().tasks,
-    taskRows(['[ ] rewrite loop', '[ ] ']),
-  );
+  assert.deepEqual(taskRows(session), ['[ ] rewrite loop', '[ ] ']);
   session.pushInput('add tests');
   press(session, 'ctrl-s');
   assert.equal(session.tasksOpen, true);
-  assert.deepEqual(
-    session.view().tasks,
-    taskRows(['[ ] rewrite loop', '[ ] add tests', '[ ] ']),
-  );
-  assert.equal(session.tasksFocus, 1);
+  assert.deepEqual(taskRows(session), ['[ ] rewrite loop', '[ ] add tests']);
+  assert.equal(focusedRow(session), '[ ] add tests');
   press(session, 'escape');
   assert.equal(session.pane, 'files');
   assert.equal(session.current().file.newPath, 'a.js');
 });
 
-test('todo list keeps a blank row to start a new item', async () => {
+test('an empty plan shows a hint row that starts a task', async () => {
   const { session } = await openSession([sampleItem('a.js')]);
-  session.dispatch('tasks');
-  session.pushInput('first note');
-  press(session, 'ctrl-s');
-  assert.equal(session.mode, 'review');
-  assert.deepEqual(session.view().tasks, taskRows(['[ ] first note', '[ ] ']));
-  session.dispatch('scrollDown');
+  session.composer.tasks.openTasksPage();
+  assert.deepEqual(session.view().tasks, [
+    'Agent instructions',
+    'Insert task · s section · e markdown',
+  ]);
   assert.equal(session.tasksFocus, 1);
   press(session, 'enter');
   assert.equal(session.mode, 'compose');
   assert.equal(session.composeTaskId, null);
   assert.equal(session.editor.text, '');
   press(session, 'escape');
+  assert.equal(focusedRow(session), 'Insert task · s section · e markdown');
   session.draw();
-  const draft = session.lastFrame.taskHits.find((row) => row.cursor === 1);
-  assert.ok(draft);
-  click(session, 2, draft.y);
-  assert.equal(session.tasksFocus, 1);
+  const hint = session.lastFrame.taskHits.find((row) => row.cursor === 1);
+  assert.ok(hint);
+  click(session, 2, hint.y);
   assert.equal(session.mode, 'compose');
-  assert.equal(session.composeTaskId, null);
-  session.pushInput('second note');
+  session.pushInput('first note');
   press(session, 'escape');
-  assert.deepEqual(
-    session.view().tasks,
-    taskRows(['[ ] first note', '[ ] second note', '[ ] ']),
-  );
+  assert.deepEqual(session.view().tasks, [
+    'Agent instructions',
+    'Feature requests and Enhancements',
+    '[ ] first note',
+  ]);
   assert.equal(session.mode, 'review');
-  assert.equal(session.tasksFocus, 1);
+  assert.equal(focusedRow(session), '[ ] first note');
   assert.equal(session.editor, null);
 });
 
@@ -2444,30 +2447,32 @@ test('enter and click edit the focused todo', async () => {
   session.dispatch('tasks');
   session.pushInput('first note');
   press(session, 'ctrl-s');
-  session.composer.tasks.startDraftCompose();
+  session.composer.tasks.newTask();
   session.pushInput('second note');
   press(session, 'ctrl-s');
   assert.equal(session.mode, 'review');
-  assert.equal(session.tasksFocus, 1);
+  const first = rowOf(session, 'first note');
+  const second = rowOf(session, 'second note');
+  assert.equal(session.tasksFocus, second);
   press(session, 'enter');
   assert.equal(session.mode, 'compose');
   assert.equal(session.editor.text, 'second note');
   press(session, 'escape');
   session.dispatch('scrollUp');
-  assert.equal(session.tasksFocus, 0);
+  assert.equal(session.tasksFocus, first);
   session.draw();
-  const hit = session.lastFrame.taskHits.find((row) => row.cursor === 0);
+  const hit = session.lastFrame.taskHits.find((row) => row.cursor === first);
   assert.ok(hit);
   click(session, 8, hit.y);
-  assert.equal(session.tasksFocus, 0);
+  assert.equal(session.tasksFocus, first);
   assert.equal(session.mode, 'compose');
   assert.equal(session.editor.text, 'first note');
   press(session, 'escape');
   session.draw();
-  const other = session.lastFrame.taskHits.find((row) => row.cursor === 1);
+  const other = session.lastFrame.taskHits.find((row) => row.cursor === second);
   assert.ok(other);
   click(session, 8, other.y);
-  assert.equal(session.tasksFocus, 1);
+  assert.equal(session.tasksFocus, second);
   assert.equal(session.mode, 'compose');
   assert.equal(session.editor.text, 'second note');
 });
@@ -2477,14 +2482,14 @@ test('Return edits a task and Escape saves it without advancing', async () => {
   session.dispatch('tasks');
   session.pushInput('first\rsecond');
   assert.equal(session.mode, 'compose');
-  assert.equal(session.tasksFocus, 0);
+  assert.equal(session.tasksFocus, taskAt(session, 0));
   assert.equal(session.editor.text, 'first\nsecond');
   press(session, 'escape');
-  session.composer.tasks.startDraftCompose();
+  session.composer.tasks.newTask();
   session.pushInput('another');
   press(session, 'escape');
   const ids = session.notes.tasks.map((task) => task.id);
-  session.tasksFocus = 0;
+  session.tasksFocus = taskAt(session, 0);
   session.pushInput('\r');
   const editor = session.editor;
   editor.place(2);
@@ -2492,11 +2497,11 @@ test('Return edits a task and Escape saves it without advancing', async () => {
   session.pushInput('\rA\rB');
   assert.equal(session.editor, editor);
   assert.equal(session.editor.text, 'fi\nA\nBrst\nsecond');
-  assert.equal(session.tasksFocus, 0);
+  assert.equal(session.tasksFocus, taskAt(session, 0));
   assert.equal(session.composeTaskId, ids[0]);
   press(session, 'escape');
   assert.equal(session.mode, 'review');
-  assert.equal(session.tasksFocus, 0);
+  assert.equal(session.tasksFocus, taskAt(session, 0));
   assert.equal(session.editor, null);
   assert.deepEqual(
     session.notes.tasks.map((task) => task.id),
@@ -2575,7 +2580,7 @@ for (const [name, shift, ctrl] of [
     session.dispatch('tasks');
     session.pushInput('alphaomega\x13');
     const id = session.notes.tasks[0].id;
-    session.tasksFocus = 0;
+    session.tasksFocus = taskAt(session, 0);
     session.pushInput('\r');
     const editor = session.editor;
     editor.place(5);
@@ -2587,7 +2592,7 @@ for (const [name, shift, ctrl] of [
     assert.equal(session.notes.tasks[0].id, id);
     session.pushInput(`${ctrl}tail`);
     assert.equal(session.editor, editor);
-    assert.equal(session.tasksFocus, 0);
+    assert.equal(session.tasksFocus, taskAt(session, 0));
     session.pushInput('\x13');
     assert.equal(session.notes.tasks.length, 1);
     assert.equal(session.notes.tasks[0].text, 'alpha\nmiddle\ntailomega');
@@ -2601,13 +2606,14 @@ test('todo list stays on screen while composing', async () => {
   session.dispatch('tasks');
   session.pushInput('first note');
   press(session, 'ctrl-s');
-  session.composer.tasks.startDraftCompose();
+  session.composer.tasks.newTask();
   session.pushInput('draft two');
   assert.equal(session.mode, 'compose');
   session.draw();
   const body = stripAnsi(session.lastFrame.rows.join('\n'));
   assert.match(body, /\[ \] first note/);
-  const hit = session.lastFrame.taskHits.find((row) => row.cursor === 0);
+  const first = rowOf(session, 'first note');
+  const hit = session.lastFrame.taskHits.find((row) => row.cursor === first);
   assert.ok(hit);
   click(session, 8, hit.y);
   assert.equal(session.mode, 'compose');
@@ -2621,17 +2627,18 @@ test('delete and backspace remove the selected todo', async () => {
   session.dispatch('tasks');
   session.pushInput('first note');
   press(session, 'ctrl-s');
-  session.composer.tasks.startDraftCompose();
+  session.composer.tasks.newTask();
   session.pushInput('second note');
   press(session, 'ctrl-s');
   assert.equal(session.mode, 'review');
-  assert.equal(session.tasksFocus, 1);
+  assert.equal(session.tasksFocus, taskAt(session, 1));
   press(session, 'delete');
-  assert.deepEqual(session.view().tasks, taskRows(['[ ] first note', '[ ] ']));
-  assert.equal(session.tasksFocus, 0);
+  assert.deepEqual(taskRows(session), ['[ ] first note']);
+  assert.equal(session.tasksFocus, taskAt(session, 0));
   assert.equal(session.current().origin, 'task');
   press(session, 'backspace');
-  assert.deepEqual(session.view().tasks, taskRows(['[ ] ']));
+  assert.deepEqual(taskRows(session), []);
+  assert.equal(focusedRow(session), 'Feature requests and Enhancements');
   assert.equal(session.current().origin, 'task');
 });
 
@@ -2645,7 +2652,7 @@ test('empty autosave does not persist a draft todo', async () => {
   press(session, 'escape');
   assert.equal(session.mode, 'review');
   assert.equal(session.editor, null);
-  assert.equal(session.tasksFocus, 0);
+  assert.equal(session.tasksFocus, taskAt(session, 0));
   assert.equal(session.notes.tasks[0].text, 'keep this');
   assert.equal(session.current().origin, 'task');
 });
@@ -2666,11 +2673,8 @@ test('todo autosave updates one draft instead of duplicating', async () => {
   press(session, 'escape');
   assert.equal(session.mode, 'review');
   assert.equal(session.editor, null);
-  assert.equal(session.tasksFocus, 0);
-  assert.deepEqual(
-    session.view().tasks,
-    taskRows(['[ ] keep this more', '[ ] ']),
-  );
+  assert.equal(session.tasksFocus, taskAt(session, 0));
+  assert.deepEqual(taskRows(session), ['[ ] keep this more']);
 });
 
 test('typing a todo starts editing at the end of the line', async () => {
@@ -2679,7 +2683,7 @@ test('typing a todo starts editing at the end of the line', async () => {
   session.pushInput('first');
   press(session, 'escape');
   assert.equal(session.mode, 'review');
-  assert.equal(session.tasksFocus, 0);
+  assert.equal(session.tasksFocus, taskAt(session, 0));
   session.pushInput('+more');
   assert.equal(session.mode, 'compose');
   assert.equal(session.editor.text, 'first+more');
@@ -2691,19 +2695,21 @@ test('home end and page keys jump the todo list', async () => {
   session.dispatch('tasks');
   session.pushInput('one');
   press(session, 'escape');
-  session.composer.tasks.startDraftCompose();
+  session.composer.tasks.newTask();
   session.pushInput('two');
   press(session, 'escape');
-  session.composer.tasks.startDraftCompose();
+  session.composer.tasks.newTask();
   session.pushInput('three');
   press(session, 'escape');
   assert.equal(session.mode, 'review');
+  const last = session.view().tasks.length - 1;
   press(session, 'home');
   assert.equal(session.tasksFocus, 0);
   press(session, 'end');
-  assert.equal(session.tasksFocus, 8);
+  assert.equal(session.tasksFocus, last);
+  assert.equal(focusedRow(session), '[ ] three');
   press(session, 'home', 'pageDown');
-  assert.equal(session.tasksFocus, 8);
+  assert.equal(session.tasksFocus, last);
   press(session, 'pageUp');
   assert.equal(session.tasksFocus, 0);
 });
@@ -2713,32 +2719,28 @@ test('todo edit arrows move across todos without leaving edit', async () => {
   session.dispatch('tasks');
   session.pushInput('first');
   press(session, 'escape');
-  session.composer.tasks.startDraftCompose();
+  session.composer.tasks.newTask();
   session.pushInput('second');
   press(session, 'up');
   assert.equal(session.mode, 'compose');
-  assert.equal(session.tasksFocus, 0);
+  assert.equal(session.tasksFocus, taskAt(session, 0));
   assert.equal(session.editor.text, 'first');
   assert.equal(session.editor.cursor, 'first'.length);
   press(session, 'up');
   assert.equal(session.mode, 'compose');
-  assert.equal(session.tasksFocus, 0);
+  assert.equal(focusedRow(session), 'Feature requests and Enhancements');
+  assert.equal(session.editor.text, 'Feature requests and Enhancements');
+  press(session, 'down');
+  assert.equal(session.tasksFocus, taskAt(session, 0));
   press(session, 'down');
   assert.equal(session.mode, 'compose');
-  assert.equal(session.tasksFocus, 1);
+  assert.equal(session.tasksFocus, taskAt(session, 1));
   assert.equal(session.editor.text, 'second');
   press(session, 'down');
   assert.equal(session.mode, 'compose');
-  assert.equal(session.tasksFocus, 2);
-  assert.equal(session.editor.text, '');
-  press(session, 'down');
-  assert.equal(session.mode, 'compose');
-  assert.equal(session.tasksFocus, 3);
-  assert.equal(session.editor.text, '');
-  assert.deepEqual(
-    session.view().tasks,
-    taskRows(['[ ] first', '[ ] second', '[ ] ']),
-  );
+  assert.equal(session.tasksFocus, taskAt(session, 1));
+  assert.equal(session.editor.text, 'second');
+  assert.deepEqual(taskRows(session), ['[ ] first', '[ ] second']);
 });
 
 test('todo edit arrows move inside a multiline todo', async () => {
@@ -2746,30 +2748,30 @@ test('todo edit arrows move inside a multiline todo', async () => {
   session.dispatch('tasks');
   session.pushInput('first');
   press(session, 'escape');
-  session.composer.tasks.startDraftCompose();
+  session.composer.tasks.newTask();
   session.pushInput('second');
   press(session, 'escape');
-  session.notes.tasks[1].text = 'one\ntwo\nthree';
+  session.notes.setTaskText(session.notes.tasks[1].id, 'one\ntwo\nthree');
   press(session, 'enter');
   assert.equal(session.mode, 'compose');
   assert.equal(session.editor.linePos().line, 2);
   press(session, 'up');
-  assert.equal(session.tasksFocus, 1);
+  assert.equal(session.tasksFocus, taskAt(session, 1));
   assert.equal(session.editor.linePos().line, 1);
   press(session, 'up');
-  assert.equal(session.tasksFocus, 1);
+  assert.equal(session.tasksFocus, taskAt(session, 1));
   assert.equal(session.editor.linePos().line, 0);
   press(session, 'up');
   assert.equal(session.mode, 'compose');
-  assert.equal(session.tasksFocus, 0);
+  assert.equal(session.tasksFocus, taskAt(session, 0));
   assert.equal(session.editor.text, 'first');
   press(session, 'down');
-  assert.equal(session.tasksFocus, 1);
+  assert.equal(session.tasksFocus, taskAt(session, 1));
   assert.equal(session.editor.text, 'one\ntwo\nthree');
   assert.equal(session.editor.linePos().line, 2);
   press(session, 'down');
-  assert.equal(session.tasksFocus, 2);
-  assert.equal(session.editor.text, '');
+  assert.equal(session.tasksFocus, taskAt(session, 1));
+  assert.equal(session.editor.text, 'one\ntwo\nthree');
 });
 
 test('todo list arrows skip over multiline items', async () => {
@@ -2777,19 +2779,19 @@ test('todo list arrows skip over multiline items', async () => {
   session.dispatch('tasks');
   session.pushInput('first');
   press(session, 'escape');
-  session.composer.tasks.startDraftCompose();
+  session.composer.tasks.newTask();
   session.pushInput('second');
   press(session, 'escape');
-  session.notes.tasks[1].text = 'one\ntwo\nthree';
+  session.notes.setTaskText(session.notes.tasks[1].id, 'one\ntwo\nthree');
   assert.equal(session.mode, 'review');
-  assert.equal(session.tasksFocus, 1);
+  assert.equal(session.tasksFocus, taskAt(session, 1));
   press(session, 'up');
   assert.equal(session.mode, 'review');
-  assert.equal(session.tasksFocus, 0);
+  assert.equal(session.tasksFocus, taskAt(session, 0));
   press(session, 'down');
-  assert.equal(session.tasksFocus, 1);
+  assert.equal(session.tasksFocus, taskAt(session, 1));
   press(session, 'down');
-  assert.equal(session.tasksFocus, 2);
+  assert.equal(session.tasksFocus, taskAt(session, 1));
 });
 
 test('todo edit arrows move across wrapped lines', async () => {
@@ -2797,19 +2799,19 @@ test('todo edit arrows move across wrapped lines', async () => {
   session.dispatch('tasks');
   session.pushInput('first');
   press(session, 'escape');
-  session.composer.tasks.startDraftCompose();
+  session.composer.tasks.newTask();
   session.pushInput('second');
   press(session, 'escape');
   const long = 'x'.repeat(90);
-  session.notes.tasks[1].text = long;
+  session.notes.setTaskText(session.notes.tasks[1].id, long);
   press(session, 'enter', 'up');
-  assert.equal(session.tasksFocus, 1);
+  assert.equal(session.tasksFocus, taskAt(session, 1));
   assert.ok(session.editor.cursor < long.length);
   press(session, 'down');
-  assert.equal(session.tasksFocus, 1);
+  assert.equal(session.tasksFocus, taskAt(session, 1));
   assert.equal(session.editor.cursor, long.length);
-  press(session, 'down');
-  assert.equal(session.tasksFocus, 2);
+  press(session, 'up', 'up');
+  assert.equal(session.tasksFocus, taskAt(session, 0));
 });
 
 test('todo edit page keys jump across todos', async () => {
@@ -2817,18 +2819,17 @@ test('todo edit page keys jump across todos', async () => {
   session.dispatch('tasks');
   session.pushInput('first');
   press(session, 'escape');
-  session.composer.tasks.startDraftCompose();
+  session.composer.tasks.newTask();
   session.pushInput('second');
   press(session, 'escape');
-  session.composer.tasks.startDraftCompose();
+  session.composer.tasks.newTask();
   session.pushInput('third');
   press(session, 'pageUp');
   assert.equal(session.mode, 'compose');
-  assert.equal(session.tasksFocus, 0);
-  assert.equal(session.editor.text, 'first');
+  assert.equal(focusedRow(session), 'Feature requests and Enhancements');
   press(session, 'pageDown');
-  assert.equal(session.tasksFocus, 8);
-  assert.equal(session.editor.text, '');
+  assert.equal(session.tasksFocus, taskAt(session, 2));
+  assert.equal(session.editor.text, 'third');
 });
 
 test('enter adds task lines and escape stays on the saved task', async () => {
@@ -2837,16 +2838,14 @@ test('enter adds task lines and escape stays on the saved task', async () => {
   session.pushInput('first');
   press(session, 'enter');
   assert.equal(session.mode, 'compose');
-  assert.equal(session.tasksFocus, 0);
+  assert.equal(session.tasksFocus, taskAt(session, 0));
   assert.equal(session.editor.text, 'first\n');
   session.pushInput('second');
   press(session, 'escape');
   assert.equal(session.mode, 'review');
-  assert.equal(session.tasksFocus, 0);
-  assert.deepEqual(
-    session.view().tasks,
-    taskRows(['[ ] first\nsecond', '[ ] ']),
-  );
+  assert.equal(session.tasksFocus, taskAt(session, 0));
+  assert.deepEqual(taskRows(session), ['[ ] first']);
+  assert.equal(session.notes.tasks[0].text, 'first\nsecond');
 });
 
 test('todo save recovers if the stub was dropped', async () => {
@@ -7505,9 +7504,13 @@ for (const [kind, pane] of [
 ]) {
   test(`mouse and keyboard share selection in the ${kind} editor`, async () => {
     const { session, stdout } = await openSession([sampleItem('a.js')]);
-    if (kind === 'tasks') session.composer.tasks.openTasksPage();
     session.pane = pane;
-    session.composer.openCompose(kind, 'hello world');
+    if (kind === 'tasks') {
+      session.composer.tasks.onTasks();
+      session.editor.replace('hello world');
+    } else {
+      session.composer.openCompose(kind, 'hello world');
+    }
     if (kind === 'npm') session.npm.editField = 'name';
     session.editor.place(0);
     session.draw();
@@ -8192,4 +8195,111 @@ test('leaving the editor does not stage a change made outside', async () => {
   await session.ops.idle();
   assert.equal(session.status, 'staged');
   assert.deepEqual(repo.stagedPaths, ['a.js']);
+});
+
+// The tasks screen of a plan file, as plain text rows of its body
+const planScreen = async (name, text, rows = 24) => {
+  const { session, stdout, cwd } = await openSession([sampleItem('a.js')]);
+  stdout.rows = rows;
+  const dir = path.join(cwd, REVIEW_DIR);
+  fs.mkdirSync(dir, { recursive: true });
+  if (text !== null) fs.writeFileSync(path.join(dir, name), text);
+  session.composer.tasks.openTasksPage();
+  session.composer.tasks.openPlan(name);
+  session.draw();
+  const body = session.lastFrame.rows.slice(1, -2);
+  const lines = body.map((row) => stripAnsi(row).trimEnd());
+  while (lines.length && !lines[lines.length - 1]) lines.pop();
+  return { session, lines };
+};
+
+const PLAN_SCREEN = [
+  '---',
+  'status: editing',
+  '---',
+  '',
+  '# reslop review 2026-10-27-00',
+  '',
+  '## Agent instructions',
+  '',
+  'Work through unchecked items.',
+  '',
+  '## Bug Reports and Fixes',
+  '',
+  '- [x] B1 high: Released connection can be assigned to two consumers',
+  '- [ ] B2: Escape ends the read loop on the file list',
+  '  - where: lib/session/terminal.js#readLoop',
+  '  - check:',
+  '    - [ ] read loop survives a lone Escape',
+  '    - [ ] terminal tests pass',
+  '- [ ] critical: Timeout error message names the pool',
+  '',
+  '## Notes',
+  '',
+  'Anything else: paragraphs, lists, code, tables.',
+  '',
+  '```js',
+  'const x = 1;',
+  '```',
+  '',
+].join('\n');
+
+test('tasks screen snapshot of a reslop plan', async () => {
+  const { lines } = await planScreen('2026-10-27-00.md', PLAN_SCREEN);
+  assert.deepEqual(lines, [
+    '',
+    ' ▸ Agent instructions',
+    '',
+    ` Bug Reports and Fixes${' '.repeat(54)}1/3`,
+    ' [x] B1 high Released connection can be assigned to two consumers',
+    ` [ ] B2 Escape ends the read loop on the file list${' '.repeat(21)}` +
+      'check 0/2',
+    ' [ ] critical Timeout error message names the pool',
+    '',
+    ' Notes',
+    '   Anything else: paragraphs, lists, code, tables.',
+    '   ```js',
+    '   const x = 1;',
+    '   ```',
+  ]);
+});
+
+test('tasks screen snapshot of a free-form Markdown file', async () => {
+  const text = [
+    '# Live dashboard',
+    '',
+    '## Goal',
+    '',
+    'Add a live dashboard that opens first.',
+    '',
+    '- files - size and count',
+    '- diffs - lines added and removed',
+    '',
+    '## 1. Entry screen',
+    '',
+    'Pressing `Esc` returns to the dashboard.',
+    '',
+  ].join('\n');
+  const { session, lines } = await planScreen('LIVE.md', text);
+  assert.deepEqual(lines, [
+    '',
+    ' Live dashboard',
+    '',
+    ' Goal',
+    '   Add a live dashboard that opens first.',
+    '   - files - size and count',
+    '   - diffs - lines added and removed',
+    '',
+    ' 1. Entry screen',
+    '   Pressing `Esc` returns to the dashboard.',
+  ]);
+  const file = path.join(session.root, REVIEW_DIR, 'LIVE.md');
+  session.notes.addTask('TODOs', 'first', false, 'features');
+  session.flushReview(true);
+  assert.ok(fs.readFileSync(file, 'utf8').startsWith(text));
+});
+
+test('tasks screen snapshot of an empty file', async () => {
+  const { lines } = await planScreen('empty.md', '');
+  assert.deepEqual(lines, ['', '   Insert task · s section · e markdown']);
 });
