@@ -8645,3 +8645,39 @@ test('a custom section goes at the cursor and is named at once', async () => {
   assert.match(text, /F1: dark mode\n\n## Open questions\n\n## Refactoring/);
   assert.equal(focusedRow(session), 'Open questions');
 });
+
+test('# numbers open tasks after the highest ID of a letter', async () => {
+  const text = [
+    '## Bug Reports and Fixes',
+    '',
+    '- [ ] b4: lower case counts',
+    '- [ ] crash on start',
+    '- [x] done stays as it is',
+    '- [ ] B2: below the highest',
+    '',
+    '## Refactoring and Technical debt',
+    '',
+    '- [ ] split the store',
+    '',
+    '## Notes',
+    '',
+    '- [ ] a custom task',
+    '- [ ] T7 high: an old custom one',
+    '',
+  ].join('\n');
+  const { session } = await planScreen('numbers.md', text);
+  press(session, '#');
+  assert.equal(session.mode, 'review');
+  assert.equal(session.status, 'numbered 3');
+  const once = fs.readFileSync(session.notes.reviewPath, 'utf8');
+  assert.equal(
+    once,
+    text
+      .replace('- [ ] crash on start', '- [ ] B5: crash on start')
+      .replace('- [ ] split the store', '- [ ] D1: split the store')
+      .replace('- [ ] a custom task', '- [ ] T8: a custom task'),
+  );
+  press(session, '#');
+  assert.equal(session.status, 'every open task has an ID');
+  assert.equal(fs.readFileSync(session.notes.reviewPath, 'utf8'), once);
+});
