@@ -492,52 +492,44 @@ test('editing a todo applies a deferred reload on exit', async () => {
   assert.equal(session.items.length, 2);
 });
 
-test(
-  'review file change merges into the open todo list',
-  { todo: 'D1' },
-  async () => {
-    const { session } = await openWatched([sampleItem('a.js')]);
-    session.uiOpen = true;
-    session.dispatch('tasks');
-    session.pushInput('alpha');
-    session.handleEvent({ type: 'key', key: 'escape' });
-    session.notes.addTask('TODOs', 'beta');
-    const file = session.notes.reviewPath;
+test('review file change merges into the open todo list', async () => {
+  const { session } = await openWatched([sampleItem('a.js')]);
+  session.uiOpen = true;
+  session.dispatch('tasks');
+  session.pushInput('alpha');
+  session.handleEvent({ type: 'key', key: 'escape' });
+  session.notes.addTask('TODOs', 'beta');
+  const file = session.notes.reviewPath;
+  const md = fs.readFileSync(file, 'utf8');
+  const next = md.replace('- [ ] alpha\n', '- [ ] alpha\n- [ ] gamma\n');
+  fs.writeFileSync(file, next);
+  session.lifecycle.applyReviewChange();
+  const texts = session.notes.tasks.map((todo) => todo.text);
+  assert.deepEqual(texts, ['alpha', 'gamma', 'beta']);
+});
+
+test('external todo edits replace the line instead of stacking', async () => {
+  const { session } = await openWatched([sampleItem('a.js')]);
+  session.uiOpen = true;
+  session.dispatch('tasks');
+  session.pushInput('one');
+  session.handleEvent({ type: 'key', key: 'escape' });
+  session.notes.addTask('TODOs', 'beta');
+  const edited = session.notes.tasks[0].id;
+  const file = session.notes.reviewPath;
+  const writeLine = (text) => {
     const md = fs.readFileSync(file, 'utf8');
-    const next = md.replace('- [ ] alpha\n', '- [ ] alpha\n- [ ] gamma\n');
+    const next = md.replace(/- \[ \] one[^\n]*\n/, `- [ ] ${text}\n`);
     fs.writeFileSync(file, next);
     session.lifecycle.applyReviewChange();
-    const texts = session.notes.tasks.map((todo) => todo.text);
-    assert.deepEqual(texts, ['alpha', 'gamma', 'beta']);
-  },
-);
-
-test(
-  'external todo edits replace the line instead of stacking',
-  { todo: 'D1' },
-  async () => {
-    const { session } = await openWatched([sampleItem('a.js')]);
-    session.uiOpen = true;
-    session.dispatch('tasks');
-    session.pushInput('one');
-    session.handleEvent({ type: 'key', key: 'escape' });
-    session.notes.addTask('TODOs', 'beta');
-    const edited = session.notes.tasks[0].id;
-    const file = session.notes.reviewPath;
-    const writeLine = (text) => {
-      const md = fs.readFileSync(file, 'utf8');
-      const next = md.replace(/- \[ \] one[^\n]*\n/, `- [ ] ${text}\n`);
-      fs.writeFileSync(file, next);
-      session.lifecycle.applyReviewChange();
-    };
-    writeLine('one three');
-    writeLine('one three four');
-    writeLine('one three four five');
-    const texts = session.notes.tasks.map((todo) => todo.text);
-    assert.deepEqual(texts, ['one three four five', 'beta']);
-    assert.equal(session.notes.tasks[0].id, edited);
-  },
-);
+  };
+  writeLine('one three');
+  writeLine('one three four');
+  writeLine('one three four five');
+  const texts = session.notes.tasks.map((todo) => todo.text);
+  assert.deepEqual(texts, ['one three four five', 'beta']);
+  assert.equal(session.notes.tasks[0].id, edited);
+});
 
 test('leaving branches reloads the file list', async () => {
   const a = sampleItem('a.js');
