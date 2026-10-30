@@ -16,7 +16,7 @@ const review = require('../lib/review/review.js');
 const { ReviewStore, serializeReview } = review;
 const { parseReview } = review;
 const ansi = require('../lib/term/ansi.js');
-const { stripAnsi, THEME, BOLD, seq, bg } = ansi;
+const { stripAnsi, THEME, BOLD, seq, bg, fg } = ansi;
 const { logViewRows } = require('../lib/render/log.js');
 const { setTheme, themeName } = ansi;
 const { REVIEW_DIR } = require('../lib/common/files.js');
@@ -8207,8 +8207,9 @@ test('leaving the editor does not stage a change made outside', async () => {
 });
 
 // The tasks screen of a plan file, as plain text rows of its body
-const planScreen = async (name, text, rows = 24) => {
-  const { session, stdout, cwd } = await openSession([sampleItem('a.js')]);
+const planScreen = async (name, text, rows = 24, extra = {}) => {
+  const items = [sampleItem('a.js')];
+  const { session, stdout, cwd } = await openSession(items, extra);
   stdout.rows = rows;
   const dir = path.join(cwd, REVIEW_DIR);
   fs.mkdirSync(dir, { recursive: true });
@@ -8419,4 +8420,147 @@ test('ctrl+enter leaves a task alone and enter edits a heading', async () => {
   press(session, 'escape');
   const text = serializeReview(session.notes);
   assert.match(text, /## Notes and links\n\n- \[ \] a task under notes\n\n/);
+});
+
+const STRUCTURED = [
+  '## Bug Reports and Fixes',
+  '',
+  '- [ ] B1 high: Escape ends the read loop',
+  '  - where: lib/session/terminal.js#readLoop',
+  '  - check:',
+  '    - [ ] read loop survives a lone Escape',
+  '    - [ ] terminal tests pass',
+  '  - result: guarded the timer',
+  '- [ ] B2: Timeout names the pool',
+  '',
+].join('\n');
+
+test('the focused task opens its fields and checks', async () => {
+  const { session, lines } = await planScreen('structured.md', STRUCTURED);
+  assert.deepEqual(lines, [
+    '',
+    ` Bug Reports and Fixes${' '.repeat(54)}0/2`,
+    ` [ ] B1 high Escape ends the read loop${' '.repeat(33)}check 0/2`,
+    '     where       lib/session/terminal.js#readLoop',
+    '     check       [ ] read loop survives a lone Escape',
+    '                 [ ] terminal tests pass',
+    '     result      guarded the timer',
+    ' [ ] B2 Timeout names the pool',
+  ]);
+  session.tasksFocus = rowOf(session, 'B2:');
+  session.draw();
+  const body = session.lastFrame.rows.map((row) => stripAnsi(row));
+  assert.ok(!body.some((row) => row.includes('where')));
+});
+
+test('space on a check line ticks that check, not the task', async () => {
+  const { session } = await planScreen('structured.md', STRUCTURED);
+  assert.equal(focusedRow(session), '[ ] B1 high: Escape ends the read loop');
+  press(session, 'down', 'down', ' ');
+  const [task] = session.notes.tasks;
+  assert.equal(task.done, false);
+  assert.deepEqual(
+    task.item.checks.map((check) => check.done),
+    [false, true],
+  );
+  press(session, 'up', 'up', ' ');
+  assert.equal(session.notes.tasks[0].done, true);
+  press(session, 'down', 'down', 'down');
+  assert.equal(focusedRow(session), '[ ] B2: Timeout names the pool');
+  press(session, 'up');
+  assert.equal(focusedRow(session), '[x] B1 high: Escape ends the read loop');
+  press(session, ' ');
+  assert.equal(session.notes.tasks[0].item.checks[1].done, false);
+  session.draw();
+  const box = session.lastFrame.taskHits.find((hit) => hit.sub === 0);
+  assert.ok(box);
+  click(session, box.x0 + 1, box.y);
+  assert.equal(session.notes.tasks[0].item.checks[0].done, true);
+});
+
+test('the result field is highlighted', async () => {
+  const colored = { color: true };
+  const { session } = await planScreen('s.md', STRUCTURED, 24, colored);
+  session.draw();
+  const row = session.lastFrame.rows.find((line) => line.includes('guarded'));
+  const where = session.lastFrame.rows.find((line) => line.includes('#readL'));
+  assert.ok(row.includes(fg(THEME.addLineFg)));
+  assert.ok(!where.includes(fg(THEME.addLineFg)));
+});
+
+test('tab and shift+tab open and close tasks', async () => {
+  const { session } = await planScreen('structured.md', STRUCTURED);
+  const shown = () => {
+    session.draw();
+    return session.lastFrame.rows.some((row) =>
+      stripAnsi(row).includes('where'),
+    );
+  };
+  assert.equal(shown(), true);
+  press(session, 'tab');
+  assert.equal(shown(), false);
+  press(session, 'tab');
+  assert.equal(shown(), true);
+  press(session, 'down', 'down', 'down');
+  assert.equal(focusedRow(session), '[ ] B2: Timeout names the pool');
+  assert.equal(shown(), true);
+  press(session, 'up', 'tab', 'down');
+  assert.equal(shown(), false);
+  press(session, 'shift-tab');
+  assert.equal(shown(), true);
+  press(session, 'shift-tab');
+  assert.equal(shown(), false);
+});
+
+test('ghost fields show while editing and never reach the file', async () => {
+  const { session } = await planScreen('structured.md', STRUCTURED);
+  session.tasksFocus = rowOf(session, 'B2:');
+  press(session, 'enter');
+  session.draw();
+  const body = session.lastFrame.rows.map((row) => stripAnsi(row).trimEnd());
+  const ghosts = body.filter((row) => row.includes('░'));
+  assert.deepEqual(ghosts, [
+    '     where       ░ code locations: path, path:line, path#symbol',
+    '     problem     ░ what is wrong or missing now',
+    '     evidence    ░ failing test, stack, log, repro steps',
+    '     expected    ░ how it should behave when done',
+    '     check       ░ acceptance criteria as checkboxes',
+  ]);
+  press(session, 'tab');
+  assert.equal(session.editor.text, 'B2: Timeout names the pool\n- where: ');
+  session.autosave();
+  const saved = fs.readFileSync(session.notes.reviewPath, 'utf8');
+  assert.doesNotMatch(saved.split('B2:')[1], /where/);
+  session.pushInput('lib/pool.js');
+  press(session, 'tab');
+  assert.equal(
+    session.editor.text,
+    'B2: Timeout names the pool\n- where: lib/pool.js\n- problem: ',
+  );
+  press(session, 'tab');
+  assert.match(session.editor.text, /\n- evidence: $/);
+  press(session, 'escape');
+  const text = fs.readFileSync(session.notes.reviewPath, 'utf8');
+  assert.match(text, /- \[ \] B2: Timeout names the pool\n {2}- where: lib/);
+  assert.doesNotMatch(text.split('B2:')[1], /evidence|problem|░/);
+});
+
+test('tab after a dash completes field names, suggested first', async () => {
+  const { session } = await planScreen('structured.md', STRUCTURED);
+  session.tasksFocus = rowOf(session, 'B2:');
+  press(session, 'enter', 'end');
+  session.pushInput('\x1b\r- ');
+  press(session, 'tab');
+  assert.match(session.editor.text, /\n- where: $/);
+  press(session, 'tab');
+  assert.match(session.editor.text, /\n- problem: $/);
+  press(session, 'backspace', 'backspace', 'backspace', 'backspace');
+  press(session, 'backspace', 'backspace', 'backspace', 'backspace');
+  press(session, 'backspace');
+  session.pushInput('re');
+  press(session, 'tab');
+  assert.match(session.editor.text, /\n- related: $/);
+  session.pushInput('#86');
+  press(session, 'escape');
+  assert.equal(session.notes.tasks[1].item.value('related'), '#86');
 });
