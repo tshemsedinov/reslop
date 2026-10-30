@@ -1895,7 +1895,8 @@ test('a short tasks list does not scroll for a trailing blank', async () => {
 });
 
 test('ctrl+up and ctrl+down reorder tasks and stay inside a file', async () => {
-  const { session } = await openSession([sampleItem('a.js')]);
+  const { session, stdout } = await openSession([sampleItem('a.js')]);
+  stdout.columns = 100;
   session.dispatch('tasks');
   session.pushInput('first');
   press(session, 'escape');
@@ -2089,12 +2090,14 @@ test('tasks plan combo filters in place and keeps the agent menu', async () => {
 });
 
 test('tasks plan hotkey opens the combo and can start a new plan', async () => {
-  const { session } = await openSession([sampleItem('a.js')], { color: true });
+  const opened = await openSession([sampleItem('a.js')], { color: true });
+  const { session } = opened;
+  opened.stdout.columns = 100;
   session.dispatch('tasks');
   press(session, 'escape');
   session.draw();
   const footer = stripAnsi(session.lastFrame.rows.at(-1));
-  assert.match(footer, /🢐esc {2}insert {2}plan {2}import/);
+  assert.match(footer, /🢐esc {2}insert {2}section {2}plan {2}import/);
   assert.match(footer, /ctrl\+up\/dn/);
   const nudge = `${BOLD}${seq(THEME.buttonHotFg, THEME.buttonBg)}up/dn`;
   assert.ok(session.lastFrame.rows.at(-1).includes(nudge));
@@ -5476,7 +5479,8 @@ test('partial file add reloads after a later hunk fails', async () => {
 });
 
 test('x and a checkbox click toggle a todo and the file keeps it', async () => {
-  const { session } = await openSession([sampleItem('a.js')]);
+  const { session, stdout } = await openSession([sampleItem('a.js')]);
+  stdout.columns = 100;
   session.dispatch('tasks');
   session.pushInput('ship it');
   press(session, 'escape');
@@ -8563,4 +8567,81 @@ test('tab after a dash completes field names, suggested first', async () => {
   session.pushInput('#86');
   press(session, 'escape');
   assert.equal(session.notes.tasks[1].item.value('related'), '#86');
+});
+
+const KIND_ORDER = [
+  '## Feature requests and Enhancements',
+  '',
+  '- [ ] F1: dark mode',
+  '',
+  '## Refactoring and Technical debt',
+  '',
+  '- [ ] D1: split the store',
+  '',
+  '## Notes',
+  '',
+  'Text.',
+  '',
+].join('\n');
+
+const pickSection = (session, query) => {
+  press(session, 's');
+  session.pushInput(query);
+  press(session, 'enter');
+};
+
+test('the section menu adds a missing kind in kind order', async () => {
+  const { session } = await planScreen('kinds.md', KIND_ORDER);
+  press(session, 's');
+  assert.equal(session.composer.tasks.planOpen, true);
+  assert.deepEqual(session.view().planNames, [
+    'Feature requests and Enhancements',
+    'Improvements',
+    'Bug Reports and Fixes',
+    'Refactoring and Technical debt',
+    'Research and Experiments',
+    'Security and Compliance',
+    'custom…',
+  ]);
+  session.draw();
+  assert.match(stripAnsi(session.lastFrame.rows.at(-2)), /Section: /);
+  session.pushInput('secur');
+  assert.deepEqual(session.view().planNames, ['Security and Compliance']);
+  press(session, 'enter');
+  assert.equal(session.composer.tasks.planOpen, false);
+  assert.equal(focusedRow(session), 'Security and Compliance');
+  const text = serializeReview(session.notes);
+  assert.match(
+    text,
+    /D1: split the store\n\n## Security and Compliance\n\n## Notes/,
+  );
+  const file = fs.readFileSync(session.notes.reviewPath, 'utf8');
+  assert.equal(file, text);
+});
+
+test('the section menu jumps to a kind and closes on escape', async () => {
+  const { session } = await planScreen('kinds.md', KIND_ORDER);
+  const before = session.tasksFocus;
+  press(session, 's');
+  session.pushInput('ref');
+  press(session, 'escape');
+  assert.equal(session.composer.tasks.planOpen, false);
+  assert.equal(session.tasksFocus, before);
+  assert.equal(session.mode, 'review');
+  pickSection(session, 'refactor');
+  assert.equal(focusedRow(session), 'Refactoring and Technical debt');
+  assert.equal(serializeReview(session.notes), KIND_ORDER);
+});
+
+test('a custom section goes at the cursor and is named at once', async () => {
+  const { session } = await planScreen('kinds.md', KIND_ORDER);
+  session.tasksFocus = rowOf(session, 'F1:');
+  pickSection(session, 'custom');
+  assert.equal(session.mode, 'compose');
+  assert.equal(session.editor.selectedText(), 'New section');
+  session.pushInput('Open questions');
+  press(session, 'escape');
+  const text = serializeReview(session.notes);
+  assert.match(text, /F1: dark mode\n\n## Open questions\n\n## Refactoring/);
+  assert.equal(focusedRow(session), 'Open questions');
 });
