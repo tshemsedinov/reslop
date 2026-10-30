@@ -682,7 +682,7 @@ test('loadGithubIssue imports the title, body, and comments', async () => {
   assert.equal(loaded.change.repository, 'acme/app');
   assert.equal(loaded.change.number, 12);
   assert.equal(loaded.change.url, ISSUE_JSON['html_url']);
-  assert.equal(loaded.imported.tasks.length, 2);
+  assert.equal(loaded.imported.tasks.length, 1);
   assert.equal(loaded.imported.tasks[0].file, 'issue');
   assert.match(loaded.imported.tasks[0].text, /^@alice at github: Add import/);
   assert.match(loaded.imported.tasks[0].text, /from the cli/);
@@ -693,7 +693,12 @@ test('loadGithubIssue imports the title, body, and comments', async () => {
     true,
   );
   assert.equal(loaded.imported.tasks[0].done, false);
-  assert.match(loaded.imported.tasks[1].text, /^@bob at github: seen$/);
+  const { issue } = loaded.imported.tasks[0];
+  assert.equal(issue.title, 'Add import');
+  assert.equal(issue.body, 'from the cli');
+  assert.equal(issue.author, 'alice');
+  assert.equal(issue.host, 'github');
+  assert.deepEqual(issue.comments, [{ author: 'bob', body: 'seen' }]);
   const commentCall = fetchImpl.calls.find((call) =>
     call.url.includes('/comments'),
   );
@@ -792,7 +797,7 @@ test('loadGithubIssue imports every open issue from a list', async () => {
   assert.match(calls[0], /state=open/);
   assert.equal(loaded.sourceLabel, 'acme/app');
   assert.equal(loaded.change.source, 'issue');
-  assert.equal(loaded.imported.tasks.length, 3);
+  assert.equal(loaded.imported.tasks.length, 2);
   const texts = loaded.imported.tasks.map((task) => task.text);
   assert.match(texts[0], /^@ScriptHound at github: Line numbers/);
   assert.equal(
@@ -804,7 +809,9 @@ test('loadGithubIssue imports every open issue from a list', async () => {
     texts[1].endsWith('\nIssue: https://github.com/acme/app/issues/31'),
     true,
   );
-  assert.match(texts[2], /^@cara at github: agree$/);
+  assert.deepEqual(loaded.imported.tasks[1].issue.comments, [
+    { author: 'cara', body: 'agree' },
+  ]);
   assert.equal(
     texts.some((text) => text.includes('Old')),
     false,
