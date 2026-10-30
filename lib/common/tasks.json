@@ -5,58 +5,58 @@
       "id": "features",
       "title": "Feature requests and Enhancements",
       "short": "Features",
-      "prefix": "F",
       "fields": ["problem", "expected", "do", "check"]
     },
     {
       "id": "improvements",
       "title": "Improvements",
       "short": "Improvements",
-      "prefix": "I",
       "fields": ["where", "problem", "expected", "check"]
     },
     {
       "id": "bugs",
       "title": "Bug Reports and Fixes",
       "short": "Bug Reports",
-      "prefix": "B",
-      "fields": ["where", "problem", "evidence", "expected", "check"]
+      "fields": ["where", "problem", "expected", "check"]
     },
     {
       "id": "debt",
       "title": "Refactoring and Technical debt",
       "short": "Refactoring",
-      "prefix": "D",
-      "fields": ["where", "problem", "do", "constraints", "check"]
+      "fields": ["where", "problem", "do", "check"]
     },
     {
       "id": "research",
       "title": "Research and Experiments",
       "short": "Research",
-      "prefix": "R",
       "fields": ["problem", "expected", "related"]
     },
     {
       "id": "security",
       "title": "Security and Compliance",
       "short": "Security",
-      "prefix": "S",
-      "fields": ["where", "problem", "evidence", "do", "check"]
+      "fields": ["where", "problem", "do", "check"]
     }
   ],
-  "customPrefix": "T",
   "fields": [
     {
       "key": "where",
-      "hint": "code locations: path, path:line, path#symbol"
+      "hot": "w",
+      "hint": "path, path:line, path#symbol"
     },
-    { "key": "problem", "hint": "what is wrong or missing now" },
-    { "key": "evidence", "hint": "failing test, stack, log, repro steps" },
-    { "key": "expected", "hint": "how it should behave when done" },
-    { "key": "do", "hint": "the intended approach" },
-    { "key": "constraints", "hint": "what must not change" },
-    { "key": "check", "hint": "acceptance criteria as checkboxes" },
-    { "key": "related", "hint": "files, specs, task IDs, URLs" },
+    {
+      "key": "problem",
+      "hot": "p",
+      "hint": "what is wrong now: symptom, log, failing test"
+    },
+    { "key": "expected", "hot": "e", "hint": "how it behaves when done" },
+    {
+      "key": "do",
+      "hot": "d",
+      "hint": "the approach and what must not change"
+    },
+    { "key": "check", "hot": "c", "hint": "acceptance criteria" },
+    { "key": "related", "hot": "r", "hint": "specs, task IDs, URLs" },
     { "key": "result", "hint": "what changed and how it was verified" }
   ]
 }

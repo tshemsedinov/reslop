@@ -80,7 +80,7 @@ const AGENT_BASE = [
   '',
 ].join('\n');
 
-test('an agent result and section survive a human edit elsewhere', () => {
+test('an agent result and block survive a human edit elsewhere', () => {
   const store = storeWith(AGENT_BASE);
   const b2 = store.tasks[1];
   store.setTaskText(b2.id, 'B2: timeout message names the pool');
@@ -101,8 +101,8 @@ test('an agent result and section survive a human edit elsewhere', () => {
 test('check items ticked on both sides merge item by item', () => {
   const store = storeWith(AGENT_BASE);
   const b1 = store.tasks[0];
-  store.setTaskCheck(b1.id, 0, true);
-  store.setTaskField(b1.id, 'where', '`lib/pool.js`');
+  store.editTask(b1.id, (item) => item.setCheck(0, true));
+  store.editTask(b1.id, (item) => item.setField('where', '`lib/pool.js`'));
   const theirs = AGENT_BASE.replace('- [ ] tests pass', '- [x] tests pass');
   mergeReview(store, theirs);
   const [merged] = store.tasks;

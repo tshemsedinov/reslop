@@ -8,6 +8,9 @@ const assert = require('node:assert/strict');
 const { displayLines } = require('../lib/diff/diff.js');
 const render = require('../lib/render/render.js');
 const { REPO_TASKS_LABEL } = require('../lib/common/files.js');
+
+// Rows of the tasks screen that are plain labels
+const labels = (...texts) => texts.map((text) => ({ type: 'label', text }));
 const wrap = require('../lib/term/wrap.js');
 const ansi = require('../lib/term/ansi.js');
 const { THEME, CODE_FG, fg, bg, stripAnsi, BOLD, seq } = ansi;
@@ -502,7 +505,7 @@ test('npm run tasks and branches omit diff totals', () => {
     assert.equal(statusRow.includes('+'), false, pane);
     assert.equal(statusRow.includes('-'), false, pane);
     if (pane === 'tasks') {
-      assert.match(statusRow, /tasks 0\/0\s*$/);
+      assert.match(statusRow, /open 0 · done 0\/0\s*$/);
       assert.equal(statusRow.includes('0/4'), false, pane);
       continue;
     }
@@ -2803,7 +2806,7 @@ test('long lists show a one column scroller', () => {
     {
       ...base,
       pane: 'tasks',
-      tasks: files.map((file) => `[ ] ${file.path}`),
+      taskRows: labels(...files.map((file) => `[ ] ${file.path}`)),
       tasksFocus: 0,
     },
     options,
@@ -3182,7 +3185,7 @@ test('todo compose does not paint feedback templates', () => {
     status: '',
     counts: { staged: 0, unstaged: 0, untracked: 0, tasks: 1 },
     repoName: 'demo',
-    tasks: ['[ ] rewrite this'],
+    taskRows: labels('[ ] rewrite this'),
     tasksFocus: 0,
     taskEdit: { cursor: 0 },
     templates: [{ text: 'extract helper', count: 1 }],
@@ -3309,17 +3312,16 @@ test('todo view paints file todo text not a diff hunk', () => {
     status: '',
     counts: { staged: 0, unstaged: 0, untracked: 0, tasks: 1 },
     repoName: 'demo',
-    taskSections: [
-      {
-        title: 'Feature requests',
-        texts: ['[ ] rewrite this', '[x] already done'],
-      },
-      { title: 'Bug reports', texts: ['[ ] later'] },
+    taskRows: [
+      { type: 'heading', text: 'Feature requests', focus: false },
+      ...labels('[ ] rewrite this', '[x] already done'),
+      { type: 'heading', text: 'Bug reports', focus: false },
+      ...labels('[ ] later'),
     ],
     tasksFocus: 0,
   };
   const frame = render.renderFrame(view, {
-    width: 100,
+    width: 140,
     height: 16,
     color: false,
   });
@@ -3337,9 +3339,10 @@ test('todo view paints file todo text not a diff hunk', () => {
   const footer = frame.rows[frame.rows.length - 1];
   assert.match(
     footer,
-    /^ 🢐esc {2}insert {2}section {2}plan {2}import {2}delete {2}space {2}ctrl/,
+    /^ 🢐esc {2}insert {2}\^remove {2}tab {2}\^block {2}\^done/,
   );
-  assert.match(footer, /f {2}d {2}t {2}b {2}c {2}r {2}n\s*$/);
+  assert.match(footer, /\^find {2}\^where {2}ctrl\+up\/dn/);
+  assert.doesNotMatch(footer, /files {2}diffs/);
   const rows = frame.rows.map((row) => stripAnsi(row));
   const doneAt = rows.findIndex((row) => row.includes('already done'));
   const issuesAt = rows.findIndex((row) => row.includes('Bug reports'));
@@ -3360,7 +3363,6 @@ test('todo view paints file todo text not a diff hunk', () => {
   assert.ok(!footer.includes('todo'));
   assert.ok(!footer.includes('pull'));
   assert.ok(!footer.includes('push'));
-  assert.ok(!footer.includes('edit'));
   assert.ok(!footer.includes('⏎'));
   const colored = render.renderFrame(view, {
     width: 80,
@@ -3393,7 +3395,7 @@ test('todo list stays visible while composing', () => {
     status: '',
     counts: { staged: 0, unstaged: 0, untracked: 0, tasks: 2 },
     repoName: 'demo',
-    tasks: ['[ ] rewrite this', '[x] already done'],
+    taskRows: labels('[ ] rewrite this', '[x] already done'),
     tasksFocus: 0,
     taskEdit: { cursor: 12 },
   };
@@ -3431,7 +3433,7 @@ test('todo list paints the focused row on the selection bar', () => {
     status: '',
     counts: { staged: 0, unstaged: 0, untracked: 0, tasks: 2 },
     repoName: 'demo',
-    tasks: ['[ ] rewrite this', '[x] already done'],
+    taskRows: labels('[ ] rewrite this', '[x] already done'),
     tasksFocus: 1,
   };
   const frame = render.renderFrame(view, {
@@ -3470,7 +3472,7 @@ test('checkbox marks use a contrast chip on todo and note rows', () => {
     status: '',
     counts: { staged: 0, unstaged: 0, untracked: 0, tasks: 2 },
     repoName: 'demo',
-    tasks: ['[ ] rewrite this', '[x] already done'],
+    taskRows: labels('[ ] rewrite this', '[x] already done'),
     tasksFocus: 0,
   };
   const noteView = reviewView(
@@ -3516,7 +3518,7 @@ test('todo list exposes a click hit for each todo row', () => {
     status: '',
     counts: { staged: 0, unstaged: 0, untracked: 0, tasks: 2 },
     repoName: 'demo',
-    tasks: ['[ ] rewrite this', '[x] already done'],
+    taskRows: labels('[ ] rewrite this', '[x] already done'),
     tasksFocus: 0,
   };
   const frame = render.renderFrame(view, {
@@ -3553,7 +3555,7 @@ test('todo wrap hangs under the checkbox text', () => {
     status: '',
     counts: { staged: 0, unstaged: 0, untracked: 0, tasks: 1 },
     repoName: 'demo',
-    tasks: ['[ ] abcdefghijklmnopqrstuvwxyz12'],
+    taskRows: labels('[ ] abcdefghijklmnopqrstuvwxyz12'),
     tasksFocus: 0,
     taskEdit: { cursor: 14 },
   };

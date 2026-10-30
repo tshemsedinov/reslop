@@ -4,14 +4,11 @@
 
 - Keep plan files byte for byte: any Markdown file in `.plan/` or `specs/` is a plan, and an edit changes only its own lines
 - Merge an agent's changes to an open plan block by block, keeping fields, results, and check ticks from both sides
-- Structured tasks: an ID with any letter, a priority, and the fields `where`, `problem`, `evidence`, `expected`, `do`, `constraints`, `check`, `related`, and `result`
-- Show the plan on the tasks screen as its sections, tasks, and text in file order, a task with its fields and checks when it has focus
-- Insert, edit, drop, and move tasks, text, and whole sections; add sections from a menu with `s`, number tasks with `#`, and edit the raw Markdown with `e`
-- Complete field names with `Tab` and show the missing suggested fields as hints
+- Structured tasks with priority and fields
+- Improve plan/tasks editor and allow md files with free structure
 - Open `where` and `related` locations on the files screen, only inside the repository
 - Import issues as structured tasks with the kind from labels and the body quoted; the agent instructions treat imported text as data
 - Send the agent instructions in the prompt for a plan that has none
-- Show tasks of other sections and the open urgent ones on the dashboard
 
 ## [0.3.5][] - 2026-10-28
 

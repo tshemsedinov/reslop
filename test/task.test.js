@@ -5,14 +5,14 @@ const assert = require('node:assert/strict');
 
 const { TaskItem, parseTitle } = require('../lib/review/task.js');
 const { parseReview } = require('../lib/review/review.js');
-const { taskKind, kindPrefix, kindFields } = require('../lib/common/files.js');
+const { taskKind, kindFields } = require('../lib/common/files.js');
 
 const B1 = [
   '- [ ] B1 high: Released connection can be assigned to two consumers',
   '  - where: `lib/pool.js` acquire:84, release',
   '  - problem: `release()` resolves a waiter before ownership',
   '    is updated',
-  '  - evidence: `test/pool-concurrency.js` fails about 1 of 20 runs',
+  '  - do: hand the connection over under one lock',
   '  - check:',
   '    - [ ] 100 concurrent acquires never share a connection',
   '    - [x] `npm t` passes',
@@ -42,7 +42,8 @@ test('parseTitle reads the ID, the priority, and the title', () => {
   ]);
   assert.deepEqual(read('F1: Parse items'), ['F1', '', 'Parse items']);
   assert.deepEqual(read('f12 lower case'), ['f12', '', 'lower case']);
-  assert.deepEqual(read('critical: Data loss'), ['', 'critical', 'Data loss']);
+  assert.deepEqual(read('high: Data loss'), ['', 'high', 'Data loss']);
+  assert.deepEqual(read('critical: x'), ['', '', 'critical: x']);
   assert.deepEqual(read('S3 LOW: shout'), ['S3', 'low', 'shout']);
   assert.deepEqual(read('low memory crash'), ['', '', 'low memory crash']);
   assert.deepEqual(read('B2 low memory crash'), ['B2', '', 'low memory crash']);
@@ -65,7 +66,7 @@ test('TaskItem reads fields, values, checks, and unknown keys', () => {
   assert.equal(item.done, false);
   assert.deepEqual(
     item.fields.map((field) => field.key),
-    ['where', 'problem', 'evidence', 'check', 'owner'],
+    ['where', 'problem', 'do', 'check', 'owner'],
   );
   assert.equal(
     item.value('problem'),
@@ -96,8 +97,6 @@ test('setters leave every line they do not own byte-identical', () => {
   const item = new TaskItem(B1);
   same(B1, item.setDone(true), [0]);
   assert.equal(item.setDone(true)[0].slice(0, 6), '- [x] ');
-  same(B1, item.setTitle('Two consumers share a connection'), [0]);
-  assert.match(item.setTitle('x')[0], /^- \[ \] B1 high: x$/);
   same(B1, item.setCheck(0, true), [6]);
   assert.equal(
     item.setCheck(0, true)[6],
@@ -115,17 +114,17 @@ test('setField puts fields in vocabulary order and drops empty ones', () => {
   const item = new TaskItem(B1);
   const added = item.setField('expected', 'one owner per connection');
   assert.equal(added.length, B1.length + 1);
-  assert.equal(added[5], '  - expected: one owner per connection');
-  assert.deepEqual(added.slice(0, 5), B1.slice(0, 5));
-  assert.deepEqual(added.slice(6), B1.slice(5));
+  assert.equal(added[4], '  - expected: one owner per connection');
+  assert.deepEqual(added.slice(0, 4), B1.slice(0, 4));
+  assert.deepEqual(added.slice(5), B1.slice(4));
   const result = item.setField('result', 'fixed in abc123\ntests pass');
   assert.deepEqual(result.slice(8, 10), [
     '  - result: fixed in abc123',
     '    tests pass',
   ]);
-  const dropped = item.setField('evidence', '');
+  const dropped = item.setField('do', '');
   assert.equal(dropped.length, B1.length - 1);
-  assert.ok(!dropped.some((line) => line.includes('evidence')));
+  assert.ok(!dropped.some((line) => line.includes('- do:')));
   const plain = new TaskItem(['- [ ] F1: plain']);
   assert.deepEqual(plain.setField('check', '- [ ] works'), [
     '- [ ] F1: plain',
@@ -148,10 +147,7 @@ test('setId and setPriority rewrite only the head of the title line', () => {
     item.setPriority('')[0],
     '- [ ] B1: Released connection can be assigned to two consumers',
   );
-  assert.equal(
-    new TaskItem(['- [ ] x']).setPriority('critical')[0],
-    '- [ ] critical: x',
-  );
+  assert.equal(new TaskItem(['- [ ] x']).setPriority('critical')[0], '- [ ] x');
 });
 
 test('CRLF tasks keep their line ends through setters', () => {
@@ -168,11 +164,11 @@ test('CRLF tasks keep their line ends through setters', () => {
   ]);
 });
 
-test('tasks in custom sections have no kind', () => {
+test('tasks in custom blocks have no kind', () => {
   const text = [
     '# Plan',
     '',
-    '- [ ] before any section',
+    '- [ ] before any block',
     '',
     '## Bug Reports and Fixes',
     '',
@@ -192,32 +188,12 @@ test('tasks in custom sections have no kind', () => {
   assert.equal(taskKind({ kind: 'backlog' }), 'debt');
 });
 
-test('kinds carry an ID prefix and suggested fields', () => {
-  assert.equal(kindPrefix('bugs'), 'B');
-  assert.equal(kindPrefix('debt'), 'D');
-  assert.equal(kindPrefix(''), 'T');
+test('kinds carry suggested fields', () => {
   assert.deepEqual(kindFields('bugs'), [
     'where',
     'problem',
-    'evidence',
     'expected',
     'check',
   ]);
   assert.deepEqual(kindFields(''), []);
-});
-
-test('store setters edit one task through its TaskItem', () => {
-  const text = ['## Bug Reports and Fixes', '', ...B1, ''].join('\n');
-  const store = parseReview(text, '/x.md');
-  const [task] = store.tasks;
-  assert.equal(task.item.id, 'B1');
-  assert.equal(task.item.kind, 'bugs');
-  store.setTaskCheck(task.id, 0, true);
-  store.setTaskField(task.id, 'result', 'fixed');
-  store.setTaskRef(store.tasks[0].id, 'B7');
-  const [after] = store.tasks;
-  assert.equal(after.item.id, 'B7');
-  assert.equal(after.item.checks[0].done, true);
-  assert.equal(after.item.value('result'), 'fixed');
-  assert.equal(after.id, task.id);
 });

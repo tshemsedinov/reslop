@@ -1914,11 +1914,11 @@ test('dashboard tasks use short captions', () => {
   assert.equal(shown.endsWith('1/1  '), false);
 });
 
-test('the tasks tile counts other sections and urgent tasks', () => {
+test('the tasks tile counts tasks of other blocks', () => {
   const text = [
     '# Notes',
     '',
-    '- [ ] critical: data loss on save',
+    '- [ ] data loss on save',
     '- [x] high: already fixed',
     '- [ ] low: polish',
     '',
@@ -1939,13 +1939,10 @@ test('the tasks tile counts other sections and urgent tasks', () => {
   assert.deepEqual(model.tasks.kinds, [
     { id: 'other', title: 'Other', done: 1, total: 4 },
   ]);
-  assert.equal(model.tasks.urgent, 2);
   const tile = { key: 't', title: 'tasks' };
   const block = tasksBlock(model, 48, 8, { now: 1, frame: 0 }, tile);
   const line = (parts) => parts.map((part) => part.text).join('');
-  assert.equal(line(block.titleLine).endsWith('2 urgent notes.md'), true);
-  const urgent = block.titleLine.find((part) => part.text === '2 urgent');
-  assert.equal(urgent.tone, 'error');
+  assert.equal(line(block.titleLine).endsWith(' notes.md'), true);
   const rows = block.lines.map(line);
   assert.match(rows[0], /^Other .* 1\/4$/);
   assert.match(rows[1], /^Total .* 1\/4$/);
