@@ -26,6 +26,7 @@ const { TILES, paintBodyDashboard } = dashboardPaint;
 const { agentsBlock } = require('../lib/render/agents.js');
 const dashBlocks = require('../lib/render/dashboard/blocks.js');
 const { filesBlock, diffsBlock, npmBlock, npmContent, tasksBlock } = dashBlocks;
+const { parseReview } = require('../lib/review/review.js');
 const { badgeColors } = require('../lib/render/icons.js');
 const { paintBodyPackages } = require('../lib/render/npm.js');
 const dashboardSession = require('../lib/session/dashboard.js');
@@ -1898,14 +1899,7 @@ test('dashboard tasks use short captions', () => {
   });
   assert.equal(model.tasks.plan, '2026-10-09-00.md');
   const titles = model.tasks.kinds.map((kind) => kind.title);
-  assert.deepEqual(titles, [
-    'Features',
-    'Improvements',
-    'Bug Reports',
-    'Refactoring',
-    'Research',
-    'Security',
-  ]);
+  assert.deepEqual(titles, ['Features', 'Bug Reports']);
   const tile = { key: 't', title: 'tasks' };
   const block = tasksBlock(model, 48, 8, { now: 1, frame: 0 }, tile);
   const text = (line) => line.map((part) => part.text).join('');
@@ -1913,11 +1907,49 @@ test('dashboard tasks use short captions', () => {
   assert.match(body, /Features/);
   assert.equal(body.includes('Feature requests'), false);
   assert.match(body, /Bug Reports/);
-  assert.match(body, /Refactoring/);
+  assert.doesNotMatch(body, /Refactoring/);
   const painted = paintTile(tile, block, 50, 8, false);
   const shown = painted.find((line) => line.includes('Features'));
   assert.equal(shown.endsWith('1/1 '), true);
   assert.equal(shown.endsWith('1/1  '), false);
+});
+
+test('the tasks tile counts other sections and urgent tasks', () => {
+  const text = [
+    '# Notes',
+    '',
+    '- [ ] critical: data loss on save',
+    '- [x] high: already fixed',
+    '- [ ] low: polish',
+    '',
+    '## Later',
+    '',
+    '- [ ] high: retry the handshake',
+    '',
+  ].join('\n');
+  const store = parseReview(text, '/repo/specs/notes.md');
+  const model = buildModel({
+    entries: [],
+    runs: [],
+    now: 1,
+    frame: 0,
+    marks: { commit: 0 },
+    store,
+  });
+  assert.deepEqual(model.tasks.kinds, [
+    { id: 'other', title: 'Other', done: 1, total: 4 },
+  ]);
+  assert.equal(model.tasks.urgent, 2);
+  const tile = { key: 't', title: 'tasks' };
+  const block = tasksBlock(model, 48, 8, { now: 1, frame: 0 }, tile);
+  const line = (parts) => parts.map((part) => part.text).join('');
+  assert.equal(line(block.titleLine).endsWith('2 urgent notes.md'), true);
+  const urgent = block.titleLine.find((part) => part.text === '2 urgent');
+  assert.equal(urgent.tone, 'error');
+  const rows = block.lines.map(line);
+  assert.match(rows[0], /^Other .* 1\/4$/);
+  assert.match(rows[1], /^Total .* 1\/4$/);
+  assert.equal(rows.length, 2);
 });
 
 test('a title aside sits on the right of the header', () => {
