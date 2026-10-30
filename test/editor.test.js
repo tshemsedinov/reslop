@@ -4,7 +4,7 @@ const { test } = require('node:test');
 const assert = require('node:assert/strict');
 
 const { Editor, lineKey } = require('../lib/input/editor.js');
-const clipboard = require('../lib/term/clipboard.js');
+const clipboard = require('../lib/term/select.js');
 const { Composer } = require('../lib/session/compose.js');
 
 const EDIT_KINDS = [

@@ -5,8 +5,9 @@ const os = require('node:os');
 const path = require('node:path');
 const { spawnSync } = require('node:child_process');
 const { setTimeout: wait } = require('node:timers/promises');
+const assert = require('node:assert/strict');
 
-const clipboard = require('../lib/term/clipboard.js');
+const clipboard = require('../lib/term/select.js');
 
 process.env.GIT_TERMINAL_PROMPT = '0';
 process.env.GCM_INTERACTIVE = 'Never';
@@ -240,6 +241,74 @@ const reviewView = (item, extra = {}) => ({
   ...extra,
 });
 
+const sessionFor = (dir) =>
+  openRepoSession(dir, { stdout: sink(), startPane: 'diff' });
+
+const openDashboard = async (rows = 40, columns = 120) => {
+  const { Session } = require('../lib/session/session.js');
+  const { createGitRepo } = require('../lib/git/git.js');
+  const repo = makeRepo();
+  repo.write('lib/a.js', 'one\ntwo\n');
+  repo.write('package.json', '{"name":"demo","scripts":{"test":"true"}}');
+  repo.git(['add', '.']);
+  repo.git(['commit', '-m', 'first commit']);
+  repo.write('lib/a.js', 'one\ntwo\nthree\n');
+  const stdout = { isTTY: false, columns, rows, write: () => true };
+  const ui = new Session({
+    cwd: repo.dir,
+    stdout,
+    repo: createGitRepo(),
+    color: false,
+    startPane: 'dashboard',
+  });
+  await ui.ensureRepo();
+  await ui.loadReady();
+  ui.uiOpen = true;
+  ui.lifecycle.startWatch();
+  ui.dashboard.start();
+  const close = async () => {
+    ui.lifecycle.stopWatch();
+    ui.dashboard.stop();
+    await removeTree(repo.dir);
+  };
+  return { ui, repo, close };
+};
+
+const frameText = (ui) => {
+  const { stripAnsi } = require('../lib/term/ansi.js');
+  ui.draw();
+  return stripAnsi(ui.lastFrame.rows.join('\n'));
+};
+
+// Rows of the tasks screen that are plain labels
+const labels = (...texts) => texts.map((text) => ({ type: 'label', text }));
+
+// A y/n style prompt on the status line: its text, one warn color and one
+// hit per choice, as [id, label] pairs
+const assertPrompt = (view, text, choices) => {
+  const { renderFrame } = require('../lib/render/render.js');
+  const { THEME, fg, bg, stripAnsi } = require('../lib/term/ansi.js');
+  const frame = renderFrame(view, { width: 80, height: 16, color: true });
+  const statusRow = frame.rows.at(-2);
+  const plain = stripAnsi(statusRow);
+  assert.ok(plain.startsWith(text), plain);
+  assert.ok(statusRow.includes(fg(THEME.mutedFg)));
+  assert.ok(statusRow.includes(bg(THEME.chromeBg)));
+  const warns = statusRow.split(fg(THEME.warnFg)).length - 1;
+  assert.equal(warns, choices.length);
+  const hits = frame.statusHits.map((hit) => {
+    assert.equal(hit.y, frame.rows.length - 1);
+    return [hit.id, plain.slice(hit.x0, hit.x1).trim()];
+  });
+  assert.deepEqual(hits, choices);
+  return { frame, statusRow, plain };
+};
+
+const YES_NO = [
+  ['y', 'y'],
+  ['n', '/n'],
+];
+
 module.exports = {
   gitIn,
   makeRepo,
@@ -259,6 +328,12 @@ module.exports = {
   fakeProc,
   stopSession,
   openRepoSession,
+  sessionFor,
+  openDashboard,
+  frameText,
+  labels,
+  assertPrompt,
+  YES_NO,
   CHANGE_DIFF,
   jsonResponse,
 };

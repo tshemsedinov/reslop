@@ -9,7 +9,7 @@ const format = require('../lib/common/format.js');
 const { relativeAge, shortAge, ageSeconds } = format;
 const { TASKS_FILE, REPO_TASKS_LABEL, isTasksEntry, isTaskItem } = files;
 const { fileTotals, isTotalEntry, TOTAL_LABEL } = files;
-const folders = require('../lib/common/folders.js');
+const folders = require('../lib/common/paths.js');
 const { folderTree, shownFolder, inFolder, folderOf } = folders;
 
 const item = (name, origin, indexHint) => ({

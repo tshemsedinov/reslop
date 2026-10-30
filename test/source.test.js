@@ -3,10 +3,11 @@
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 
-const {
-  selectChangeSource,
-  createLoadedSource,
-} = require('../lib/source/source.js');
+const source = require('../lib/source/source.js');
+const { selectChangeSource, createLoadedSource } = source;
+const { SOURCE_CAPS, capabilitiesFor, attachCapabilities } = source;
+const { sessionCapabilities } = source;
+const { createGitRepo } = require('../lib/git/git.js');
 
 test('selectChangeSource recognizes a GitHub pull request URL', () => {
   const url = 'https://github.com/acme/app/pull/123';
@@ -120,4 +121,64 @@ test('createLoadedSource is read only and copies its items', async () => {
   assert.equal(second.items[0].origin, 'pr');
   assert.equal(source.capabilities.changes, false);
   assert.equal(source.capabilities.branches, false);
+});
+
+const hasMethod = (source, name) => typeof source[name] === 'function';
+
+test('capability matrix covers local commit remotes and read-only', () => {
+  assert.deepEqual(capabilitiesFor('commit'), {
+    read: true,
+    changes: false,
+    branches: false,
+    review: true,
+  });
+  assert.deepEqual(capabilitiesFor('pr'), SOURCE_CAPS.pr);
+  assert.deepEqual(capabilitiesFor('mr'), SOURCE_CAPS.mr);
+  assert.deepEqual(capabilitiesFor('issue'), SOURCE_CAPS.issue);
+  assert.deepEqual(capabilitiesFor('gl-issue'), SOURCE_CAPS['gl-issue']);
+  assert.equal(capabilitiesFor('issue').changes, false);
+  assert.equal(capabilitiesFor('readonly').changes, false);
+  assert.equal(capabilitiesFor('local', { readOnly: true }).changes, false);
+  assert.equal(capabilitiesFor('local', { readOnly: true }).branches, false);
+});
+
+test('attachCapabilities omits writes the source does not advertise', () => {
+  const impl = {
+    load: () => ({ items: [] }),
+    add: () => 'added',
+    commit: () => 'committed',
+    listBranches: () => [],
+  };
+  const remote = attachCapabilities(impl, capabilitiesFor('pr'));
+  assert.equal(hasMethod(remote, 'load'), true);
+  assert.equal(hasMethod(remote, 'add'), false);
+  assert.equal(hasMethod(remote, 'commit'), false);
+  assert.equal(hasMethod(remote, 'listBranches'), false);
+  assert.equal(remote.add, undefined);
+  const local = attachCapabilities(impl, capabilitiesFor('local'));
+  assert.equal(local.add(), 'added');
+  assert.equal(local.commit(), 'committed');
+});
+
+test('sessionCapabilities follows rev change source and -r', () => {
+  assert.equal(sessionCapabilities({ rev: 'abc' }).changes, false);
+  assert.equal(sessionCapabilities({ readOnly: true }).branches, false);
+  const pr = sessionCapabilities({
+    change: { source: 'pr' },
+  });
+  assert.equal(pr.changes, false);
+  const mr = sessionCapabilities({
+    change: { source: 'mr' },
+  });
+  assert.equal(mr.branches, false);
+  const fromRepo = sessionCapabilities({
+    repo: { capabilities: SOURCE_CAPS.local },
+    readOnly: true,
+  });
+  assert.equal(fromRepo.changes, false);
+});
+
+test('the local git repo can amend a commit', () => {
+  const repo = createGitRepo();
+  assert.ok(hasMethod(repo, 'updateCommit'));
 });
