@@ -135,3 +135,16 @@ test('lib files satisfy the structural limits and dependency direction', () => {
   checkDirectory(LIB_DIR, messages);
   assert.deepEqual(messages, []);
 });
+
+test('the folders of the tests mirror the folders of lib', () => {
+  const folders = (dir) =>
+    fs
+      .readdirSync(dir, { withFileTypes: true })
+      .filter((entry) => entry.isDirectory())
+      .map((entry) => entry.name);
+  const lib = folders(LIB_DIR);
+  const stray = folders(__dirname).filter(
+    (name) => name !== 'fixtures' && !lib.includes(name),
+  );
+  assert.deepEqual(stray, []);
+});
