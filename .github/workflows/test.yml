@@ -4,6 +4,7 @@ jobs:
   build:
     runs-on: ${{ matrix.os }}
     strategy:
+      fail-fast: false
       matrix:
         node:
           - 18
@@ -23,9 +24,6 @@ jobs:
       - run: npm run enable
       - name: Put reslop on PATH
         run: node scripts/github-path.js
-      # Starting a process is slow on Windows, and a scan of each git and
-      # node process is most of that cost. The runner temp disk is faster
-      # than the default one.
       - name: Windows, scan exclusions
         if: runner.os == 'Windows'
         continue-on-error: true
