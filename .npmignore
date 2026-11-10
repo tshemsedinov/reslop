@@ -1,6 +1,10 @@
 node_modules
-*/skills
-.review/
+.agents/
+.claude/
+.plan/
+.log/
+.github/
+.reslop
 AGENTS.md
-docs/
 CLAUDE.md
+docs/
