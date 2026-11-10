@@ -56,12 +56,15 @@
     "disable": "node scripts/disable.js"
   },
   "devDependencies": {
-    "eslint": "^9.39.4",
-    "eslint-config-metarhia": "^9.1.9",
-    "metaskills": "^1.0.5",
-    "prettier": "^3.9.10"
+    "eslint": "^10.14.0",
+    "prettier": "^3.9.10",
+    "eslint-config-metarhia": "^10.0.0",
+    "metaskills": "^1.0.6"
   },
   "dependencies": {
     "metautil": "^5.5.2"
+  },
+  "overrides": {
+    "minimatch": "^11.0.4"
   }
 }
