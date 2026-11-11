@@ -9,7 +9,9 @@ const workspace = require('../../lib/dashboard/workspace.js');
 const { workspaceAt, readDiffStat } = workspace;
 const { countCommits, taskStats, pickRun } = workspace;
 const { load } = require('../../lib/git/git.js');
-const { fileEntries, fileTotals } = require('../../lib/common/files.js');
+const files = require('../../lib/common/files.js');
+const { fileEntries, fileTotals, itemPath, MANIFEST } = files;
+const { writeJson } = require('../../lib/common/utilities.js');
 const tiles = require('../../lib/render/tiles.js');
 const { equalGrid, pageWindow, placeEqualTiles } = tiles;
 const { size } = require('../../lib/common/format.js');
@@ -33,6 +35,10 @@ const initRepo = (dir) => {
   fs.writeFileSync(path.join(dir, 'data.json'), '{}\n');
   git(dir, ['add', '.']);
   git(dir, ['commit', '-m', 'init']);
+};
+
+const writeManifest = (dir, name, scripts) => {
+  writeJson(path.join(dir, MANIFEST), { name, scripts });
 };
 
 test('readDiffStat matches the status bar with untracked lines', async () => {
@@ -72,6 +78,35 @@ test('workspaceAt lists child repositories and skips a git root', () => {
     assert.equal(workspaceAt(path.join(root, 'notes')), null);
     git(root, ['init', '-b', 'main']);
     assert.equal(workspaceAt(root), null);
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('workspaceAt lists the packages of a git monorepo', () => {
+  const root = tempDir('reslop-mono-');
+  const base = path.basename(root);
+  try {
+    git(root, ['init', '-b', 'main']);
+    writeManifest(root, 'root', { test: 'true' });
+    writeManifest(path.join(root, 'client'), 'client', { dev: 'true' });
+    assert.equal(workspaceAt(root), null);
+    writeManifest(path.join(root, 'server'), 'server', { start: 'true' });
+    writeManifest(path.join(root, 'packages', 'lib'), 'lib', {});
+    const vendored = path.join(root, 'node_modules', 'leftpad');
+    writeManifest(vendored, 'leftpad', {});
+    fs.mkdirSync(path.join(root, 'notes'));
+    const found = workspaceAt(root);
+    assert.equal(found.mono, true);
+    assert.equal(found.root, path.resolve(root));
+    assert.deepEqual(
+      found.repos.map((repo) => repo.name),
+      [base, 'client', 'packages/lib', 'server'],
+    );
+    const client = found.repos.find((repo) => repo.name === 'client');
+    const top = found.repos.find((repo) => repo.name === base);
+    assert.equal(client.scoped, true);
+    assert.equal(top.scoped, false);
   } finally {
     fs.rmSync(root, { recursive: true, force: true });
   }
@@ -347,6 +382,59 @@ test('a deleted repository is removed from the workspace tiles', async () => {
       session.workspace.rows.map((row) => row.name),
       ['alpha'],
     );
+  } finally {
+    if (session) stopSession(session);
+    await removeTree(root);
+  }
+});
+
+test('opening a monorepo package uses that package', async () => {
+  const root = tempDir('reslop-mono-');
+  const client = path.join(root, 'client');
+  const server = path.join(root, 'server');
+  let session = null;
+  try {
+    initRepo(root);
+    writeManifest(root, 'root', { test: 'true' });
+    writeManifest(client, 'client', { dev: 'true' });
+    writeManifest(server, 'server', { start: 'true' });
+    git(root, ['add', '.']);
+    git(root, ['commit', '-m', 'packages']);
+    fs.writeFileSync(path.join(server, 'extra.js'), 'a\n');
+    const proc = fakeProc(root, { argv: ['node', 'reslop', root] });
+    session = await loadSession(proc, {}, parseArgv([root]));
+    assert.equal(session.pane, 'repos');
+    session.workspace.start();
+    const isReady = (row) => row.diffReady && row.npmReady && row.commitsReady;
+    const ready = await waitUntil(() => session.workspace.rows.every(isReady));
+    assert.equal(ready, true);
+    const clientRow = session.workspace.byName.get('client');
+    const serverRow = session.workspace.byName.get('server');
+    assert.equal(clientRow.dirty, false);
+    assert.equal(clientRow.diff.unstagedAdded, 0);
+    assert.equal(serverRow.dirty, true);
+    assert.equal(serverRow.diff.unstagedAdded > 0, true);
+    assert.equal(clientRow.branch, 'main');
+    const at = session.workspace.rows.findIndex((row) => row.name === 'client');
+    session.workspace.cursor = at;
+    await session.workspace.openSelected();
+    assert.equal(session.pane, 'dashboard');
+    assert.equal(session.cwd, client);
+    assert.equal(path.resolve(session.top), path.resolve(root));
+    assert.equal(session.project, client);
+    assert.deepEqual(session.paths, ['client']);
+    session.npm.refresh();
+    const names = session.npm.commands.map((entry) => entry.name);
+    assert.ok(names.includes('dev'));
+    assert.equal(names.includes('start'), false);
+    assert.equal(names.includes('test'), false);
+    const review = session.notes.reviewPath;
+    const rel = path.relative(client, review);
+    assert.equal(rel.startsWith('..'), false);
+    const outside = session.items.some((item) =>
+      itemPath(item).startsWith('server/'),
+    );
+    assert.equal(outside, false);
   } finally {
     if (session) stopSession(session);
     await removeTree(root);
