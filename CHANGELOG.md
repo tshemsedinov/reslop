@@ -2,6 +2,7 @@
 
 ## [Unreleased][unreleased]
 
+- Open a git monorepo on the repository screen: each directory with its own `package.json` is a project, with its scripts, plans, and runs
 - Keep plan files byte for byte: any Markdown file in `.plan/` or `specs/` is a plan, and an edit changes only its own lines
 - Merge an agent's changes to an open plan block by block, keeping fields, results, and check ticks from both sides
 - Structured tasks with priority and fields

@@ -176,6 +176,7 @@ test(prettyView, async () => {
     const { NpmController } = require('../../lib/session/npm.js');
     const ui = {
       top,
+      projectRoot: top,
       nav: { npmCursor: 0 },
       lastFrame: { bodyH: 14 },
       progress: { start: () => {}, stop: () => {} },

@@ -89,6 +89,7 @@ for (const reporter of ['tap', 'spec']) {
       const npm = require('../../lib/session/npm.js');
       const ui = {
         top,
+        projectRoot: top,
         nav: { npmCursor: 0 },
         progress: { start() {}, stop() {} },
         paint() {},
