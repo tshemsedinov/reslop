@@ -36,6 +36,54 @@ test('unitLines overlays del and add onto the file', () => {
   assert.equal(fileOffset(lines, 2), 5);
 });
 
+test('unitLines paints a shared hunk once per block', () => {
+  const lines = [
+    { type: 'del', text: 'a', noNl: false, blockId: 0 },
+    { type: 'add', text: 'A', noNl: false, blockId: 0 },
+    { type: 'ctx', text: 'mid', noNl: false, blockId: null },
+    { type: 'del', text: 'c', noNl: false, blockId: 1 },
+    { type: 'add', text: 'C', noNl: false, blockId: 1 },
+  ];
+  const hunk = {
+    oldStart: 1,
+    oldCount: 3,
+    newStart: 1,
+    newCount: 3,
+    header: '@@ -1,3 +1,3 @@',
+    lines,
+  };
+  const file = { newPath: 'a.js', oldPath: 'a.js' };
+  const first = { origin: 'unstaged', file, hunk, blockId: 0 };
+  const second = { origin: 'unstaged', file, hunk, blockId: 1 };
+  const painted = unitLines('A\nmid\nC\n', [first, second, first]);
+  const types = painted.map((line) => `${line.type}:${line.text}`);
+  assert.deepEqual(types, ['del:a', 'add:A', 'ctx:mid', 'del:c', 'add:C']);
+  assert.equal(painted[0].item, first);
+  assert.equal(painted[1].item, first);
+  assert.equal(painted[3].item, second);
+  assert.equal(painted[4].item, second);
+});
+
+test('unitLines reads an empty file hunk once', () => {
+  const lines = [
+    { type: 'add', text: 'A', noNl: false, blockId: 0 },
+    { type: 'add', text: 'C', noNl: false, blockId: 0 },
+  ];
+  const hunk = {
+    oldStart: 0,
+    oldCount: 0,
+    newStart: 1,
+    newCount: 2,
+    header: '',
+    lines,
+  };
+  const file = { newPath: 'a.js', oldPath: 'a.js' };
+  const first = { origin: 'unstaged', file, hunk, blockId: 0 };
+  const painted = unitLines('', [first, { ...first }]);
+  const types = painted.map((line) => `${line.type}:${line.text}`);
+  assert.deepEqual(types, ['add:A', 'add:C']);
+});
+
 test('itemsForPath keeps one file', () => {
   const a = item(0, [{ type: 'add', text: 'a', noNl: false, blockId: 0 }]);
   const b = {

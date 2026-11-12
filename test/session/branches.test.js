@@ -811,6 +811,10 @@ test('unit view marks every block in the current hunk', async () => {
   session.dispatch('open');
   await session.ops.idle();
   session.draw();
+  const types = session
+    .view()
+    .unitLines.map((line) => `${line.type}:${line.text}`);
+  assert.deepEqual(types, ['del:a', 'add:A', 'ctx:mid', 'del:c', 'add:C']);
   const body = stripAnsi(session.lastFrame.rows.join('\n'));
   assert.match(body, /- a/);
   assert.match(body, /\+ A/);
