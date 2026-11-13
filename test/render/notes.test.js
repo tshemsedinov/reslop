@@ -4,6 +4,7 @@ const { test } = require('node:test');
 const assert = require('node:assert/strict');
 
 const { sampleHunk, reviewView, labels } = require('../helpers.js');
+const { version } = require('../../package.json');
 const render = require('../../lib/render/render.js');
 const wrap = require('../../lib/term/wrap.js');
 const ansi = require('../../lib/term/ansi.js');
@@ -38,7 +39,8 @@ for (const entry of [
     const counts = { staged: 0, unstaged: 0, untracked: 0, [origin]: 1 };
     const extra = { counts, repoName: 'acme/app', ...source };
     const view = reviewView(item, extra);
-    assert.match(render.headerText(view), /reslop: acme\/app\/f\.js$/);
+    const lead = `reslop ${version}: acme/app/f.js`;
+    assert.ok(render.headerText(view).endsWith(lead));
     const frame = render.renderFrame(view, {
       width: 80,
       height: 16,
@@ -912,7 +914,7 @@ test('unit pane marks the current block and keeps other diffs', () => {
   assert.match(body, /\+ new/);
   assert.match(body, / {2}later/);
   assert.ok(!body.includes('+ later'));
-  assert.match(render.headerText(view), /reslop: demo\/a\.js$/);
+  assert.ok(render.headerText(view).endsWith(`reslop ${version}: demo/a.js`));
   const footer = frame.rows[frame.rows.length - 1];
   assert.match(
     footer,

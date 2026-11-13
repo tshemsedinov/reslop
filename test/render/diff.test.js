@@ -4,6 +4,7 @@ const { test } = require('node:test');
 const assert = require('node:assert/strict');
 
 const helpers = require('../helpers.js');
+const { version } = require('../../package.json');
 const { sampleHunk, reviewView, assertPrompt, YES_NO } = helpers;
 const { displayLines } = require('../../lib/diff/diff.js');
 const render = require('../../lib/render/render.js');
@@ -47,7 +48,7 @@ test('AC2 muted line color differs from strong char color', () => {
   assert.ok(!frame.text.includes(fg(THEME.delLineFg)));
   assert.equal(frame.rows.length, 16);
   assert.ok(!frame.text.includes('@@'));
-  assert.match(render.headerText(view), /reslop: demo\/f\.js$/);
+  assert.ok(render.headerText(view).endsWith(`reslop ${version}: demo/f.js`));
   assert.ok(!/\d+\/\d+/.test(render.headerText(view)));
 });
 
