@@ -916,7 +916,7 @@ test('unit pane marks the current block and keeps other diffs', () => {
   const footer = frame.rows[frame.rows.length - 1];
   assert.match(
     footer,
-    /🢐esc {2}add {2}unstage {2}delete {2}\^task {2}edit.*files/,
+    /🢐esc {2}add {2}unstage {2}delete {2}resolve {2}\^task {2}edit.*files/,
   );
   assert.ok(!footer.includes('ignore'));
   assert.ok(!footer.includes('mode'));
