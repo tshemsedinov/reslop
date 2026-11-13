@@ -21,6 +21,7 @@ Review → Plan → Repair → Verify
 - Review uncommitted git diffs, a given commit, a GitHub PR, or a GitLab MR
 - File-scope review mode: not just diffs, with editor mode
 - Stage, unstage, or revert each contiguous block of diff lines
+- Resolve text conflicts with `s`, then choose `o` (ours), `t` (theirs), or `b` (both); the resolved file is staged
 - Auto-reload local diffs when files change, keeping the current screen
 - Import GitHub PR and GitLab MR review comments, and GitHub/GitLab issues, into tasks and the local plan
 - Commits list: brief and full, view a commit's diff, commit, update, amend, squash a range, apply a fixup onto its target, edit, fixup, and delete
@@ -113,7 +114,7 @@ reslop runs a plan in an agent over the [Agent Client Protocol](https://agentcli
 - Ask experts
 - Apply refactoring skills
 - Cherry-pick and interactive rebase
-- Merge, rename, and conflict resolution
+- Merge and rename
 
 ## License
 

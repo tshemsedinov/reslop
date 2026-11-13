@@ -10,6 +10,9 @@ const ansi = require('../../lib/term/ansi.js');
 const { THEME, fg, bg, stripAnsi, BOLD, seq } = ansi;
 const { ESC, RESET, EL, visibleWidth } = ansi;
 
+const GIT_BUTTONS = 'add {2}unstage {2}delete {2}ignore {2}resolve {2}edit';
+const FILES_FOOTER = new RegExp(`^ 🢐esc {2}${GIT_BUTTONS}.*files {2}diffs`);
+
 test('header and file list keep a right-side gap', () => {
   const view = {
     pane: 'files',
@@ -193,10 +196,7 @@ test('AC10 footer words highlight the bound letter', () => {
   });
   const row = frame.rows[frame.rows.length - 1];
   const plain = stripAnsi(row);
-  assert.match(
-    plain,
-    /^ 🢐esc {2}add {2}unstage {2}delete {2}ignore {2}edit.*files {2}diffs/,
-  );
+  assert.match(plain, FILES_FOOTER);
   assert.match(plain, /^ 🢐esc {2}add {2}/);
   assert.ok(!plain.includes('q'));
   assert.ok(!plain.includes('prev'));
@@ -219,10 +219,7 @@ test('AC10 footer words highlight the bound letter', () => {
     color: false,
   });
   const dimRow = dim.rows[dim.rows.length - 1];
-  assert.match(
-    dimRow,
-    /🢐esc {2}add {2}unstage {2}delete {2}ignore {2}edit.*files {2}diffs/,
-  );
+  assert.match(dimRow, FILES_FOOTER);
   assert.match(dimRow, /delete {2}ignore/);
   assert.ok(!dimRow.includes('q'));
   assert.ok(!dimRow.includes('['));
@@ -259,10 +256,7 @@ test('AC10 footer words highlight the bound letter', () => {
     color: false,
   });
   const fileScopeRow = fileScope.rows[fileScope.rows.length - 1];
-  assert.match(
-    fileScopeRow,
-    /🢐esc {2}add {2}unstage {2}delete {2}ignore {2}edit.*files {2}diffs/,
-  );
+  assert.match(fileScopeRow, FILES_FOOTER);
   assert.ok(fileScope.buttons.find((hit) => hit.id === 'revert'));
   assert.ok(fileScope.buttons.find((hit) => hit.id === 'dashDiffs'));
 });
@@ -293,10 +287,7 @@ test('files pane todos row dims add unstage drop', () => {
     color: false,
   });
   const footer = frame.rows[frame.rows.length - 1];
-  assert.match(
-    footer,
-    /🢐esc {2}add {2}unstage {2}delete {2}ignore {2}edit.*files {2}diffs/,
-  );
+  assert.match(footer, FILES_FOOTER);
   assert.ok(!footer.includes('q'));
   assert.ok(!footer.includes('←'));
   assert.ok(!footer.includes('→'));
@@ -331,10 +322,7 @@ test('files pane todos row dims add unstage drop', () => {
     color: false,
   });
   const fileFooter = file.rows[file.rows.length - 1];
-  assert.match(
-    fileFooter,
-    /🢐esc {2}add {2}unstage {2}delete {2}ignore {2}edit.*files {2}diffs/,
-  );
+  assert.match(fileFooter, FILES_FOOTER);
   assert.ok(file.buttons.find((hit) => hit.id === 'add'));
 });
 
