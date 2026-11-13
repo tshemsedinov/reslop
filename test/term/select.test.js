@@ -63,3 +63,12 @@ test('extractText reads overlay rows', () => {
 test('osc52 encodes UTF-8 as base64', () => {
   assert.equal(osc52('hé'), `${ESC}]52;c;aMOp\x07`);
 });
+
+test('clipInput encodes text as UTF-16LE with a BOM', () => {
+  const source = 'Привіт, мир! 日本語 😀';
+  const bytes = select.clipInput(source);
+  assert.equal(bytes[0], 0xff);
+  assert.equal(bytes[1], 0xfe);
+  assert.equal(bytes.toString('utf16le'), `\uFEFF${source}`);
+  assert.equal(select.clipInput('ok').toString('utf16le'), '\uFEFFok');
+});
