@@ -4,6 +4,7 @@ const { test } = require('node:test');
 const assert = require('node:assert/strict');
 
 const { sampleHunk, labels } = require('../helpers.js');
+const { version } = require('../../package.json');
 const render = require('../../lib/render/render.js');
 const { REPO_TASKS_LABEL } = require('../../lib/common/files.js');
 const ansi = require('../../lib/term/ansi.js');
@@ -31,7 +32,7 @@ test('header and file list keep a right-side gap', () => {
   const header = stripAnsi(frame.rows[0]);
   assert.equal(header.startsWith(' '), true);
   assert.equal(header.endsWith(' '), true);
-  assert.match(header, /👁️ {2}reslop/);
+  assert.ok(header.includes(`👁️  reslop ${version}`));
   const row = stripAnsi(frame.rows[2]);
   assert.equal(row.endsWith('  '), true);
   assert.match(row, /^ {2}js a\.js/);
@@ -915,15 +916,18 @@ test('files screen shows a folder tree, the active pick lighter', () => {
   const onTree = render.renderFrame({ ...view, folderFocus: true }, color);
   assert.ok(!onTree.rows[2].includes(strong));
   assert.ok(onTree.rows[3].includes(strong));
-  assert.match(render.headerText(view), /reslop: demo: files$/);
+  const lead = `reslop ${version}`;
+  assert.ok(render.headerText(view).endsWith(`${lead}: demo: files`));
   const onFolder = { ...view, folderFocus: true };
-  assert.match(render.headerText(onFolder), /reslop: demo: files$/);
+  assert.ok(render.headerText(onFolder).endsWith(`${lead}: demo: files`));
   const diffs = { ...view, fileScope: 'diff' };
-  assert.match(render.headerText(diffs), /reslop: demo: files$/);
+  assert.ok(render.headerText(diffs).endsWith(`${lead}: demo: files`));
   const run = { ...view, pane: 'npm' };
-  assert.match(render.headerText(run), /reslop: demo: run$/);
+  assert.ok(render.headerText(run).endsWith(`${lead}: demo: run`));
   const packages = { ...view, pane: 'packages' };
-  assert.match(render.headerText(packages), /reslop: demo: npm packages$/);
+  assert.ok(
+    render.headerText(packages).endsWith(`${lead}: demo: npm packages`),
+  );
 });
 
 test('list screens show the selection without a marker', () => {
