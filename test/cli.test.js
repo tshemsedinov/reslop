@@ -6,6 +6,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 
 const { run, parseArgv, resolveScope, loadSession } = require('../lib/cli.js');
+const { version } = require('../package.json');
 const { createGitRepo } = require('../lib/git/git.js');
 const helpers = require('./helpers.js');
 const { makeRepo, sampleHunk, fakeProc, tempDir, removeTree } = helpers;
@@ -216,14 +217,31 @@ test('an empty .git directory does not identify a repository', async () => {
   }
 });
 
-test('parseArgv accepts -r and rejects removed switches', () => {
+test('parseArgv accepts -r and -v and rejects removed switches', () => {
   assert.equal(parseArgv([]).readOnly, false);
+  assert.equal(parseArgv([]).version, false);
   assert.equal(parseArgv(['-r']).readOnly, true);
+  assert.equal(parseArgv(['-v']).version, true);
   assert.deepEqual(parseArgv(['-r', 'lib']).paths, ['lib']);
-  const unknown = ['-n', '-light', '--new', '--help', '-h', '--version', '-v'];
+  const unknown = ['-n', '-light', '--new', '--help', '-h', '--version'];
   for (const flag of unknown) {
     const message = `unknown option ${flag}`;
     assert.throws(() => parseArgv([flag]), new RegExp(message));
+  }
+});
+
+test('-v prints the version and exits', async () => {
+  const dir = tempDir('reslop-version-');
+  try {
+    const proc = fakeProc(dir, {
+      argv: ['node', 'reslop', '-v', 'missing'],
+    });
+    const code = await run(proc);
+    assert.equal(code, 0);
+    assert.equal(proc.stdoutText(), `${version}\n`);
+    assert.equal(proc.stderrText(), '');
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
   }
 });
 
@@ -237,7 +255,7 @@ test('unknown option exits 1', async () => {
   assert.match(stderrText, /unknown option/);
   const usage = new RegExp(
     [
-      'Usage: reslop \\[-r\\]',
+      'Usage: reslop \\[-r\\] \\[-v\\]',
       '\\[path \\| commit \\| pr-url \\| mr-url \\| issue-url\\]',
     ].join(' '),
   );
