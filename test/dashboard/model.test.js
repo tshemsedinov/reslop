@@ -497,6 +497,22 @@ test('the current minute blinks for three seconds after activity', () => {
   assert.equal(dash.liveActivity(now + 20_000), true);
 });
 
+test('a running record is read again without a watch event', () => {
+  const { dash, timers } = quietDashboard();
+  dash.runs = [{ status: 'running' }];
+  dash.afterDraw();
+  const poll = timers.find((row) => row.name === 'dashboard-runs');
+  assert.ok(poll);
+  assert.equal(poll.ms, 1000);
+  let reads = 0;
+  dash.ui.npm.refreshRecorded = () => {
+    reads += 1;
+  };
+  dash.tasks = { runs: { request: () => {} } };
+  poll.fn();
+  assert.equal(reads, 1);
+});
+
 test('the blink timer stops the current cell after three seconds', () => {
   const { dash, started, stopped, timers } = quietDashboard();
   const now = Date.now();
@@ -638,9 +654,11 @@ test('the dashboard shows a run by script name', async () => {
       return listed && text.includes('test') && hidden;
     };
     assert.ok(await waitUntil(seen));
+    ui.lifecycle.stopWatch();
     run.finish(0, null);
     const finished = () => {
       const shown = ui.dashboard.view().runs[0];
+      if (!shown) return false;
       return shown.name === 'test' && shown.status === 'passed';
     };
     assert.ok(await waitUntil(finished));
