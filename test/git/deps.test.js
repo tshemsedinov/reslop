@@ -815,6 +815,95 @@ test('session add stages only the current dependency', async () => {
   }
 });
 
+const placeCursor = (session, rel) => {
+  session.showFiles();
+  const listed = session.fileList();
+  const entry = listed.find((row) => row.path === rel);
+  assert.ok(entry);
+  session.fileCursor = listed.indexOf(entry);
+};
+
+test('a package.json change moves its lockfile with it', async () => {
+  const repo = makeRepo();
+  try {
+    const oldDeps = { lodash: '^4.17.20' };
+    const oldPkg = pkgJson(oldDeps, { version: '0.1.0' });
+    const newPkg = pkgJson(oldDeps, { version: '0.1.1' });
+    const oldLock = lockV3(oldDeps, { lodash: '4.17.20' });
+    const from = '"lockfileVersion": 3';
+    const newLock = oldLock.replace(from, '"lockfileVersion": 2');
+    repo.write('package.json', oldPkg);
+    repo.write('package-lock.json', oldLock);
+    repo.git(['add', '.']);
+    repo.git(['commit', '-m', 'init']);
+    repo.write('package.json', newPkg);
+    repo.write('package-lock.json', newLock);
+    const loaded = await load(repo.dir, [], { deferExtras: false });
+    const item = loaded.items.find((entry) => {
+      const rel = entry.file.newPath;
+      return rel === 'package.json' && !entry.dep;
+    });
+    assert.ok(item);
+    await addItem(loaded.top, item, { run: () => ({ status: 0 }) });
+    const cached = repo.git(['diff', '--cached', '--name-only']);
+    assert.match(cached, /package\.json/);
+    assert.match(cached, /package-lock\.json/);
+    assert.equal(repo.git(['diff', '--name-only']), '');
+    item.origin = 'staged';
+    await unstageItem(loaded.top, item);
+    assert.equal(repo.git(['diff', '--cached', '--name-only']), '');
+    assert.equal(repo.read('package-lock.json'), newLock);
+    item.origin = 'unstaged';
+    await revertItem(loaded.top, item);
+    assert.equal(repo.read('package.json'), oldPkg);
+    assert.equal(repo.read('package-lock.json'), oldLock);
+  } finally {
+    repo.cleanup();
+  }
+});
+
+test('files pane moves the lockfile with package.json', async () => {
+  const repo = makeRepo();
+  try {
+    const oldDeps = { lodash: '^4.17.20' };
+    const newDeps = { lodash: '^4.17.21' };
+    const oldPkg = pkgJson(oldDeps, { version: '0.1.0' });
+    const newPkg = pkgJson(newDeps, { version: '0.1.1' });
+    const oldLock = lockV3(oldDeps, { lodash: '4.17.20' });
+    const newLock = lockV3(newDeps, { lodash: '4.17.21' });
+    repo.write('keep.js', 'ok\n');
+    repo.write('package.json', oldPkg);
+    repo.write('package-lock.json', oldLock);
+    repo.git(['add', '.']);
+    repo.git(['commit', '-m', 'init']);
+    repo.write('keep.js', 'OK\n');
+    repo.write('package.json', newPkg);
+    repo.write('package-lock.json', newLock);
+    const session = await sessionFor(repo.dir);
+    placeCursor(session, 'package.json');
+    session.dispatch('add');
+    await session.ops.idle();
+    const cached = repo.git(['diff', '--cached', '--name-only']);
+    assert.match(cached, /package\.json/);
+    assert.match(cached, /package-lock\.json/);
+    assert.equal(repo.git(['diff', '--name-only']).trim(), 'keep.js');
+    placeCursor(session, 'package.json');
+    session.dispatch('unstage');
+    await session.ops.idle();
+    assert.equal(repo.git(['diff', '--cached', '--name-only']), '');
+    assert.equal(repo.read('package.json'), newPkg);
+    assert.equal(repo.read('package-lock.json'), newLock);
+    placeCursor(session, 'package.json');
+    session.dispatch('revert');
+    await session.ops.idle();
+    assert.equal(repo.read('package.json'), oldPkg);
+    assert.equal(repo.read('package-lock.json'), oldLock);
+    assert.equal(repo.read('keep.js'), 'OK\n');
+  } finally {
+    repo.cleanup();
+  }
+});
+
 test('files pane revert restores both dependency files', async () => {
   const repo = makeRepo();
   try {
