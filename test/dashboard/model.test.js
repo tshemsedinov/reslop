@@ -283,6 +283,25 @@ test('git branch tracking is parsed from the upstream track', () => {
   assert.equal(parseTrack('[gone]').gone, true);
 });
 
+test('readGitSummary keeps every branch name after a checkout', async () => {
+  const repo = makeRepo();
+  try {
+    repo.write('a.js', 'one\n');
+    repo.git(['add', '.']);
+    repo.git(['commit', '-m', 'first']);
+    for (const name of ['b-1', 'b-2', 'b-3', 'b-4', 'b-5', 'b-6']) {
+      repo.git(['branch', name]);
+    }
+    repo.git(['checkout', 'b-3']);
+    const summary = await readGitSummary(repo.dir);
+    const names = summary.branches.map((entry) => entry.name);
+    assert.equal(summary.branch, 'b-3');
+    assert.deepEqual(names, ['b-1', 'b-2', 'b-3', 'b-4', 'b-5', 'b-6', 'main']);
+  } finally {
+    repo.cleanup();
+  }
+});
+
 test('readGitSummary reports commits and branches', async () => {
   const repo = makeRepo();
   try {
