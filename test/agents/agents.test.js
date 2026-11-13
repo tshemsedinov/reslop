@@ -191,6 +191,17 @@ test('a command is found by the name it has on disk on Windows', () => {
   }
 });
 
+test('a Windows shim wins over the extensionless file', () => {
+  const names = ['claude-agent-acp', 'claude-agent-acp.cmd'];
+  const { dir, bins, env } = fakePath(...names);
+  try {
+    const found = findBin('claude-agent-acp', env, 'win32');
+    assert.equal(found, bins['claude-agent-acp.cmd']);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test('a command added within one tick of the directory time is found', () => {
   const { dir, env } = fakePath('first');
   const tick = new Date();

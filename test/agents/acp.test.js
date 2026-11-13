@@ -7,6 +7,7 @@ const path = require('node:path');
 
 const agentsModule = require('../../lib/agents/agents.js');
 const { startAgent, listModels, signIn, signOut, catalogOf } = agentsModule;
+const { findBin } = agentsModule;
 const { AcpConnection, authMethod } = require('../../lib/agents/acp.js');
 const { Transcript } = require('../../lib/agents/transcript.js');
 const { tempDir, removeTree } = require('../helpers.js');
@@ -62,6 +63,35 @@ const alive = (pid) => {
     return false;
   }
 };
+
+test(
+  'a Windows npm adapter starts through its cmd shim',
+  {
+    skip: process.platform !== 'win32',
+  },
+  async () => {
+    await inTemp(async (dir) => {
+      const binDir = path.join(dir, 'npm bin');
+      fs.mkdirSync(binDir);
+      const name = 'claude-agent-acp';
+      fs.writeFileSync(path.join(binDir, name), '#!/bin/sh\nexit 1\n');
+      const shim = path.join(binDir, `${name}.cmd`);
+      const script = `@"${process.execPath}" "${FIXTURE}" %*\r\n`;
+      fs.writeFileSync(shim, script);
+      const cmd = findBin(name, { PATH: binDir });
+      assert.equal(cmd, shim);
+      const result = await runToEnd(
+        dir,
+        launchOf('', {
+          cmd,
+          args: ['--acp'],
+        }),
+      );
+      assert.equal(result.status, 0, result.text);
+      assert.match(result.text, /got: do the plan/);
+    });
+  },
+);
 
 test('a run opens a session, sets it up and sends the plan', async () => {
   await inTemp(async (dir) => {
