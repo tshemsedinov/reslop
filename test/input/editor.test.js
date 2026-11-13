@@ -172,6 +172,50 @@ test('backspaceWord deletes the previous word', () => {
   assert.equal(editor.cursor, 0);
 });
 
+test('ctrl-delete deletes the next word', () => {
+  const editor = new Editor('hello world');
+  editor.place(0);
+  const ui = { status: '', stdout: {} };
+  assert.equal(lineKey(editor, 'ctrl-delete', ui, true), 'text');
+  assert.equal(editor.text, ' world');
+  assert.equal(editor.cursor, 0);
+  lineKey(editor, 'ctrl-delete', ui, true);
+  assert.equal(editor.text, '');
+});
+
+test('ctrl-home matches home in a one-line field', () => {
+  const editor = new Editor('hello');
+  editor.place(3);
+  const ui = { status: '', stdout: {} };
+  lineKey(editor, 'ctrl-home', ui, true);
+  assert.equal(editor.cursor, 0);
+  lineKey(editor, 'ctrl-end', ui, true);
+  assert.equal(editor.cursor, 5);
+  lineKey(editor, 'ctrl-shift-home', ui, true);
+  assert.equal(editor.selectedText(), 'hello');
+});
+
+test('a menu filter ignores ctrl-home', () => {
+  const editor = new Editor('hello');
+  editor.place(3);
+  const ui = { status: '', stdout: {} };
+  assert.equal(lineKey(editor, 'ctrl-home', ui, false), null);
+  assert.equal(editor.cursor, 3);
+});
+
+test('ctrl-home and ctrl-end move across a multi-line box', () => {
+  const editor = new Editor('one\ntwo');
+  editor.place(5);
+  const ui = { status: '', stdout: {} };
+  lineKey(editor, 'ctrl-home', ui, true, true);
+  assert.equal(editor.cursor, 0);
+  editor.place(5);
+  lineKey(editor, 'ctrl-shift-end', ui, true, true);
+  assert.equal(editor.cursor, editor.text.length);
+  assert.equal(editor.anchor, 5);
+  assert.equal(editor.selectedText(), 'wo');
+});
+
 test('copy takes the character under the caret after shift-right', () => {
   const editor = new Editor('hello world');
   editor.place(0);
@@ -228,6 +272,51 @@ test('cut removes what copy takes', (t) => {
   lineKey(editor, 'ctrl-x', ui, true);
   assert.equal(copy.mock.calls[0].arguments[0], 'hello ');
   assert.equal(editor.text, 'world');
+});
+
+test('ctrl-home and ctrl-end reach the text in a multi-line editor', () => {
+  const composer = composeOf('file');
+  composer.editor = new Editor('one\ntwo\nthree');
+  composer.editor.place(5);
+  composer.templateFocus = true;
+  composer.handleKey('ctrl-home');
+  assert.equal(composer.templateFocus, false);
+  assert.equal(composer.editor.cursor, 0);
+  composer.handleKey('ctrl-end');
+  assert.equal(composer.editor.cursor, composer.editor.text.length);
+  composer.editor.place(5);
+  composer.handleKey('ctrl-shift-end');
+  assert.equal(composer.editor.anchor, 5);
+  assert.equal(composer.editor.cursor, composer.editor.text.length);
+});
+
+test('ctrl-home stays on the line of a one-line field', () => {
+  const composer = composeOf('branch');
+  composer.editor = new Editor('one\ntwo');
+  composer.editor.place(6);
+  composer.handleKey('ctrl-home');
+  assert.equal(composer.editor.cursor, 4);
+  composer.handleKey('ctrl-shift-end');
+  assert.equal(composer.editor.cursor, 7);
+  assert.equal(composer.editor.selectedText(), 'two');
+  composer.handleKey('shift-pageUp');
+  assert.equal(composer.editor.cursor, 7);
+  assert.equal(composer.editor.selectedText(), 'two');
+});
+
+test('shift-pageUp selects a screen in a multi-line editor', () => {
+  const composer = composeOf('code');
+  const lines = [];
+  for (let i = 0; i < 30; i++) lines.push('line');
+  composer.editor = new Editor(lines.join('\n'));
+  composer.editor.place(composer.editor.text.length);
+  composer.ui.lastFrame = { bodyH: 10 };
+  composer.handleKey('shift-pageUp');
+  assert.equal(composer.editor.linePos().line, 19);
+  assert.ok(composer.editor.anchor > composer.editor.cursor);
+  composer.handleKey('pageDown');
+  assert.equal(composer.editor.anchor, null);
+  assert.equal(composer.editor.linePos().line, 29);
 });
 
 test('shift movement selects and edits replace the span', () => {
