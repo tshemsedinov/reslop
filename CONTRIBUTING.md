@@ -10,19 +10,18 @@ There are two reasons to open an issue:
 - Bug report
 - Feature request
 
-For bug reports please describe the bug with a clear and concise description,
-steps to reproduce the behavior (usage example or test), expected behavior,
-provide OS and Node.js version, you can upload screenshots and any additional
-context for better understanding.
+For bug reports, please include a clear and concise description, steps to
+reproduce the behavior (a usage example or a test), and the expected behavior.
+Provide the OS and Node.js version. You can upload screenshots and any other
+context that helps.
 
-Please don't open an issue to ask questions.
+Please don't open an issue to ask a question.
 
-Issues on GitHub are intended to be related to problems and feature requests
-so we recommend not using this medium to ask them here grin. Thanks for
-understanding!
+Issues on GitHub are for problems and feature requests, so please do not use
+them to ask questions. Thanks for understanding!
 
-If you have a question, please check out our support groups and channels for
-developers community:
+If you have a question, please check our support groups and channels for the
+developer community:
 
 Telegram:
 
@@ -32,7 +31,7 @@ Telegram:
 
 ## Pull Requests
 
-Before open pull request please follow checklist:
+Before opening a pull request, please follow this checklist:
 
 - [ ] tests and linter show no problems (`npm t`)
 - [ ] tests are added/updated for bug fixes and new features
