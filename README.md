@@ -1,6 +1,6 @@
 # 👁️ reslop
 
-## Review AI generated code and plan changes
+## Review AI-generated code and plan changes
 
 [![ci status](https://github.com/tshemsedinov/reslop/workflows/Testing%20CI/badge.svg)](https://github.com/tshemsedinov/reslop/actions?query=workflow%3A%22Testing+CI%22+branch%3Amain)
 [![snyk](https://snyk.io/test/github/tshemsedinov/reslop/badge.svg)](https://snyk.io/test/github/tshemsedinov/reslop)
@@ -16,22 +16,22 @@ Open a change, leave findings and a backlog, and prepare a repair plan for the a
 Review → Plan → Repair → Verify
 ```
 
-- Live dashboard: files and folder, diffs, tasks, branches, commits, run, agents, and npm, updated in real time
+- Live dashboard: files and folders, diffs, tasks, branches, commits, run, agents, and npm, updated in real time
 - Leave feedback, a project backlog, and in-place code proposals as a repair plan
 - Review uncommitted git diffs, a given commit, a GitHub PR, or a GitLab MR
-- File-scope review mode: not just diffs, with editor mode
+- File-scope review mode: not just diffs, with an editor mode
 - Stage, unstage, or revert each contiguous block of diff lines
 - Resolve text conflicts with `s`, then choose `o` (ours), `t` (theirs), or `b` (both); the resolved file is staged
 - Auto-reload local diffs when files change, keeping the current screen
 - Import GitHub PR and GitLab MR review comments, and GitHub/GitLab issues, into tasks and the local plan
-- Commits list: brief and full, view a commit's diff, commit, update, amend, squash a range, apply a fixup onto its target, edit, fixup, and delete
+- Commit list: brief and full, view a commit's diff, commit, update, amend, squash a range, apply a fixup onto its target, edit, fixup, and delete
 - Branches: checkout, create, rebase with autoresolved conflicts, delete ranges, pull, and push; git worktrees as tiles above the branches
 - npm scripts: run, edit, reorder, clean logs
 - Reduced test and lint output for agents: failures and a short summary, not passing noise
 - Review, renew, audit and update npm dependencies in `package.json` and the lockfile
 - Auto-update reslop patch and minor releases; confirm a new major
 - Work with git, npm, and fetch in the background; run tests in the background while you review
-- Execute the plan in local agents over ACP, continue or start new session
+- Execute the plan in local agents over ACP; continue a session or start a new one
 
 ## Install
 
@@ -44,15 +44,15 @@ Requires Node.js `>=18.15.0`.
 
 ## Usage
 
-- `reslop` live dashboard of this repository; press a block key to open its screen
-- `reslop folder` tiles of the repositories in a folder, each with its git worktrees
-- `reslop path/file` show only that path or file (starts on the file list)
-- `reslop 7ac260c` show that commit (read-only)
-- `reslop https://github.com/metarhia/metacom/pull/555` GitHub/GitLab PR/MR
-- `reslop https://github.com/metarhia/metacom/issues/550` import GitHub/GitLab issue
-- `reslop https://github.com/metarhia/metacom/issues` import all issues
-- `reslop -r` read-only mode
-- `reslop t -- <program> [args]` run one program and print a reduced report
+- `reslop` opens the live dashboard of this repository; press a block key to open its screen
+- `reslop folder` shows tiles of the repositories in a folder, each with its git worktrees
+- `reslop path/file` shows only that path or file (and starts on the file list)
+- `reslop 7ac260c` shows that commit (read-only)
+- `reslop https://github.com/metarhia/metacom/pull/555` imports a GitHub/GitLab pull request
+- `reslop https://github.com/metarhia/metacom/issues/550` imports a GitHub/GitLab issue
+- `reslop https://github.com/metarhia/metacom/issues` imports all issues
+- `reslop -r` starts read-only mode
+- `reslop t -- <program> [args]` runs one program and prints a reduced report
 
 Prefix each program in an npm script with `reslop t --`. Keep `&&` between those wraps, so each program is captured on its own and a failing step does not start the next one:
 
@@ -118,5 +118,5 @@ reslop runs a plan in an agent over the [Agent Client Protocol](https://agentcli
 
 ## License
 
-Copyright (c) 2026 Timur Shemsedinov and other contributors (see github).
+Copyright (c) 2026 Timur Shemsedinov and other contributors (see GitHub).
 This is [MIT](./LICENSE) licensed software.

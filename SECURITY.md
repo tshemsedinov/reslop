@@ -9,8 +9,8 @@
 ## Reporting a Vulnerability
 
 If you believe you have found a security vulnerability, let us know by sending
-email to [timur.shemsedinov@gmail.com](mailto:timur.shemsedinov@gmail.com)
-We will investigate that and do our best to quickly fix the problem.
+an email to [timur.shemsedinov@gmail.com](mailto:timur.shemsedinov@gmail.com).
+We will investigate it and do our best to fix the problem quickly.
 
-Please don't open an issue to or discuss this security vulnerability in a public
+Please don't open an issue or discuss this security vulnerability in a public
 place. Thanks for understanding!

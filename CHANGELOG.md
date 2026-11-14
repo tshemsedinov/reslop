@@ -2,20 +2,36 @@
 
 ## [Unreleased][unreleased]
 
-- Open a git monorepo on the repository screen: each directory with its own `package.json` is a project, with its scripts, plans, and runs
-- Keep plan files byte for byte: any Markdown file in `.plan/` or `specs/` is a plan, and an edit changes only its own lines
-- Merge an agent's changes to an open plan block by block, keeping fields, results, and check ticks from both sides
-- Structured tasks with priority and fields
-- Improve plan/tasks editor and allow md files with free structure
-- Open `where` and `related` locations on the files screen, only inside the repository
-- Import issues as structured tasks with the kind from labels and the body quoted; the agent instructions treat imported text as data
-- Send the agent instructions in the prompt for a plan that has none
-- Fix merging plans where several tasks share an ID: tasks no longer swap ticks or get lost
-- Fix proposed code with an indented fence swallowing the tasks after it
-- Keep a block's code proposal when its note is cleared, and reopen a done task and plan when its proposal changes
-- Open and mark block tasks on paths with spaces and on root files without an extension such as `Makefile`
-- Refuse a directory in `where` and `related` with a message instead of showing an empty file
-- Keep typing in the file editor when the file changes on disk: merge separate edits, and on a clash pause autosave and warn until the next save
+## [0.3.6][] - 2026-11-14
+
+- Support a dashboard that visualizes projects in a git monorepo
+- Plans and tasks
+  - Structured tasks with priority, fields, and checks
+  - Improve plan editor functionality and UI, and fix bugs
+  - Import issues as structured tasks
+  - Group plan tasks into commits with ctrl+g
+  - Mark lines and blocks with tasks in diff and file views
+  - Write code proposals as the `do` field of block tasks
+  - Improve solve so it converts a bug into a plan
+  - Fix merging plans where several tasks share an ID
+- Editors
+  - Improve single-line and multi-line editors UX and hotkeys
+  - Read printable keys sent as kitty CSI u
+  - Support editing a file while it changes on disk, and merge the edits
+- Review
+  - Resolve text conflicts from review views
+  - Fix the file view so each block of a shared hunk is painted once
+- Show a finished run when its watch event is dropped
+- Preserve branch fields when reading Git summaries
+- Windows and macOS
+  - Fix agent lookup on Windows and macOS
+  - Preserve Unicode when copying on Windows
+  - Normalize CRLF in untracked diff rows
+  - Strip mixed-separator paths on Windows
+- Print the version with `-v`
+- Show the reslop version in the header
+- Sync `package-lock.json` and `package.json` git operations
+- Update dependencies to fix a minimatch vulnerability
 
 ## [0.3.5][] - 2026-10-28
 
@@ -25,14 +41,14 @@
 - Batch-delete commits and branches
 - Update selected commit timestamps with `u`
 - Edit a commit with ctrl+e and set the current date
-- Show a scroller in lists/tabes in all screend
-- Fix show author date in the commit list to match relative age
+- Show a scroller in lists and tables on all screens
+- Fix the author date in the commit list so it matches relative age
 
 ## [0.3.4][] - 2026-10-19
 
 - Rework the agents screen: a table of agent, model, effort, fast, context, and plan beside the sessions, with the hotkeys marked in the table and an install button
 - Start an agent on a task typed in the text box of the agents screen
-- Ask the installed agents for their models and sign-in at startup, the default one first and a few at a time, and show `loading…` until an agent has answered
+- Ask the installed agents for their models and sign-in status at startup, the default one first and a few at a time, and show `loading…` until an agent has answered
 - Show on the agents screen whether the selected agent is signed in, and propose to sign in or out with `l` or the button
 - Restore the last selected agent from `.reslop` when reopening reslop
 - Show effort, context size, and fast mode on the agents screen only where the agent and model have them, put the status and progress of the plan in one row, and leave one spacer before the sessions
@@ -65,24 +81,24 @@
 ## [0.3.2][] - 2026-10-15
 
 - Communicate with agents over the Agent Client Protocol instead of CLI
-- Listed models from the agent session, with effort, context, fast
+- List models from the agent session, with effort, context, and fast mode
 - Answer agent permission requests
-- Installing a missing agent's and ACP for them
-- Add Google Antigravity's support
-- Started a new agent session or continued the selected one
-- Showed a plan heading or task as the session caption
-- Support git worktrees at branches screen
+- Install a missing agent and its ACP adapter
+- Add Google Antigravity support
+- Start a new agent session or continue the selected one
+- Show a plan heading or task as the session caption
+- Support git worktrees on the branches screen
 - Added pop-up menus on tables and UI controls
 - Add new hotkeys for better UX
 - Improve command and agent background runners
 
 ## [0.3.1][] - 2026-10-13
 
-- Allow agents to write to work with git
-- Add default URL for tasks import in UI
-- Implement session continue for supported agents
-- Fix scroller in agents sessions list
-- Multiple fixes in background agents and command runner
+- Allow agents to write to `.git` and to run git
+- Add a default URL for importing tasks in the UI
+- Implement continuing a session for supported agents
+- Fix the scroller in the agent sessions list
+- Multiple fixes for background agents and the command runner
 - Sync the lockfile when a `package.json` change is staged
 - Update agent instructions to make commits
 - Support Ctrl+Backspace word deletion in editors
@@ -90,9 +106,9 @@
 
 ## [0.3.0][] - 2026-10-12
 
-- Execute review results and plan in cli agents
-- Detect available agents and choose its model, effort, context
-- Show agent execution and progress; sessions, history in TUI
+- Execute review results and the plan in CLI agents
+- Detect available agents and choose a model, effort, and context for each
+- Show agent execution, progress, sessions, and history in the TUI
 - Import GitHub and GitLab issues into tasks
 - Run tests in the background
 - Codebase refactoring and optimization for simplicity and performance
@@ -105,21 +121,21 @@
 
 ## [0.2.7][] - 2026-10-03
 
-- Add tiling view for multi-repository environment
+- Add a tiling view for a multi-repository environment
 - Improve navigation and hotkeys
-- Add npm and dependencies screen
-- Rework tasks: regroup into feature, bug, debt, research, and security
-- Show tasks progress
+- Add an npm and dependencies screen
+- Rework tasks: regroup them into feature, bug, debt, research, and security
+- Show task progress
 - Search file paths in the files and diff screens
 
 ## [0.2.6][] - 2026-10-02
 
 - Add a live dashboard as the start screen
-- Compact related failure contexts in test runnter logs
+- Compact related failure contexts in test runner logs
 - Save the raw command output beside the reduced log
-- Improve test results rendering
+- Improve test result rendering
 - Update the dashboard from file system events, without timers
-- Record `reslop t` runs under `.log/.runs/` show progress on the dashboard
+- Record `reslop t` runs under `.log/.runs/` and show progress on the dashboard
 - Implement tasks screen: backlog, issues, bugs, features
 
 ## [0.2.5][] - 2026-09-30
@@ -131,13 +147,13 @@
 - Improve diff calculation
 - Improve npm command and test edit/run
 - Refactor internals: simplify and add classes
-- Hothey "i" add to ignore lists: .gitignore, .npmignore
+- Hotkey `i` adds paths to the ignore lists: `.gitignore` and `.npmignore`
 - Rename TODO to tasks and improve TUI/TUX
 
 ## [0.2.4][] - 2026-09-28
 
 - Add AI instructions to run `npm t` or `reslop t -- node --test`
-- Cleanup old logs (older than 5 days)
+- Clean up old logs (older than 5 days)
 - Rename TODO list to Project Backlog and Issues
 - Word wrap in view and horizontal scrolling in edit mode
 - Return to uncommitted changes when viewing history in read-only mode
@@ -151,10 +167,10 @@
 - Add brief and full commit lists, toggled with `v`
 - Select a commit from the list to view its diff
 - Edit a multi-line commit message
-- Propose unused removals only for libraries that export code
+- Propose removing unused dependencies only for libraries that export code
 - Improve TUI/TUX, multiple small fixes
 - Implement npm command runner with termination and re-run
-- Filter tests output to reduce AI costs: `npm t` and other scripts
+- Filter test output to reduce AI costs: `npm t` and other scripts
 - Save script logs under `.log/`
 - Group similar problems in test and other output
 
@@ -164,11 +180,11 @@
 - Improve `fixup!` functions: create and apply
 - Reword the selected commit message with `r`
 - Add light theme: `-light` option and `l` hotkey to switch
-- Support checkbox state in TODOs, UI for state change
+- Support checkbox state in TODOs, and a UI for changing that state
 - Reload the file list when leaving todos, branches, or commits
 - Let agents run `editing` reviews and leave `done` files unchanged
 - Skip npm audit and outdated unless package files changed
-- Sync and merge TODOs with file instead of overwriting it
+- Sync and merge TODOs with the file instead of overwriting it
 
 ## [0.2.0][] - 2026-09-22
 
@@ -185,12 +201,12 @@
 - Right-align the time column in the branch list
 - Refresh the branch list after push, pull, and rebase
 - Keep diff viewer order when staging or unstaging a block
-- Add a commits list screen with commit operation
-- Show staged/total rather than staged/unstaged in files list
-- Show file ages in the file list right-aligned
+- Add a commits list screen with commit operations
+- Show staged/total rather than staged/unstaged in the file list
+- Show right-aligned file ages in the file list
 - Sort the file list by path from the repo root
 - Update file-list hotkeys and hints
-- Fix dependency updates, locks and audit
+- Fix dependency updates, lockfiles, and audit
 
 ## [0.1.8][] - 2026-09-17
 
@@ -199,28 +215,28 @@
 - Show staged/unstaged +/- and staged/remaining totals in status line
 - Jump by word with Ctrl+Left/Right in all text editors
 - Support PgUp, PgDn, Home, and End in lists and multiline editors
-- Support mouse click in submenu and confirmation choices on the hint line
-- Fix TODO wrapped text; keep up/down navigation inside a multiline todos
-- Fix identifier diffs as whole words compare, not just letters
+- Support mouse clicks on submenu and confirmation choices on the hint line
+- Fix wrapped TODO text; keep up/down navigation inside a multiline todo
+- Fix identifier diffs so whole words are compared, not just letters
 - Keep reslop open when a local repo has no unstaged changes
 - Fix invisible cursor movement in scrolling diffs
 - Auto-reload worktree on disk changes, keeping the current UI state
 - Fix disk watch paths on Windows
-- Set git push upstream to `origin <branch>` when missing
+- Set the git push upstream to `origin <branch>` when it is missing
 - Save in-place diff edits to the reviewed file
 
 ## [0.1.7][] - 2026-09-16
 
-- Make TODOs repo-wide, not per-file todos
+- Make TODOs repo-wide, not per file
 - Improve TODO screen and files screen TUI/TUX including hotkeys
 - Implement branch rebase and drop
 - Improve branch screen TUI/TUX
-- Fix TODOs autosave bug with todo duplication
+- Fix the TODO autosave bug that duplicated todos
 
 ## [0.1.6][] - 2026-09-15
 
-- Auto updates for patch/minor, y/n per new major
-- Lists branches, new branch, git pull, git push
+- Auto-update patch and minor versions; ask y/n for each new major
+- List branches, create a new branch, and support git pull and git push
 - Show TUI progress for long background operations
 - Fix Windows spawn EINVAL when running `npm.cmd`
 - Highlight Dart diffs; refactor syntax highlighting
@@ -245,7 +261,7 @@
 ## [0.1.3][] - 2026-09-12
 
 - Showed added/removed and staged/total counts in the file list
-- Highlighted JSX and TSX syntax, including
+- Highlighted JSX and TSX syntax
 - Added vim-style j/k navigation and Ctrl scrolling
 - Improved TUI/UX with background git and npm checks to avoid a freeze
 
@@ -273,7 +289,8 @@
 - Feedback and todos that produce a repair plan for an agent
 - Intra-line highlighting in unified, mixed, and side-by-side layouts
 
-[unreleased]: https://github.com/tshemsedinov/reslop/compare/v0.3.5...HEAD
+[unreleased]: https://github.com/tshemsedinov/reslop/compare/v0.3.6...HEAD
+[0.3.6]: https://github.com/tshemsedinov/reslop/compare/v0.3.5...v0.3.6
 [0.3.5]: https://github.com/tshemsedinov/reslop/compare/v0.3.4...v0.3.5
 [0.3.4]: https://github.com/tshemsedinov/reslop/compare/v0.3.3...v0.3.4
 [0.3.3]: https://github.com/tshemsedinov/reslop/compare/v0.3.2...v0.3.3
